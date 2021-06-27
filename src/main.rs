@@ -99,9 +99,9 @@ enum StockBuilding<'stock> {
 }
 
 // mod folder is 7 digits and cannot start from zero.
-const MOD_IDS_START: usize = 1_000_000;
-const MOD_IDS_END: usize = 9_999_999;
-const MAX_MODS: usize = MOD_IDS_END - MOD_IDS_START;
+const MOD_IDS_START: u32 = 1_000_000;
+const MOD_IDS_END: u32 = 9_999_999;
+const MAX_MODS: usize = (MOD_IDS_END - MOD_IDS_START) as usize;
 
 // TODO: check this. could be 32
 const MAX_BUILDINGS_IN_MOD: u8 = 16;
