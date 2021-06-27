@@ -10,9 +10,12 @@ use const_format::concatcp;
 use crate::{
     StockBuilding, RenderConfig, StockBuildingsMap,
     Category, Style, BuildingDef, MaterialDef, Skin, SkinMaterial,
+
     grep_ini_token, get_texture_tokens,
-    SRX_PATH, SRX_EOL, ROOT_MODS,
-    PATH_ROOT_STOCK, PATH_ROOT_MODS
+
+    SRX_PATH, SRX_EOL, 
+    ROOT_MODS, PATH_ROOT_STOCK, PATH_ROOT_MODS,
+    MAX_BUILDINGS,
     };
 
 
@@ -32,7 +35,9 @@ pub(crate) fn read_validate_sources<'ini>(src: &Path, stock_buildings: &mut Stoc
 
     let mut pathbuf = src.to_path_buf();
     let subdirs: Vec<_> = get_subdirs(&pathbuf).collect();
-    let mut data = Vec::<Category>::with_capacity(subdirs.len());
+    let mut categories = Vec::<Category>::with_capacity(subdirs.len());
+
+    let mut bld_count = 0usize;
 
     for dir_cat in subdirs {
         let dir_name = dir_cat.file_name();
@@ -57,6 +62,9 @@ pub(crate) fn read_validate_sources<'ini>(src: &Path, stock_buildings: &mut Stoc
             style.buildings.reserve_exact(subdirs.len());
 
             for dir_bld in subdirs {
+                bld_count += 1;
+                assert!(bld_count <= MAX_BUILDINGS);
+
                 let dir_name = dir_bld.file_name();
                 pathbuf.push(&dir_name);
 
@@ -85,11 +93,11 @@ pub(crate) fn read_validate_sources<'ini>(src: &Path, stock_buildings: &mut Stoc
             pathbuf.pop(); // pop style dir
         }
 
-        data.push(cat);
+        categories.push(cat);
         pathbuf.pop(); // pop caterory dir
     }
 
-    data
+    categories
 }
 
 

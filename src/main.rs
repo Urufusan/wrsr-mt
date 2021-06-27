@@ -98,6 +98,18 @@ enum StockBuilding<'stock> {
     Parsed(BuildingDef<'stock>)
 }
 
+// mod folder is 7 digits and cannot start from zero.
+const MOD_IDS_START: usize = 1_000_000;
+const MOD_IDS_END: usize = 9_999_999;
+const MAX_MODS: usize = MOD_IDS_END - MOD_IDS_START;
+
+// TODO: check this. could be 32
+const MAX_BUILDINGS_IN_MOD: u8 = 16;
+
+const MAX_BUILDINGS: usize = MAX_MODS * (MAX_BUILDINGS_IN_MOD as usize);
+
+// TODO: check this.
+const MAX_SKINS_IN_MOD: u8 = 16;
 
 // Paths in ini files:
 const SRX_PATH: &str = r"([^\r\s\n]+?)";
@@ -381,7 +393,7 @@ fn get_texture_tokens(source: &str, root: &Path) -> Vec<IniToken<Texture>> {
         // NOTE: Debug
         // println!("CAPTURE: {:?}, {:?}", &range, cap.get(1).unwrap().as_str());
         let num = cap.get(2).unwrap().as_str().chars().next().unwrap();
-        let path: PathBuf = [root, PathBuf::from_slash(cap.get(3).unwrap().as_str()).as_path()].iter().collect();
+        let path: PathBuf = root.join(PathBuf::from_slash(cap.get(3).unwrap().as_str()));
 
         IniToken {
             range,

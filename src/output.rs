@@ -5,22 +5,15 @@ use std::path::{Path, PathBuf};
 use std::io::Read;
 use std::ops::Range;
 
-use crate::{Category, BuildingDef, RenderConfig, MaterialDef};
+use crate::{Category, BuildingDef, RenderConfig, MaterialDef,
+            MAX_BUILDINGS_IN_MOD, MAX_SKINS_IN_MOD, MOD_IDS_START, MOD_IDS_END,
+           };
 
 
 type Replacement = (Range<usize>, String);
 
-const WSH_CFG_1: &str = "$ITEM_ID ";
+const WORKSHOP_BLD_CFG_HEAD: &str = "$ITEM_ID ";
 
-const WSH_CFG_2: &str = "\n\
-$OWNER_ID 12345678901234567\n\
-$ITEM_TYPE WORKSHOP_ITEMTYPE_BUILDING\n\
-$VISIBILITY 2\n\n";
-
-const WSH_CFG_3: &str = "\n\
-$ITEM_NAME \"generated\"\n\
-$ITEM_DESC \"generated descr\"\n\
-$END";
 
 
 pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
@@ -35,82 +28,77 @@ pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
     pathbuf_textures.push("dds");
     fs::create_dir_all(&pathbuf_textures).unwrap();
 
-    let mut buf_workshopconfig = String::with_capacity(1024);
-    buf_workshopconfig.push_str(WSH_CFG_1);
+    let mut buf_bld_workshopconfig = String::with_capacity(1024);
+    buf_bld_workshopconfig.push_str(WORKSHOP_BLD_CFG_HEAD);
 
-    let mut buf_str_mod = String::with_capacity(64);
-    let mut buf_str_bld = String::with_capacity(2);
+    let mut buf_dirname = String::with_capacity(7);
+    let mut buf_assetbytes = Vec::<u8>::with_capacity(1024*1024*64);
 
-    let mut buf_assets = Vec::<u8>::with_capacity(1024*1024*64);
+    let mut bld_mod_id: usize = MOD_IDS_START;
+    let mut bld_id: u8 = 1;
 
-    for (i_cat, category) in data.iter().enumerate() {
-        // mod dir must not start from 0 (otherwise it is ignored)
-        let i_cat = i_cat + 10;
-        assert!(i_cat < 100); // 2 digits max
-        write!(&mut buf_str_mod, "{:0>2}", i_cat).unwrap();
 
-        for (i_stl, style) in category.styles.iter().enumerate() {
-            assert!(i_stl < 100); // 2 digits max
-            write!(&mut buf_str_mod, "{:0>2}", i_stl).unwrap();
-
-            // No more than MOD_BUILDINGS_MAX buildings in a single mod
-            const MOD_BUILDINGS_MAX: u8 = 16;
-            let mut i_mod = 0u16;
-            let mut cnt = 0u8;
-
-            assert!(style.buildings.len() > 0);
+    for category in data.iter() {
+        for style in category.styles.iter() {
             for building in style.buildings.iter() {
-                if cnt == 0 {
+                if bld_id == 1 {
                     // setup new mod folder for this building
-                    buf_str_mod.truncate(4);
-                    assert!(i_mod < 1000); // 3 digits max
-                    write!(&mut buf_str_mod, "{:0>3}", i_mod).unwrap();
-                    pathbuf.push(&buf_str_mod);
+
+                    assert!(bld_mod_id <= MOD_IDS_END);
+
+                    buf_dirname.clear();
+                    write!(&mut buf_dirname, "{}", bld_mod_id).unwrap();
+                    pathbuf.push(&buf_dirname);
                     fs::create_dir(&pathbuf).unwrap();
 
-                    // TODO: mod root files
-                    buf_workshopconfig.truncate(WSH_CFG_1.len());
-                    buf_workshopconfig.push_str(&buf_str_mod);
-                    buf_workshopconfig.push_str(WSH_CFG_2);
+                    use std::io::Write;
+                    let mut qq = [0u8; 7];
+                    write!(&mut qq[..], "{}", bld_mod_id).unwrap();
+
+                    // TODO: other mod root files
+                    buf_bld_workshopconfig.truncate(WORKSHOP_BLD_CFG_HEAD.len());
+                    buf_bld_workshopconfig.push_str(&buf_dirname);
+                    buf_bld_workshopconfig.push_str("\n\
+                        $OWNER_ID 12345678901234567\n\
+                        $ITEM_TYPE WORKSHOP_ITEMTYPE_BUILDING\n\
+                        $VISIBILITY 2\n\n");
                 }
 
-
-                buf_str_bld.clear();
-                write!(&mut buf_str_bld, "{:0>2}", cnt).unwrap();
-                pathbuf.push(&buf_str_bld); // mod dir -> building subdir
+                buf_dirname.clear();
+                write!(&mut buf_dirname, "{:0>2}", bld_id).unwrap();
+                pathbuf.push(&buf_dirname); // mod dir -> building subdir
                 fs::create_dir(&pathbuf).unwrap();
 
-                write!(&mut buf_workshopconfig, "$OBJECT_BUILDING {}\n", &buf_str_bld).unwrap();
+                write!(&mut buf_bld_workshopconfig, "$OBJECT_BUILDING {}\n", &buf_dirname).unwrap();
 
-                install_building_files(&building, &mut pathbuf, &mut pathbuf_models, &mut pathbuf_textures, &mut buf_assets);
+                install_building_files(&building, &mut pathbuf, &mut pathbuf_models, &mut pathbuf_textures, &mut buf_assetbytes);
+                // install_building_skins(&building, &mut pathbuf_textures, &mut buf_assets);
 
                 pathbuf.pop(); // building subdir -> mod dir
 
-                cnt += 1;
-                if cnt == MOD_BUILDINGS_MAX {
-                    cnt = 0;
-                    i_mod += 1;
+                bld_id += 1;
+                if bld_id > MAX_BUILDINGS_IN_MOD {
+                    bld_id = 1;
+                    bld_mod_id += 1;
 
-                    finish_mod(&mut buf_workshopconfig, &mut pathbuf);
+                    finish_mod(&mut buf_bld_workshopconfig, &mut pathbuf);
                 }
             }
-
-            if cnt != 0 {
-                finish_mod(&mut buf_workshopconfig, &mut pathbuf);
-            }
-
-
-            buf_str_mod.truncate(2);
         }
+    }
 
-        buf_str_mod.clear();
+    if bld_id > 1 {
+        finish_mod(&mut buf_bld_workshopconfig, &mut pathbuf);
     }
 
 }
 
 
 fn finish_mod(buf_config: &mut String, pathbuf: &mut PathBuf) {
-    buf_config.push_str(WSH_CFG_3);
+    buf_config.push_str("\n\
+        $ITEM_NAME \"generated\"\n\
+        $ITEM_DESC \"generated descr\"\n\
+        $END");
 
     pathbuf.push("workshopconfig.ini");
     fs::write(&pathbuf, &buf_config).unwrap();
@@ -168,6 +156,17 @@ fn install_building_files<'stock>(
         new_material_emissive
     );
 }
+
+fn install_building_skins<'stock>(
+    _bld: &BuildingDef<'stock>, 
+    _pathbuf: &mut PathBuf, 
+    _pathbuf_textures: &mut PathBuf, 
+    _buf_assets: &mut Vec<u8>) 
+{
+    // TODO: stuff
+
+}
+
 
 #[inline]
 fn copy_file(src: &Path, dest: &mut PathBuf, dest_name: &str) {
