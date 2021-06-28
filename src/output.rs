@@ -5,9 +5,13 @@ use std::path::{Path, PathBuf};
 use std::io::Read;
 use std::ops::Range;
 
-use crate::{Category, BuildingDef, RenderConfig, MaterialDef, Skin,
+use crate::{Category, BuildingDef, RenderConfig, IniToken, Texture, Skin,
             MAX_BUILDINGS_IN_MOD, MAX_SKINS_IN_MOD, MOD_IDS_START, MOD_IDS_END,
            };
+
+
+const FILENAME_MTL: &str = "material.mtl";
+const FILENAME_MTL_E: &str = "material_e.mtl";
 
 
 type Replacement = (Range<usize>, String);
@@ -20,11 +24,15 @@ pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
 
     let mut pathbuf_models = pathbuf.clone();
     pathbuf_models.push("nmf");
-    fs::create_dir_all(&pathbuf_models).unwrap();
+    if !pathbuf_models.exists() {
+        fs::create_dir_all(&pathbuf_models).unwrap();
+    }
     
     let mut pathbuf_textures = pathbuf.clone();
     pathbuf_textures.push("dds");
-    fs::create_dir_all(&pathbuf_textures).unwrap();
+    if !pathbuf_textures.exists() {
+        fs::create_dir_all(&pathbuf_textures).unwrap();
+    }
 
     let mut buf_assetbytes = Vec::<u8>::with_capacity(1024*1024*64);
     let mut mod_id_iter = MOD_IDS_START ..= MOD_IDS_END;
@@ -39,8 +47,10 @@ pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
         MAX_BUILDINGS_IN_MOD,
         &mut pathbuf,
         "BUILDING",
-        |buf, _, dirname| write!(buf, "$OBJECT_BUILDING {}\n", dirname).unwrap(),
-        |bld, pth| install_building_files(bld, pth, &mut pathbuf_models, &mut pathbuf_textures, &mut buf_assetbytes)
+        |buf, _, dirname| 
+            write!(buf, "$OBJECT_BUILDING {}\n", dirname).unwrap(),
+        |bld, pth| 
+            install_building_files(bld, pth, &mut pathbuf_models, &mut pathbuf_textures, &mut buf_assetbytes)
     );
 
     let skins_iter = skins.iter().flat_map(|(v, s)| v.iter().zip(std::iter::repeat(s.as_str())));
@@ -51,10 +61,15 @@ pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
         MAX_SKINS_IN_MOD,
         &mut pathbuf,
         "BUILDINGSKIN",
-        |buf, (_, bld_ref), dirname| {
-            write!(buf, "$TARGET_BUILDING_SKIN {0} {1}/material.mtl {1}/material_e.mtl\n", bld_ref, dirname).unwrap();
+        |buf, (skin, bld_ref), dirname| {
+            write!(buf, "$TARGET_BUILDING_SKIN {0} {1}/{2}", bld_ref, dirname, FILENAME_MTL).unwrap();
+            if skin.material_emissive.is_some() {
+                write!(buf, " {0}/{1}", dirname, FILENAME_MTL_E).unwrap();
+            }
+            write!(buf, "\n").unwrap();
         },
-        |(skin, bld_ref), pth| install_building_skin(skin, pth, bld_ref, &mut pathbuf_textures, &mut buf_assetbytes)
+        |(skin, _), pth| 
+            install_building_skin(skin, pth, &mut pathbuf_textures, &mut buf_assetbytes)
     );
 
 }
@@ -163,12 +178,9 @@ fn install_building_files<'bld, 'stock>(
     let new_model_lod2 = bld.model_lod2.as_ref().map(|x| (x.range.clone(), copy_asset_md5(&x.value, pathbuf_models, buf_assets)));
     let new_model_emissive = bld.model_emissive.as_ref().map(|x| (x.range.clone(), copy_asset_md5(&x.value, pathbuf_models, buf_assets)));
 
-    static FILENAME_MTL: &str = "material.mtl";
-    static FILENAME_MTL_E: &str = "material_e.mtl";
-
     let new_material = {
         pathbuf.push(FILENAME_MTL);
-        create_material(&bld.material, pathbuf, pathbuf_textures, buf_assets);
+        create_material(&bld.material.render_token.value, &bld.material.textures, pathbuf, pathbuf_textures, buf_assets);
         pathbuf.pop();
 
         (bld.material.render_token.range.clone(), String::from(FILENAME_MTL))
@@ -176,7 +188,7 @@ fn install_building_files<'bld, 'stock>(
 
     let new_material_emissive = bld.material_emissive.as_ref().map(|x| {
         pathbuf.push(FILENAME_MTL_E);
-        create_material(x, pathbuf, pathbuf_textures, buf_assets);
+        create_material(&x.render_token.value, &x.textures, pathbuf, pathbuf_textures, buf_assets);
         pathbuf.pop();
 
         (x.render_token.range.clone(), String::from(FILENAME_MTL_E))
@@ -208,13 +220,21 @@ fn install_building_files<'bld, 'stock>(
 }
 
 fn install_building_skin(
-    _skin: &Skin, 
-    _pathbuf: &mut PathBuf, 
-    _building_ref: &str,
-    _pathbuf_textures: &mut PathBuf, 
-    _buf_assets: &mut Vec<u8>) -> Option<()>
+    skin: &Skin, 
+    pathbuf: &mut PathBuf, 
+    pathbuf_textures: &mut PathBuf, 
+    buf_assets: &mut Vec<u8>) -> Option<()>
 {
-    // TODO: stuff
+    pathbuf.push(FILENAME_MTL);
+    create_material(&skin.material.path, &skin.material.textures, pathbuf, pathbuf_textures, buf_assets);
+
+    if let Some(ref mat_e) = skin.material_emissive {
+        pathbuf.set_file_name(FILENAME_MTL_E);
+        create_material(&mat_e.path, &mat_e.textures, pathbuf, pathbuf_textures, buf_assets);
+    }
+
+    pathbuf.pop();
+
     None
 }
 
@@ -235,8 +255,8 @@ where P: AsRef<Path>
     }
 }
 
-fn create_material(mtl: &MaterialDef, path_mtl: &PathBuf, pathbuf_textures: &mut PathBuf, buf_assets: &mut Vec<u8>) {
-    let mut replacements: Vec<Option<Replacement>> = mtl.textures.iter().map(|tx| {
+fn create_material(src_mtl_path: &Path, mtl_textures: &Vec<IniToken<Texture>>, dest_mtl_path: &PathBuf, pathbuf_textures: &mut PathBuf, buf_assets: &mut Vec<u8>) {
+    let mut replacements: Vec<Option<Replacement>> = mtl_textures.iter().map(|tx| {
         let rng = tx.range.clone();
         let val = format!("$TEXTURE_MTL {} {}", &tx.value.num, copy_asset_md5(&tx.value.path, pathbuf_textures, buf_assets));
         // NOTE: Debug
@@ -244,9 +264,9 @@ fn create_material(mtl: &MaterialDef, path_mtl: &PathBuf, pathbuf_textures: &mut
         Some((rng, val))
     }).collect();
 
-    let src_mtl = fs::read_to_string(&mtl.render_token.value).unwrap();
+    let src_mtl = fs::read_to_string(&src_mtl_path).unwrap();
 
-    write_config(&src_mtl, path_mtl, replacements.as_mut_slice(), None);
+    write_config(&src_mtl, dest_mtl_path, replacements.as_mut_slice(), None);
 }
 
 fn copy_asset_md5(src_file: &PathBuf, dest_dir: &mut PathBuf, buf: &mut Vec<u8>) -> String {
