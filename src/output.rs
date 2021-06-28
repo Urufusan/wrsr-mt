@@ -1,6 +1,7 @@
 //use std::env;
 use std::fmt::Write;
 use std::fs;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::io::Read;
 use std::ops::Range;
@@ -16,7 +17,7 @@ const FILENAME_MTL_E: &str = "material_e.mtl";
 
 type Replacement = (Range<usize>, String);
 
-
+type AssetsMap<'a> = HashMap<&'a Path, String>;
 
 pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
     let mut pathbuf = dest.to_path_buf();
@@ -34,6 +35,7 @@ pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
         fs::create_dir_all(&pathbuf_textures).unwrap();
     }
 
+    let mut assets_map = AssetsMap::with_capacity(10_000);
     let mut buf_assetbytes = Vec::<u8>::with_capacity(1024*1024*64);
     let mut mod_id_iter = MOD_IDS_START ..= MOD_IDS_END;
 
@@ -50,7 +52,7 @@ pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
         |buf, _, dirname| 
             write!(buf, "$OBJECT_BUILDING {}\n", dirname).unwrap(),
         |bld, pth| 
-            install_building_files(bld, pth, &mut pathbuf_models, &mut pathbuf_textures, &mut buf_assetbytes)
+            install_building_files(bld, pth, &mut pathbuf_models, &mut pathbuf_textures, &mut buf_assetbytes, &mut assets_map)
     );
 
     let skins_iter = skins.iter().flat_map(|(v, s)| v.iter().zip(std::iter::repeat(s.as_str())));
@@ -69,7 +71,7 @@ pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
             write!(buf, "\n").unwrap();
         },
         |(skin, _), pth| 
-            install_building_skin(skin, pth, &mut pathbuf_textures, &mut buf_assetbytes)
+            install_building_skin(skin, pth, &mut pathbuf_textures, &mut buf_assetbytes, &mut assets_map)
     );
 
 }
@@ -166,21 +168,24 @@ fn install_building_files<'bld, 'stock>(
     pathbuf: &mut PathBuf, 
     pathbuf_models: &mut PathBuf, 
     pathbuf_textures: &mut PathBuf, 
-    buf_assets: &mut Vec<u8>) -> Option<(&'bld Vec<Skin>, String)>
+    buf_assets: &mut Vec<u8>, 
+    assets_map: &mut AssetsMap<'bld>) -> Option<(&'bld Vec<Skin>, String)>
 {
     copy_file(&bld.building_ini, pathbuf, "building.ini");
     copy_file(&bld.bbox, pathbuf, "building.bbox");
     copy_file_opt(&bld.fire, pathbuf, "building.fire");
     copy_file_opt(&bld.imagegui, pathbuf, "imagegui.png");
 
-    let new_model = (bld.model.range.clone(), copy_asset_md5(&bld.model.value, pathbuf_models, buf_assets));
-    let new_model_lod1 = bld.model_lod1.as_ref().map(|x| (x.range.clone(), copy_asset_md5(&x.value, pathbuf_models, buf_assets)));
-    let new_model_lod2 = bld.model_lod2.as_ref().map(|x| (x.range.clone(), copy_asset_md5(&x.value, pathbuf_models, buf_assets)));
-    let new_model_emissive = bld.model_emissive.as_ref().map(|x| (x.range.clone(), copy_asset_md5(&x.value, pathbuf_models, buf_assets)));
+    let mut copy_asset = |x| format!("../../nmf/{}", copy_asset_md5(x, pathbuf_models, buf_assets, assets_map));
+
+    let new_model = (bld.model.range.clone(), copy_asset(&bld.model.value));
+    let new_model_lod1 = bld.model_lod1.as_ref().map(|x| (x.range.clone(), copy_asset(&x.value)));
+    let new_model_lod2 = bld.model_lod2.as_ref().map(|x| (x.range.clone(), copy_asset(&x.value)));
+    let new_model_emissive = bld.model_emissive.as_ref().map(|x| (x.range.clone(), copy_asset(&x.value)));
 
     let new_material = {
         pathbuf.push(FILENAME_MTL);
-        create_material(&bld.material.render_token.value, &bld.material.textures, pathbuf, pathbuf_textures, buf_assets);
+        create_material(&bld.material.render_token.value, &bld.material.textures, pathbuf, pathbuf_textures, buf_assets, assets_map);
         pathbuf.pop();
 
         (bld.material.render_token.range.clone(), String::from(FILENAME_MTL))
@@ -188,7 +193,7 @@ fn install_building_files<'bld, 'stock>(
 
     let new_material_emissive = bld.material_emissive.as_ref().map(|x| {
         pathbuf.push(FILENAME_MTL_E);
-        create_material(&x.render_token.value, &x.textures, pathbuf, pathbuf_textures, buf_assets);
+        create_material(&x.render_token.value, &x.textures, pathbuf, pathbuf_textures, buf_assets, assets_map);
         pathbuf.pop();
 
         (x.render_token.range.clone(), String::from(FILENAME_MTL_E))
@@ -219,18 +224,19 @@ fn install_building_files<'bld, 'stock>(
     }
 }
 
-fn install_building_skin(
-    skin: &Skin, 
+fn install_building_skin<'bld>(
+    skin: &'bld Skin, 
     pathbuf: &mut PathBuf, 
     pathbuf_textures: &mut PathBuf, 
-    buf_assets: &mut Vec<u8>) -> Option<()>
+    buf_assets: &mut Vec<u8>,
+    assets_map: &mut AssetsMap<'bld>) -> Option<()>
 {
     pathbuf.push(FILENAME_MTL);
-    create_material(&skin.material.path, &skin.material.textures, pathbuf, pathbuf_textures, buf_assets);
+    create_material(&skin.material.path, &skin.material.textures, pathbuf, pathbuf_textures, buf_assets, assets_map);
 
     if let Some(ref mat_e) = skin.material_emissive {
         pathbuf.set_file_name(FILENAME_MTL_E);
-        create_material(&mat_e.path, &mat_e.textures, pathbuf, pathbuf_textures, buf_assets);
+        create_material(&mat_e.path, &mat_e.textures, pathbuf, pathbuf_textures, buf_assets, assets_map);
     }
 
     pathbuf.pop();
@@ -255,10 +261,17 @@ where P: AsRef<Path>
     }
 }
 
-fn create_material(src_mtl_path: &Path, mtl_textures: &Vec<IniToken<Texture>>, dest_mtl_path: &PathBuf, pathbuf_textures: &mut PathBuf, buf_assets: &mut Vec<u8>) {
+fn create_material<'bld>(
+    src_mtl_path: &Path, 
+    mtl_textures: &'bld Vec<IniToken<Texture>>, 
+    dest_mtl_path: &PathBuf, 
+    pathbuf_textures: &mut PathBuf, 
+    buf_assets: &mut Vec<u8>,
+    assets_map: &mut AssetsMap<'bld>) 
+{
     let mut replacements: Vec<Option<Replacement>> = mtl_textures.iter().map(|tx| {
         let rng = tx.range.clone();
-        let val = format!("$TEXTURE_MTL {} {}", &tx.value.num, copy_asset_md5(&tx.value.path, pathbuf_textures, buf_assets));
+        let val = format!("$TEXTURE_MTL {} ../../dds/{}", &tx.value.num, copy_asset_md5(&tx.value.path, pathbuf_textures, buf_assets, assets_map));
         // NOTE: Debug
         // println!("{:?}", &val);
         Some((rng, val))
@@ -269,35 +282,36 @@ fn create_material(src_mtl_path: &Path, mtl_textures: &Vec<IniToken<Texture>>, d
     write_config(&src_mtl, dest_mtl_path, replacements.as_mut_slice(), None);
 }
 
-fn copy_asset_md5(src_file: &PathBuf, dest_dir: &mut PathBuf, buf: &mut Vec<u8>) -> String {
-    // TODO: memoize processed src_file's to avoid 
-    // doing anything here more than once for each file
+fn copy_asset_md5<'bld, 'map>(
+    src_file: &'bld PathBuf, 
+    dest_dir: &mut PathBuf, 
+    buf: &mut Vec<u8>, 
+    assets_map: &'map mut AssetsMap<'bld>) -> &'map str
+{
+    assets_map.entry(src_file.as_path()).or_insert_with(|| {
+        use std::convert::TryInto;
+        buf.clear();
+        
+        let mut file = fs::File::open(src_file).unwrap();
+        let meta = file.metadata().unwrap();
+        let sz: usize = meta.len().try_into().unwrap();
+        if sz > buf.len() {
+            buf.reserve(sz);
+        }
 
-    use std::convert::TryInto;
-    buf.clear();
-    
-    let mut file = fs::File::open(src_file).unwrap();
-    let meta = file.metadata().unwrap();
-    let sz: usize = meta.len().try_into().unwrap();
-    if sz > buf.len() {
-        buf.reserve(sz);
-    }
+        file.read_to_end(buf).unwrap();
+        let dig = md5::compute(buf.as_mut_slice());
+        let ext = src_file.extension().unwrap().to_str().unwrap();
+        let filename = format!("{:x}.{}", dig, ext);
 
-    file.read_to_end(buf).unwrap();
-    let dig = md5::compute(buf.as_mut_slice());
-    let ext = src_file.extension().unwrap().to_str().unwrap();
-    let mut filename = format!("{:x}.{}", dig, ext);
+        dest_dir.push(&filename);
+        if !dest_dir.exists() {
+            fs::write(&dest_dir, &buf).unwrap();
+        }
+        dest_dir.pop();
 
-    dest_dir.push(&filename);
-    if !dest_dir.exists() {
-        fs::write(&dest_dir, &buf).unwrap();
-    }
-    dest_dir.pop();
-
-    // TODO: fix this ugly hack
-    filename = format!("../../{}/{}", ext, filename);
-
-    filename
+        filename
+    })
 }
 
 
