@@ -14,7 +14,7 @@ use crate::{
     grep_ini_token, get_texture_tokens,
 
     SRX_PATH, SRX_EOL, 
-    ROOT_MODS, PATH_ROOT_STOCK, PATH_ROOT_MODS,
+    PATH_ROOT_STOCK, PATH_ROOT_MODS,
     MAX_BUILDINGS,
     };
 
@@ -79,7 +79,7 @@ pub(crate) fn read_validate_sources<'ini>(src: &Path, stock_buildings: &mut Stoc
                     if let Some(src_stock) = rx_source_stock.captures(&buf_sources) {
                         SourceType::Stock(src_stock.get(1).unwrap().as_str())
                     } else if let Some(src_mod) = rx_source_mod.find(&buf_sources) {
-                        SourceType::Mod([ROOT_MODS, src_mod.as_str()].iter().collect())
+                        SourceType::Mod(PATH_ROOT_MODS.join(src_mod.as_str()))
                     } else {
                         panic!("Cannot parse building source ({:?})", &buf_sources);
                     }

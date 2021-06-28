@@ -21,18 +21,18 @@ type AssetsMap<'a> = HashMap<&'a Path, String>;
 
 pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
     let mut pathbuf = dest.to_path_buf();
-    fs::create_dir_all(&pathbuf).unwrap();
+    fs::create_dir(&pathbuf).unwrap();
 
     let mut pathbuf_models = pathbuf.clone();
     pathbuf_models.push("nmf");
     if !pathbuf_models.exists() {
-        fs::create_dir_all(&pathbuf_models).unwrap();
+        fs::create_dir(&pathbuf_models).unwrap();
     }
     
     let mut pathbuf_textures = pathbuf.clone();
     pathbuf_textures.push("dds");
     if !pathbuf_textures.exists() {
-        fs::create_dir_all(&pathbuf_textures).unwrap();
+        fs::create_dir(&pathbuf_textures).unwrap();
     }
 
     let mut assets_map = AssetsMap::with_capacity(10_000);

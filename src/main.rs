@@ -116,31 +116,37 @@ const SRX_PATH: &str = r"([^\r\s\n]+?)";
 const SRX_EOL: &str = r"(:?[\s\r\n$])";
 
 
-// TODO: should be able to override these as cmd args
-static ROOT_STOCK: &str = r"z:\media_soviet";
-static ROOT_MODS: &str = r"c:\Program Files (x86)\Steam\steamapps\workshop\content\784150"; 
-
 lazy_static! {
-    // TODO: can override from cmd args
-    //let args: Vec<String> = env::args().collect();
-    //let src = args.get(1).unwrap();
-    //let dest = args.get(2).unwrap();
-
-    static ref PATH_ROOT_STOCK: PathBuf = PathBuf::from(ROOT_STOCK);
-    static ref PATH_ROOT_MODS: PathBuf = PathBuf::from(ROOT_MODS);
+    static ref ARGS: Vec<String> = std::env::args().collect();
+    static ref PATH_ROOT_STOCK: PathBuf = get_path_arg_or(3, r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet");
+    static ref PATH_ROOT_MODS:  PathBuf = get_path_arg_or(4, r"C:\Program Files (x86)\Steam\steamapps\workshop\content\784150");
 }
 
+fn get_path_arg_or(idx: usize, default: &str) -> PathBuf {
+    if let Some(p) = ARGS.get(idx) {
+        PathBuf::from(p)
+    } else {
+        PathBuf::from(default)
+    }
+}
 
 fn main() {
+    println!("{}", ARGS.get(1).unwrap());
+    let src = {
+        let mut src = PathBuf::from(std::env::args().nth(0).unwrap());
+        src.pop();
+        src.push(ARGS.get(1).map(String::as_str).unwrap_or("."));
+        src.canonicalize().unwrap()
+    };
 
-    // TODO ensure these are absolute
-    let src = r"c:\projects\rbp_pack";
-    let dest = r"c:\projects\rbp_generated";
+    let dest = get_path_arg_or(2, r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet\workshop_wip");
 
-    println!("Pack source: {}", src);
-    println!("Installing to: {}", dest);
+    println!("Pack source:      {}", src.to_str().unwrap());
+    println!("Installing to:    {}", dest.to_str().unwrap());
+    println!("Stock game files: {}", PATH_ROOT_STOCK.to_str().unwrap());
+    println!("Mod files:        {}", PATH_ROOT_MODS.to_str().unwrap());
 
-    let mut pathbuf: PathBuf = [ROOT_STOCK, "buildings", "buildingtypes.ini"].iter().collect();
+    let mut pathbuf: PathBuf = [PATH_ROOT_STOCK.as_os_str(), "buildings".as_ref(), "buildingtypes.ini".as_ref()].iter().collect();
 
     let stock_buildings_ini = fs::read_to_string(&pathbuf).unwrap();
     let mut stock_buildings = { 
