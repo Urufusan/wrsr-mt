@@ -21,7 +21,9 @@ type AssetsMap<'a> = HashMap<&'a Path, String>;
 
 pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
     let mut pathbuf = dest.to_path_buf();
-    fs::create_dir(&pathbuf).unwrap();
+    if !pathbuf.exists() {
+        fs::create_dir(&pathbuf).unwrap();
+    }
 
     let mut pathbuf_models = pathbuf.clone();
     pathbuf_models.push("nmf");

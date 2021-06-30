@@ -210,8 +210,8 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini
     let model_lod2 =     grep_ini_token(&RX_MODEL_LOD2, render_source, root_path);
     let model_emissive = grep_ini_token(&RX_MODEL_E,    render_source, root_path);
 
-    let material = MaterialDef::new(grep_ini_token(&RX_MATERIAL, render_source, root_path).unwrap(), root_path);
-    let material_emissive = grep_ini_token(&RX_MATERIAL_E, render_source, root_path).map(|x| MaterialDef::new(x, root_path));
+    let material = MaterialDef::new(grep_ini_token(&RX_MATERIAL, render_source, root_path).unwrap());
+    let material_emissive = grep_ini_token(&RX_MATERIAL_E, render_source, root_path).map(|x| MaterialDef::new(x));
 
     BuildingDef { 
         render_config, building_ini, bbox, fire, imagegui: None,

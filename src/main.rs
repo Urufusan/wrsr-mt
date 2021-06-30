@@ -16,22 +16,22 @@ mod output;
 //                SOURCES
 
 #[derive(Debug)]
-struct Category<'ini> {
+struct Category<'stock> {
     prefix: String,
     name: String,
-    styles: Vec<Style<'ini>>
+    styles: Vec<Style<'stock>>
 }
 
 #[derive(Debug)]
-struct Style<'ini> {
+struct Style<'stock> {
     prefix: String,
     name: String,
-    buildings: Vec<BuildingDef<'ini>>
+    buildings: Vec<BuildingDef<'stock>>
 }
 
 #[derive(Debug, Clone)]
-struct BuildingDef<'ini> {
-    render_config: RenderConfig<'ini>,
+struct BuildingDef<'stock> {
+    render_config: RenderConfig<'stock>,
 
     building_ini: PathBuf,
     bbox: PathBuf,
@@ -358,9 +358,10 @@ impl fmt::Display for IniTokenPath {
 
 //--------------------------------------------------------
 impl MaterialDef {
-    fn new(render_token: IniTokenPath, tx_root: &Path) -> MaterialDef {
+    fn new(render_token: IniTokenPath) -> MaterialDef {
+        let mtl_dir = &render_token.value.parent().unwrap();
         let mtl_source = fs::read_to_string(&render_token.value).unwrap();
-        let textures = get_texture_tokens(&mtl_source, tx_root);
+        let textures = get_texture_tokens(&mtl_source, mtl_dir);
 
         MaterialDef { render_token, textures }
     }
@@ -386,20 +387,35 @@ fn grep_ini_token(rx: &Regex, source: &str, root: &Path) -> Option<IniTokenPath>
     })
 }
 
-fn get_texture_tokens(source: &str, root: &Path) -> Vec<IniToken<Texture>> {
+fn get_texture_tokens(source: &str, mtl_dir: &Path) -> Vec<IniToken<Texture>> {
     use const_format::concatcp;
     use path_slash::PathBufExt;
 
     lazy_static! {
-        static ref RX: Regex = Regex::new(concatcp!("(?m)^", "(", r"\$TEXTURE(?:_MTL)?\s+?([012])\s+?", SRX_PATH, r")", SRX_EOL)).unwrap();
+        static ref RX: Regex = Regex::new(concatcp!("(?m)^", "(", r"\$TEXTURE(_MTL)?\s+?([012])\s+?", SRX_PATH, r")", SRX_EOL)).unwrap();
     }
 
     RX.captures_iter(source).map(move |cap| {
         let range = cap.get(1).unwrap().range();
         // NOTE: Debug
         // println!("CAPTURE: {:?}, {:?}", &range, cap.get(1).unwrap().as_str());
-        let num = cap.get(2).unwrap().as_str().chars().next().unwrap();
-        let path: PathBuf = root.join(PathBuf::from_slash(cap.get(3).unwrap().as_str()));
+        let is_mtl = cap.get(2).is_some();
+        let num = cap.get(3).unwrap().as_str().chars().next().unwrap();
+        let tx_path_str = cap.get(4).unwrap().as_str();
+
+        let path = if is_mtl {
+            mtl_dir.join(PathBuf::from_slash(tx_path_str))
+        } else {
+            match tx_path_str {
+                "blankdiffuse.dds" | "blankspecular.dds" | "blankbump.dds" => { 
+                    let mut b = PATH_ROOT_STOCK.clone();
+                    b.push("buildings");
+                    b.push(tx_path_str);
+                    b
+                },
+                _ => PATH_ROOT_STOCK.join(PathBuf::from_slash(tx_path_str))
+            }
+        };
 
         IniToken {
             range,
