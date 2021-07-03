@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::io::Read;
 use std::ops::Range;
 
-use crate::{Category, BuildingDef, RenderConfig, IniToken, Texture, Skin,
+use crate::{BuildingDef, RenderConfig, IniToken, Texture, Skin,
             MAX_BUILDINGS_IN_MOD, MAX_SKINS_IN_MOD, MOD_IDS_START, MOD_IDS_END,
             read_to_string_buf
            };
@@ -20,7 +20,7 @@ type Replacement = (Range<usize>, String);
 
 type AssetsMap<'a> = HashMap<&'a Path, String>;
 
-pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
+pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<BuildingDef<'stock>>) {
     let mut pathbuf = dest.to_path_buf();
     if !pathbuf.exists() {
         fs::create_dir(&pathbuf).unwrap();
@@ -42,12 +42,8 @@ pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<Category<'stock>>) {
     let mut buf_assetbytes = Vec::<u8>::with_capacity(1024*1024*64);
     let mut mod_id_iter = MOD_IDS_START ..= MOD_IDS_END;
 
-    let bld_iter = data.iter()
-                       .flat_map(|c| c.styles.iter())
-                       .flat_map(|s| s.buildings.iter());
-
     let skins: Vec<(&Vec<Skin>, String)> = write_mod_objects(
-        bld_iter, 
+        data.iter(), 
         &mut mod_id_iter,
         MAX_BUILDINGS_IN_MOD,
         &mut pathbuf,

@@ -17,20 +17,6 @@ mod output;
 //--------------------------------------------
 //                SOURCES
 
-#[derive(Debug)]
-struct Category<'stock> {
-    prefix: String,
-    name: String,
-    styles: Vec<Style<'stock>>
-}
-
-#[derive(Debug)]
-struct Style<'stock> {
-    prefix: String,
-    name: String,
-    buildings: Vec<BuildingDef<'stock>>
-}
-
 #[derive(Debug, Clone)]
 struct BuildingDef<'stock> {
     render_config: RenderConfig<'stock>,
@@ -201,27 +187,6 @@ fn main() {
 
 
 
-//--------------------------------------------------------
-impl<'ini> Category<'ini> {
-    fn new<'a, 'b>(pfx: &'a str, nm: &'b str) -> Category<'ini> {
-        Category {
-            prefix: String::from(pfx),
-            name: String::from(nm),
-            styles: Vec::with_capacity(0)
-        }
-    }
-}
-
-//--------------------------------------------------------
-impl<'ini> Style<'ini> {
-    fn new<'a, 'b>(pfx: &'a str, nm: &'b str) -> Style<'ini> {
-        Style {
-            prefix: String::from(pfx),
-            name: String::from(nm),
-            buildings: Vec::with_capacity(0)
-        }
-    }
-}
 
 //--------------------------------------------------------
 impl BuildingDef<'_> {

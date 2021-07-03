@@ -10,7 +10,7 @@ use const_format::concatcp;
 
 use crate::{
     StockBuilding, RenderConfig, StockBuildingsMap,
-    Category, Style, BuildingDef, MaterialDef, 
+    BuildingDef, MaterialDef, 
     Skin, SkinMaterial, PathPrefix, IniTokenTexture,
 
     grep_ini_token, get_texture_tokens, get_texture_tokens_ext, 
@@ -29,102 +29,81 @@ enum SourceType<'a> {
 }
 
 
-pub(crate) fn read_validate_sources<'ini>(src: &Path, stock_buildings: &mut StockBuildingsMap<'ini>) -> Vec<Category<'ini>> {
+pub(crate) fn read_validate_sources<'stock>(src: &Path, stock_buildings: &mut StockBuildingsMap<'stock>) -> Vec<BuildingDef<'stock>> {
 
     let mut buf_sources = String::with_capacity(512);
-    
-    let rx_source_stock = Regex::new(r"^#([_[:alnum:]]+)").unwrap();
-    let rx_source_mod = Regex::new(r"^[0-9]{10}\\[_[:alnum:]]+").unwrap();
-
     let mut pathbuf = src.to_path_buf();
-    let subdirs: Vec<_> = get_subdirs(&pathbuf).collect();
-    let mut categories = Vec::<Category>::with_capacity(subdirs.len());
+    let mut data: Vec<BuildingDef<'stock>> = Vec::with_capacity(1000);
 
-    let mut bld_count = 0usize;
+    push_buildings(&mut pathbuf, &mut data, &mut buf_sources, stock_buildings, &mut String::with_capacity(10));
 
-    for dir_cat in subdirs {
-        let dir_name = dir_cat.file_name();
-        if dir_name.to_str().unwrap().starts_with("_") {
-            continue;
-        }
+    assert!(data.len() <= MAX_BUILDINGS);
 
-        pathbuf.push(&dir_name);
+    data
+}
 
-        let (cat_pfx, cat_name) = get_dir_parts(&dir_name);
-        println!("{}: {}", &cat_pfx, &cat_name);
 
-        let mut cat = Category::new(cat_pfx, cat_name);
-        let subdirs: Vec<_> = get_subdirs(&pathbuf).collect();
-        cat.styles.reserve_exact(subdirs.len());
+fn push_buildings<'stock>(pathbuf: &mut PathBuf, 
+                          data: &mut Vec<BuildingDef<'stock>>,
+                          buf_sources: &mut String,
+                          stock_buildings: &mut StockBuildingsMap<'stock>,
+                          indent: &mut String
+                          )
+{
+    lazy_static! {
+        static ref RX_SOURCE_STOCK: Regex = Regex::new(r"^#([_[:alnum:]]+)").unwrap();
+        static ref RX_SOURCE_MOD: Regex = Regex::new(r"^[0-9]{10}\\[_[:alnum:]]+").unwrap();
+    }
 
-        for dir_style in subdirs.iter() {
-            let dir_name = dir_style.file_name();
+    // NOTE: Debug
+    // println!("+++ {:?} +++", &pathbuf);
+
+    pathbuf.push("building.source");
+
+    if pathbuf.exists() {
+        // leaf dir (building)
+
+        buf_sources.clear();
+        File::open(&pathbuf).unwrap().read_to_string(buf_sources).unwrap();
+        pathbuf.pop(); //pop .source
+
+        println!("{}* {}", indent, pathbuf.file_name().unwrap().to_str().unwrap());
+
+        let src_type: SourceType = {
+            if let Some(src_stock) = RX_SOURCE_STOCK.captures(&buf_sources) {
+                SourceType::Stock(src_stock.get(1).unwrap().as_str())
+            } else if let Some(src_mod) = RX_SOURCE_MOD.find(&buf_sources) {
+                SourceType::Mod(PATH_ROOT_MODS.join(src_mod.as_str()))
+            } else {
+                panic!("Cannot parse building source ({:?})", &buf_sources);
+            }
+        };
+
+        data.push(source_to_def(pathbuf, src_type, stock_buildings));
+
+        return;
+    } else {
+        pathbuf.pop();
+
+        println!("{}{}", indent, pathbuf.file_name().unwrap().to_str().unwrap());
+
+        for subdir in get_subdirs(&pathbuf) {
+            let dir_name = subdir.file_name();
             if dir_name.to_str().unwrap().starts_with("_") {
                 continue;
             }
 
-            pathbuf.push(&dir_name);
+            let old_indent = indent.len();
+            indent.push_str("  ");
+            pathbuf.push(dir_name);
 
-            let (style_pfx, style_name) = get_dir_parts(&dir_name);
-            println!(" {}: {}", &style_pfx, &style_name);
+            push_buildings(pathbuf, data, buf_sources, stock_buildings, indent);
 
-            let mut style = Style::new(style_pfx, style_name);
-            let subdirs: Vec<_> = get_subdirs(&pathbuf).collect();
-            style.buildings.reserve_exact(subdirs.len());
-
-            for dir_bld in subdirs {
-                let dir_name = dir_bld.file_name();
-                if dir_name.to_str().unwrap().starts_with("_") {
-                    continue;
-                }
-
-                bld_count += 1;
-                assert!(bld_count <= MAX_BUILDINGS);
-
-                pathbuf.push(&dir_name);
-
-                println!("  Building '{}'", dir_name.to_str().unwrap());
-
-                pathbuf.push("building.source");
-                buf_sources.clear();
-                File::open(&pathbuf).unwrap().read_to_string(&mut buf_sources).unwrap();
-                pathbuf.pop(); //pop .source
-
-                let src_type: SourceType = {
-                    if let Some(src_stock) = rx_source_stock.captures(&buf_sources) {
-                        SourceType::Stock(src_stock.get(1).unwrap().as_str())
-                    } else if let Some(src_mod) = rx_source_mod.find(&buf_sources) {
-                        SourceType::Mod(PATH_ROOT_MODS.join(src_mod.as_str()))
-                    } else {
-                        panic!("Cannot parse building source ({:?})", &buf_sources);
-                    }
-                };
-
-                style.buildings.push(source_to_def(&mut pathbuf, src_type, stock_buildings));
-                pathbuf.pop(); // pop building dir
-            }
-
-            cat.styles.push(style);
-            pathbuf.pop(); // pop style dir
+            pathbuf.pop();
+            indent.truncate(old_indent);
         }
-
-        categories.push(cat);
-        pathbuf.pop(); // pop caterory dir
     }
-
-    categories
 }
-
-
-fn get_dir_parts<'a, 'b>(dir_name: &'a std::ffi::OsStr) -> (&'a str, &'a str) {
-    lazy_static! {
-        static ref RX: Regex = Regex::new(r"^(\d+?) - (.+)$").unwrap();
-    }
-
-    let c = RX.captures(dir_name.to_str().unwrap()).unwrap();
-    (c.get(1).unwrap().as_str(), c.get(2).unwrap().as_str())
-}
-
 
 fn get_subdirs(path: &PathBuf) -> impl Iterator<Item=fs::DirEntry>
 {
