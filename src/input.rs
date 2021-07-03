@@ -200,7 +200,7 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini
     let mut buf_mod_renderconfig = String::with_capacity(0);
     let root_path = render_config.root_path();
 
-    let (render_source, building_ini, bbox, fire) = match render_config {
+    let (render_source, building_ini, bbox, fire, imagegui) = match render_config {
         RenderConfig::Stock { key, data } => {
             let mut building_ini = root_path.join("buildings_types");
 
@@ -208,7 +208,7 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini
             let fire = building_ini.join(format!("{}.fire", key));
             building_ini.push(format!("{}.ini", key));
 
-            (data, building_ini, bbox, fire)
+            (data, building_ini, bbox, fire, None)
         },
         RenderConfig::Mod(ref cfg_path) => {
             read_to_string_buf(cfg_path.as_path(), &mut buf_mod_renderconfig);
@@ -216,8 +216,10 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini
             let bld_ini = root_path.join("building.ini");
             let bbox    = root_path.join("building.bbox");
             let fire    = root_path.join("building.fire");
+            let imgui   = root_path.join("imagegui.png");
+            let imgui = if imgui.exists() { Some(imgui) } else { None };
 
-            (buf_mod_renderconfig.as_str(), bld_ini, bbox, fire)
+            (buf_mod_renderconfig.as_str(), bld_ini, bbox, fire, imgui)
         }
     };
 
@@ -232,7 +234,7 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini
     let material_emissive = grep_ini_token(&RX_MATERIAL_E, render_source, root_path).map(|x| MaterialDef::new(x));
 
     BuildingDef { 
-        render_config, building_ini, bbox, fire, imagegui: None,
+        render_config, building_ini, bbox, fire, imagegui,
         model, model_lod1, model_lod2, model_emissive, 
         material, material_emissive, skins: Vec::with_capacity(0)
     }
