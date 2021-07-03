@@ -2,6 +2,7 @@
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::io::Read;
+use std::convert::TryInto;
 
 use regex::Regex;
 use lazy_static::lazy_static;
@@ -9,12 +10,14 @@ use const_format::concatcp;
 
 use crate::{
     StockBuilding, RenderConfig, StockBuildingsMap,
-    Category, Style, BuildingDef, MaterialDef, Skin, SkinMaterial,
+    Category, Style, BuildingDef, MaterialDef, 
+    Skin, SkinMaterial, PathPrefix, IniTokenTexture,
 
-    grep_ini_token, get_texture_tokens,
+    grep_ini_token, get_texture_tokens, get_texture_tokens_ext, 
+    resolve_prefixed_path, read_to_string_buf,
 
-    SRX_PATH, SRX_EOL, 
-    PATH_ROOT_STOCK, PATH_ROOT_MODS,
+    SRX_PATH_PREFIX, SRX_PATH, SRX_EOL, 
+    PATH_ROOT_MODS,
     MAX_BUILDINGS,
     };
 
@@ -41,6 +44,10 @@ pub(crate) fn read_validate_sources<'ini>(src: &Path, stock_buildings: &mut Stoc
 
     for dir_cat in subdirs {
         let dir_name = dir_cat.file_name();
+        if dir_name.to_str().unwrap().starts_with("_") {
+            continue;
+        }
+
         pathbuf.push(&dir_name);
 
         let (cat_pfx, cat_name) = get_dir_parts(&dir_name);
@@ -52,6 +59,10 @@ pub(crate) fn read_validate_sources<'ini>(src: &Path, stock_buildings: &mut Stoc
 
         for dir_style in subdirs.iter() {
             let dir_name = dir_style.file_name();
+            if dir_name.to_str().unwrap().starts_with("_") {
+                continue;
+            }
+
             pathbuf.push(&dir_name);
 
             let (style_pfx, style_name) = get_dir_parts(&dir_name);
@@ -62,10 +73,14 @@ pub(crate) fn read_validate_sources<'ini>(src: &Path, stock_buildings: &mut Stoc
             style.buildings.reserve_exact(subdirs.len());
 
             for dir_bld in subdirs {
+                let dir_name = dir_bld.file_name();
+                if dir_name.to_str().unwrap().starts_with("_") {
+                    continue;
+                }
+
                 bld_count += 1;
                 assert!(bld_count <= MAX_BUILDINGS);
 
-                let dir_name = dir_bld.file_name();
                 pathbuf.push(&dir_name);
 
                 println!("  Building '{}'", dir_name.to_str().unwrap());
@@ -125,14 +140,16 @@ fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hma
         SourceType::Stock(key) => {
             get_stock_building(&key, hmap).unwrap()
         },
-        SourceType::Mod(_path) => {
-            todo!()
+        SourceType::Mod(mut bld_dir_path) => {
+            bld_dir_path.push("renderconfig.ini");
+            parse_ini_to_def(RenderConfig::Mod(bld_dir_path))
         }
     };
     
 
     // TODO: overriding with custom files (if they exist in dir):
     // ---------------------------
+    
     pathbuf.push("building.ini");
     if pathbuf.exists() { 
         def.building_ini.push(&pathbuf) 
@@ -146,6 +163,23 @@ fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hma
     pathbuf.set_file_name("building.skins");
     if pathbuf.exists() {
         def.skins = get_skins(&pathbuf);
+    }
+
+    pathbuf.set_file_name("material.mtlx");
+    if pathbuf.exists() {
+        def.material.render_token.value.push(&pathbuf);
+        def.material.textures = get_texture_tokens_ext(&pathbuf);
+    }
+
+    pathbuf.set_file_name("material_e.mtlx");
+    if pathbuf.exists() {
+        if let Some(ref mut mat_e) = def.material_emissive {
+            mat_e.render_token.value.push(&pathbuf);
+            mat_e.textures = get_texture_tokens_ext(pathbuf);
+        }
+        else {
+            panic!("Trying to override material_e, while renderconfig does not have it");
+        }
     }
 
     pathbuf.pop();
@@ -172,7 +206,6 @@ fn get_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildin
     } else { None }
 }
 
-
 fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini> {
 
     lazy_static! {
@@ -185,21 +218,27 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini
         static ref RX_MATERIAL_E: Regex = Regex::new(concatcp!(r"(?m)^\sMATERIALEMISSIVE\s+?", SRX_PATH, SRX_EOL)).unwrap();
     }
 
+    let mut buf_mod_renderconfig = String::with_capacity(0);
     let root_path = render_config.root_path();
 
     let (render_source, building_ini, bbox, fire) = match render_config {
         RenderConfig::Stock { key, data } => {
-            let mut bld_ini = root_path.join("buildings_types");
+            let mut building_ini = root_path.join("buildings_types");
 
-            let bbox = bld_ini.join(format!("{}.bbox", key));
-            let fire = bld_ini.join(format!("{}.fire", key));
-            bld_ini.push(format!("{}.ini", key));
+            let bbox = building_ini.join(format!("{}.bbox", key));
+            let fire = building_ini.join(format!("{}.fire", key));
+            building_ini.push(format!("{}.ini", key));
 
-            (data, bld_ini, bbox, fire)
+            (data, building_ini, bbox, fire)
         },
-        RenderConfig::Mod(_path) => {
-            // TODO: read from mod folder
-            todo!()
+        RenderConfig::Mod(ref cfg_path) => {
+            read_to_string_buf(cfg_path.as_path(), &mut buf_mod_renderconfig);
+
+            let bld_ini = root_path.join("building.ini");
+            let bbox    = root_path.join("building.bbox");
+            let fire    = root_path.join("building.fire");
+
+            (buf_mod_renderconfig.as_str(), bld_ini, bbox, fire)
         }
     };
 
@@ -221,28 +260,36 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini
 }
 
 
-// -------------------------------------------
+
 fn get_skins(skinfile_path: &PathBuf) -> Vec<Skin> {
-    const SRX_PATH_PREFIX: &str = "([~.$])/";
     lazy_static! {
         static ref RX: Regex = Regex::new(concatcp!(r"(?m)^", SRX_PATH_PREFIX, SRX_PATH, r"(\s+?\+\s+?", SRX_PATH_PREFIX, SRX_PATH, r")?\r\n")).unwrap();
     }
 
-    // TODO: can estimate better
+    // TODO: can estimate better (check file size)
     let mut result = Vec::with_capacity(8);
     let cfg = fs::read_to_string(skinfile_path).unwrap();
+    let skinfile_dir = skinfile_path.parent().unwrap();
 
     for cap in RX.captures_iter(&cfg) {
-        let type1 = cap.get(1).unwrap().as_str();
+        let type1: PathPrefix = cap.get(1).unwrap().as_str().try_into().unwrap();
         let path1 = cap.get(2).unwrap().as_str();
+        let m_path = resolve_prefixed_path(type1, path1, skinfile_dir);
 
-        let material = get_skin_material(type1, path1, skinfile_path.as_path());
+        let material = SkinMaterial { 
+            path: m_path.to_path_buf(),
+            textures: get_material_textures(&m_path) 
+        };
 
         let material_emissive = cap.get(4).map(|x| {
-            let type2 = x.as_str();
+            let type2: PathPrefix = x.as_str().try_into().unwrap();
             let path2 = cap.get(5).unwrap().as_str();
+            let m_path = resolve_prefixed_path(type2, path2, skinfile_dir);
 
-            get_skin_material(type2, path2, skinfile_path.as_path())
+            SkinMaterial {
+                path: m_path.to_path_buf(),
+                textures: get_material_textures(&m_path)
+            }
         });
 
         result.push(Skin { material, material_emissive });
@@ -252,19 +299,12 @@ fn get_skins(skinfile_path: &PathBuf) -> Vec<Skin> {
 }
 
 
-fn get_skin_material(path_type: &str, path: &str, local_path: &Path) -> SkinMaterial {
-    use path_slash::PathBufExt;
+fn get_material_textures(material_path: &Path) -> Vec<IniTokenTexture> {
+    let ext = material_path.extension().unwrap();
 
-    let root = match path_type {
-        "~" => PATH_ROOT_STOCK.as_path(),
-        "." => local_path,
-        "$" => PATH_ROOT_MODS.as_path(),
-        t => panic!("Unknown path type {}", t)
-    };
-
-    let path = root.join(PathBuf::from_slash(path));
-    let src = fs::read_to_string(&path).unwrap();
-    let textures = get_texture_tokens(&src, root);
-
-    SkinMaterial { path, textures }
+    match ext.to_str().unwrap() {
+        "mtl" => get_texture_tokens(material_path),
+        "mtlx" => get_texture_tokens_ext(material_path),
+        e => panic!("Unknown material extension '{}'", e)
+    }
 }

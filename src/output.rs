@@ -8,6 +8,7 @@ use std::ops::Range;
 
 use crate::{Category, BuildingDef, RenderConfig, IniToken, Texture, Skin,
             MAX_BUILDINGS_IN_MOD, MAX_SKINS_IN_MOD, MOD_IDS_START, MOD_IDS_END,
+            read_to_string_buf
            };
 
 
@@ -338,13 +339,21 @@ fn write_renderconfig<'stock>(
        new_material_emissive,
     ];
 
+    let mut buf_mod_rcfg = String::with_capacity(0);
     let src = match render_config {
         RenderConfig::Stock { data, .. } => data,
-        RenderConfig::Mod(_) => todo!()
+        RenderConfig::Mod(rc_path) => {
+            read_to_string_buf(rc_path.as_path(), &mut buf_mod_rcfg);
+            buf_mod_rcfg.as_str()
+        }
     };
 
     pathbuf.push("renderconfig.ini");
-    write_config(src, pathbuf, &mut tokens, Some("$TYPE_WORKSHOP\r\n"));
+    let cfg_header = match render_config {
+        RenderConfig::Mod(_) => None,
+        RenderConfig::Stock { .. } => Some("$TYPE_WORKSHOP\r\n")
+    };
+    write_config(src, pathbuf, &mut tokens, cfg_header);
     pathbuf.pop();
 }
 

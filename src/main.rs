@@ -4,9 +4,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use std::ops::Range;
+use std::convert::{TryFrom, TryInto};
 
 use regex::Regex;
 use lazy_static::lazy_static;
+use const_format::concatcp;
 
 mod input;
 mod output;
@@ -62,11 +64,12 @@ struct IniToken<T> {
 }
 
 type IniTokenPath = IniToken<PathBuf>;
+type IniTokenTexture = IniToken<Texture>;
 
 #[derive(Debug, Clone)]
 struct MaterialDef {
     render_token: IniTokenPath,
-    textures: Vec<IniToken<Texture>>
+    textures: Vec<IniTokenTexture>
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +87,14 @@ struct Skin {
 #[derive(Debug, Clone)]
 struct SkinMaterial {
     path: PathBuf,
-    textures: Vec<IniToken<Texture>>
+    textures: Vec<IniTokenTexture>
+}
+
+#[derive(Debug, Clone)]
+enum PathPrefix {
+    Stock,
+    Workshop,
+    CurrentDir
 }
 
 //----------------------------------------------
@@ -98,20 +108,24 @@ enum StockBuilding<'stock> {
     Parsed(BuildingDef<'stock>)
 }
 
+
+//-----------------------------------------------
+//              Global constants
+
 // mod folder is 7 digits and cannot start from zero.
 const MOD_IDS_START: u32 = 1_000_000;
 const MOD_IDS_END: u32 = 9_999_999;
 const MAX_MODS: usize = (MOD_IDS_END - MOD_IDS_START) as usize;
 
-// TODO: check this. could be 32
-const MAX_BUILDINGS_IN_MOD: u8 = 16;
+const MAX_BUILDINGS_IN_MOD: u8 = 99;
 
 const MAX_BUILDINGS: usize = MAX_MODS * (MAX_BUILDINGS_IN_MOD as usize);
 
 // TODO: check this.
-const MAX_SKINS_IN_MOD: u8 = 16;
+const MAX_SKINS_IN_MOD: u8 = 99;
 
 // Paths in ini files:
+const SRX_PATH_PREFIX: &str = "([~.$]/)";
 const SRX_PATH: &str = r"([^\r\s\n]+?)";
 const SRX_EOL: &str = r"(:?[\s\r\n$])";
 
@@ -130,8 +144,11 @@ fn get_path_arg_or(idx: usize, default: &str) -> PathBuf {
     }
 }
 
+
+
+// ------------------------------------------------------------------
+
 fn main() {
-    println!("{}", ARGS.get(1).unwrap());
     let src = {
         let mut src = PathBuf::from(std::env::args().nth(0).unwrap());
         src.pop();
@@ -176,6 +193,7 @@ fn main() {
     pathbuf.push(dest);
 
     output::generate_mods(pathbuf.as_path(), data);
+
 }
 
 
@@ -335,7 +353,7 @@ impl<'stock> RenderConfig<'stock> {
     fn root_path(&self) -> &Path {
         match self {
             RenderConfig::Stock { .. } => PATH_ROOT_STOCK.as_path(),
-            RenderConfig::Mod(pbuf) => pbuf.as_path()
+            RenderConfig::Mod(render_cfg_path) => render_cfg_path.parent().unwrap()
         }
     }
 }
@@ -359,10 +377,7 @@ impl fmt::Display for IniTokenPath {
 //--------------------------------------------------------
 impl MaterialDef {
     fn new(render_token: IniTokenPath) -> MaterialDef {
-        let mtl_dir = &render_token.value.parent().unwrap();
-        let mtl_source = fs::read_to_string(&render_token.value).unwrap();
-        let textures = get_texture_tokens(&mtl_source, mtl_dir);
-
+        let textures = get_texture_tokens(&render_token.value);
         MaterialDef { render_token, textures }
     }
 }
@@ -371,8 +386,28 @@ impl fmt::Display for MaterialDef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let t = &self.render_token;
         write!(f, "({}..{}) {} (contains {} textures)", t.range.start, t.range.end, t.value.to_str().unwrap(), self.textures.len())
+        //write!(f, "({}..{}) {} (textures: {:#?})", t.range.start, t.range.end, t.value.to_str().unwrap(), self.textures)
     }
 }
+
+
+//--------------------------------------------------------
+impl TryFrom<&str> for PathPrefix {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        match s {
+            "~/" => Ok(Self::Stock),
+            "$/" => Ok(Self::Workshop),
+            "./" => Ok(Self::CurrentDir),
+            p => Err(format!("Unknown path prefix '{}'", p))
+        }
+    }
+}
+
+
+//--------------------------------------------------------
+
 
 
 fn grep_ini_token(rx: &Regex, source: &str, root: &Path) -> Option<IniTokenPath> {
@@ -387,15 +422,19 @@ fn grep_ini_token(rx: &Regex, source: &str, root: &Path) -> Option<IniTokenPath>
     })
 }
 
-fn get_texture_tokens(source: &str, mtl_dir: &Path) -> Vec<IniToken<Texture>> {
-    use const_format::concatcp;
+fn get_texture_tokens(mtl_path: &Path) -> Vec<IniToken<Texture>> {
     use path_slash::PathBufExt;
 
     lazy_static! {
-        static ref RX: Regex = Regex::new(concatcp!("(?m)^", "(", r"\$TEXTURE(_MTL)?\s+?([012])\s+?", SRX_PATH, r")", SRX_EOL)).unwrap();
+        static ref RX: Regex = Regex::new(concatcp!(r"(?m)^(\$TEXTURE(_MTL)?\s+?([012])\s+?", SRX_PATH, ")", SRX_EOL)).unwrap();
     }
 
-    RX.captures_iter(source).map(move |cap| {
+    let ext = mtl_path.extension().unwrap();
+    assert_eq!(ext.to_str().unwrap(), "mtl", "This function must be called only for *.mtl files"); 
+
+    let mtl_src = fs::read_to_string(mtl_path).unwrap();
+
+    RX.captures_iter(&mtl_src).map(move |cap| {
         let range = cap.get(1).unwrap().range();
         // NOTE: Debug
         // println!("CAPTURE: {:?}, {:?}", &range, cap.get(1).unwrap().as_str());
@@ -404,10 +443,12 @@ fn get_texture_tokens(source: &str, mtl_dir: &Path) -> Vec<IniToken<Texture>> {
         let tx_path_str = cap.get(4).unwrap().as_str();
 
         let path = if is_mtl {
+            let mtl_dir = mtl_path.parent().unwrap();
             mtl_dir.join(PathBuf::from_slash(tx_path_str))
         } else {
             match tx_path_str {
-                "blankdiffuse.dds" | "blankspecular.dds" | "blankbump.dds" => { 
+                // Attempt a fix for some very common incomplete paths in mods' mtl files
+                "blankbump.dds" | "blankspecular.dds" | "blankdiffuse.dds" => { 
                     let mut b = PATH_ROOT_STOCK.clone();
                     b.push("buildings");
                     b.push(tx_path_str);
@@ -423,3 +464,55 @@ fn get_texture_tokens(source: &str, mtl_dir: &Path) -> Vec<IniToken<Texture>> {
         }
     }).collect()
 }
+
+fn get_texture_tokens_ext(mtlx_path: &Path) -> Vec<IniTokenTexture> {
+
+    lazy_static! {
+        static ref RX: Regex = Regex::new(concatcp!(r"(?m)^(\$TEXTURE_EXT\s+?([012])\s+?", SRX_PATH_PREFIX, SRX_PATH, ")", SRX_EOL)).unwrap();
+    }
+
+    let ext = mtlx_path.extension().unwrap();
+    assert_eq!(ext.to_str().unwrap(), "mtlx", "This function must be called only for *.mtlx files"); 
+
+    let mtlx_dir = mtlx_path.parent().unwrap();
+    let mtlx_src = fs::read_to_string(mtlx_path).expect(&format!("Cannot read mtlx file {:?}", mtlx_path));
+
+
+    RX.captures_iter(&mtlx_src).map(move |cap| {
+        let range = cap.get(1).unwrap().range();
+        // NOTE: Debug
+        // println!("CAPTURE: {:?}, {:?}", &range, cap.get(1).unwrap().as_str());
+        let num = cap.get(2).unwrap().as_str().chars().next().unwrap();
+        let tx_path_pfx: PathPrefix = cap.get(3).unwrap().as_str().try_into().unwrap();
+        let tx_path_str = cap.get(4).unwrap().as_str();
+        let path = resolve_prefixed_path(tx_path_pfx, tx_path_str, mtlx_dir);
+
+        IniToken {
+            range,
+            value: Texture { num, path }
+        }
+    }).collect()
+}
+
+fn resolve_prefixed_path(pfx: PathPrefix, path_str: &str, local_root: &Path) -> PathBuf {
+    use path_slash::PathBufExt;
+
+    let root = match pfx {
+        PathPrefix::Stock => PATH_ROOT_STOCK.as_path(),
+        PathPrefix::Workshop => PATH_ROOT_MODS.as_path(),
+        PathPrefix::CurrentDir => local_root,
+    };
+
+    root.join(PathBuf::from_slash(path_str))
+}
+
+fn read_to_string_buf(path: &Path, buf: &mut String) {
+    use std::io::Read;
+
+    let mut file = fs::File::open(path).unwrap();
+    let meta = file.metadata().unwrap();
+    let sz: usize = meta.len().try_into().unwrap();
+    buf.reserve(sz);
+    file.read_to_string(buf).unwrap();
+}
+
