@@ -10,13 +10,13 @@ use const_format::concatcp;
 
 use crate::{
     StockBuilding, RenderConfig, StockBuildingsMap,
-    BuildingDef, MaterialDef, 
-    Skin, SkinMaterial, PathPrefix, IniTokenTexture,
+    BuildingDef, MaterialDef, Skin, SkinMaterial, 
+    PathPrefix, Texture, IniToken, IniTokenTexture, IniTokenPath,
 
-    grep_ini_token, get_texture_tokens, get_texture_tokens_ext, 
+    get_texture_tokens,
     resolve_prefixed_path, read_to_string_buf,
 
-    SRX_PATH_PREFIX, SRX_PATH, SRX_EOL, 
+    SRX_PATH_PREFIX, SRX_PATH, SRX_PATH_EXT, SRX_EOL, 
     PATH_ROOT_MODS,
     MAX_BUILDINGS,
     };
@@ -247,8 +247,12 @@ fn get_skins(skinfile_path: &PathBuf) -> Vec<Skin> {
         static ref RX: Regex = Regex::new(concatcp!(r"(?m)^", SRX_PATH_PREFIX, SRX_PATH, r"(\s+?\+\s+?", SRX_PATH_PREFIX, SRX_PATH, r")?\r\n")).unwrap();
     }
 
-    // TODO: can estimate better (check file size)
-    let mut result = Vec::with_capacity(8);
+    let mut result = {
+        let md = fs::metadata(skinfile_path).unwrap();
+        let c: u64 = md.len() / 50 + 1;
+        Vec::with_capacity(c.try_into().unwrap())
+    };
+
     let cfg = fs::read_to_string(skinfile_path).unwrap();
     let skinfile_dir = skinfile_path.parent().unwrap();
 
@@ -289,3 +293,61 @@ fn get_material_textures(material_path: &Path) -> Vec<IniTokenTexture> {
         e => panic!("Unknown material extension '{}'", e)
     }
 }
+
+
+fn grep_ini_token(rx: &Regex, source: &str, root: &Path) -> Option<IniTokenPath> {
+    use path_slash::PathBufExt;
+
+    rx.captures(source).map(|cap| {
+        let m = cap.get(1).unwrap();
+        // NOTE: Debug
+        // println!("CAPTURE: {:?}, {:?}", &m.range(), m.as_str());
+        let pth = [root, PathBuf::from_slash(m.as_str()).as_path()].iter().collect();
+        IniTokenPath { range: m.range(), value: pth }
+    })
+}
+
+
+fn get_texture_tokens_ext(mtlx_path: &Path) -> Vec<IniTokenTexture> {
+
+    lazy_static! {
+        static ref RX_LINE: Regex = Regex::new(r"(?m)^\$TEXTURE_EXT\s+(.+)$").unwrap();
+        static ref RX_VAL:  Regex = Regex::new(concatcp!(r"([012])\s+", "\"", SRX_PATH_PREFIX, SRX_PATH_EXT, "\"")).unwrap();
+        static ref RX_REJECT: Regex = Regex::new(r"(?m)^\s*\$TEXTURE(_MTL)?\s").unwrap();
+    }
+
+    let ext = mtlx_path.extension().unwrap();
+    assert_eq!(ext.to_str().unwrap(), "mtlx", "This function must be called only for *.mtlx files"); 
+
+    let mtlx_dir = mtlx_path.parent().unwrap();
+    let mtlx_src = fs::read_to_string(mtlx_path).expect(&format!("Cannot read mtlx file '{}'", mtlx_path.to_str().unwrap()));
+
+    if RX_REJECT.is_match(&mtlx_src) {
+        panic!("Invalid mtlx file ({}): $TEXTURE and $TEXTURE_MTL tokens are not allowed here.", mtlx_path.to_str().unwrap());
+    }
+
+    RX_LINE.captures_iter(&mtlx_src).map(move |cap_line| {
+        let m = cap_line.get(0).unwrap();
+        let range = m.range();
+        // NOTE: Debug
+        //println!("Captured line at {:?}: [{}]", &range, m.as_str());
+
+        let values_str = cap_line.get(1).unwrap().as_str();
+        if let Some(cap) = RX_VAL.captures(values_str) {
+
+            let num = cap.get(1).unwrap().as_str().chars().next().unwrap();
+            let tx_path_pfx: PathPrefix = cap.get(2).unwrap().as_str().try_into().unwrap();
+            let tx_path_str = cap.get(3).unwrap().as_str();
+            let path = resolve_prefixed_path(tx_path_pfx, tx_path_str, mtlx_dir);
+
+            IniToken {
+                range,
+                value: Texture { num, path }
+            }
+        } else {
+            panic!("Invalid MATERIAL_EXT line: [{}]", m.as_str());
+        }
+    }).collect()
+}
+
+
