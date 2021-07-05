@@ -311,7 +311,7 @@ fn grep_ini_token(rx: &Regex, source: &str, root: &Path) -> Option<IniTokenPath>
 fn get_texture_tokens_ext(mtlx_path: &Path) -> Vec<IniTokenTexture> {
 
     lazy_static! {
-        static ref RX_LINE: Regex = Regex::new(r"(?m)^\$TEXTURE_EXT\s+(.+)$").unwrap();
+        static ref RX_LINE: Regex = Regex::new(r"(?m)^\$TEXTURE_EXT\s+([^\r\n]+)").unwrap();
         static ref RX_VAL:  Regex = Regex::new(concatcp!(r"([012])\s+", "\"", SRX_PATH_PREFIX, SRX_PATH_EXT, "\"")).unwrap();
         static ref RX_REJECT: Regex = Regex::new(r"(?m)^\s*\$TEXTURE(_MTL)?\s").unwrap();
     }
@@ -330,7 +330,7 @@ fn get_texture_tokens_ext(mtlx_path: &Path) -> Vec<IniTokenTexture> {
         let m = cap_line.get(0).unwrap();
         let range = m.range();
         // NOTE: Debug
-        //println!("Captured line at {:?}: [{}]", &range, m.as_str());
+        println!("Captured line at {:?}: [{}]", &range, m.as_str());
 
         let values_str = cap_line.get(1).unwrap().as_str();
         if let Some(cap) = RX_VAL.captures(values_str) {
