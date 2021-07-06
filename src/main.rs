@@ -137,10 +137,9 @@ fn get_path_arg_or(idx: usize, default: &str) -> PathBuf {
 
 fn main() {
     let src = {
-        let mut src = PathBuf::from(std::env::args().nth(0).unwrap());
-        src.pop();
+        let mut src = PathBuf::from(std::env::current_dir().unwrap());
         src.push(ARGS.get(1).map(String::as_str).unwrap_or("."));
-        src.canonicalize().unwrap()
+        src
     };
 
     let dest = get_path_arg_or(2, r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet\workshop_wip");
@@ -221,7 +220,7 @@ impl BuildingDef<'_> {
             assert!(m.render_token.value.exists());
             assert!(m.textures.len() > 0);
             for tx in m.textures.iter() {
-                assert!(tx.value.path.exists(), "Material missing texture: {:?}", tx.value.path);
+                assert!(tx.value.path.exists(), "Material missing texture: \"{}\"", tx.value.path.to_str().unwrap());
             }
         }
 
@@ -230,7 +229,7 @@ impl BuildingDef<'_> {
             assert!(m.path.exists());
             assert!(m.textures.len() > 0);
             for tx in m.textures.iter() {
-                assert!(tx.value.path.exists(), "Emissive material missing texture: {:?}", tx.value.path);
+                assert!(tx.value.path.exists(), "Emissive material missing texture: \"{}\"", tx.value.path.to_str().unwrap());
             }
         }
     }
