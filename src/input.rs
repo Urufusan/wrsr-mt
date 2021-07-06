@@ -188,13 +188,13 @@ fn get_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildin
 fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini> {
 
     lazy_static! {
-        static ref RX_MODEL:      Regex = Regex::new(concatcp!(r"(?m)^\sMODEL\s+?",            SRX_PATH, SRX_EOL)).unwrap();
-        static ref RX_MODEL_LOD1: Regex = Regex::new(concatcp!(r"(?m)^\sMODEL_LOD\s+?",        SRX_PATH, SRX_EOL)).unwrap();
-        static ref RX_MODEL_LOD2: Regex = Regex::new(concatcp!(r"(?m)^\sMODEL_LOD2\s+?",       SRX_PATH, SRX_EOL)).unwrap();
-        static ref RX_MODEL_E:    Regex = Regex::new(concatcp!(r"(?m)^\sMODELEMISSIVE\s+?",    SRX_PATH, SRX_EOL)).unwrap();
+        static ref RX_MODEL:      Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL\s+?",            SRX_PATH, SRX_EOL)).unwrap();
+        static ref RX_MODEL_LOD1: Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL_LOD\s+?",        SRX_PATH, SRX_EOL)).unwrap();
+        static ref RX_MODEL_LOD2: Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL_LOD2\s+?",       SRX_PATH, SRX_EOL)).unwrap();
+        static ref RX_MODEL_E:    Regex = Regex::new(concatcp!(r"(?m)^\s?MODELEMISSIVE\s+?",    SRX_PATH, SRX_EOL)).unwrap();
 
-        static ref RX_MATERIAL:   Regex = Regex::new(concatcp!(r"(?m)^\sMATERIAL\s+?",         SRX_PATH, SRX_EOL)).unwrap();
-        static ref RX_MATERIAL_E: Regex = Regex::new(concatcp!(r"(?m)^\sMATERIALEMISSIVE\s+?", SRX_PATH, SRX_EOL)).unwrap();
+        static ref RX_MATERIAL:   Regex = Regex::new(concatcp!(r"(?m)^\s?MATERIAL\s+?",         SRX_PATH, SRX_EOL)).unwrap();
+        static ref RX_MATERIAL_E: Regex = Regex::new(concatcp!(r"(?m)^\s?MATERIALEMISSIVE\s+?", SRX_PATH, SRX_EOL)).unwrap();
     }
 
     let mut buf_mod_renderconfig = String::with_capacity(0);
