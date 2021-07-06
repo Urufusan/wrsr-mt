@@ -52,7 +52,7 @@ fn push_buildings<'stock>(pathbuf: &mut PathBuf,
 {
     lazy_static! {
         static ref RX_SOURCE_STOCK: Regex = Regex::new(r"^#([_[:alnum:]]+)").unwrap();
-        static ref RX_SOURCE_MOD: Regex = Regex::new(r"^[0-9]{10}\\[_[:alnum:]]+").unwrap();
+        static ref RX_SOURCE_MOD: Regex = Regex::new(r"^[0-9]{10}\\[^\s\r\n]+").unwrap();
     }
 
     // NOTE: Debug
@@ -330,7 +330,7 @@ fn get_texture_tokens_ext(mtlx_path: &Path) -> Vec<IniTokenTexture> {
         let m = cap_line.get(0).unwrap();
         let range = m.range();
         // NOTE: Debug
-        println!("Captured line at {:?}: [{}]", &range, m.as_str());
+        //println!("Captured line at {:?}: [{}]", &range, m.as_str());
 
         let values_str = cap_line.get(1).unwrap().as_str();
         if let Some(cap) = RX_VAL.captures(values_str) {
