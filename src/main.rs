@@ -12,6 +12,7 @@ use const_format::concatcp;
 
 mod input;
 mod output;
+mod nmf;
 
 
 //--------------------------------------------
@@ -190,7 +191,7 @@ fn main() {
 
 //--------------------------------------------------------
 impl BuildingDef<'_> {
-    fn validate_paths(&self) {
+    fn validate(&self) {
         assert!(self.building_ini.exists());
         
         assert!(self.bbox.exists());
@@ -198,38 +199,35 @@ impl BuildingDef<'_> {
         assert!(path_option_valid(&self.imagegui));
 
         assert!(self.model.value.exists());
+        let buf = fs::read(&self.model.value).unwrap();
+        let (_nmf, rest) = nmf::Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
+        assert_eq!(rest.len(), 0, "Model nmf parsed with leftovers");
+        println!("{}", _nmf);
+        
+
         assert!(ini_token_valid(&self.model_lod1));
         assert!(ini_token_valid(&self.model_lod2));
         assert!(ini_token_valid(&self.model_emissive));
 
-        validate_material(&self.material);
+        validate_material(&self.material.render_token.value, self.material.textures.as_slice());
         if let Some(m) = &self.material_emissive {
-            validate_material(m);
+            validate_material(&m.render_token.value, m.textures.as_slice());
         }
 
         for skin in self.skins.iter() {
-            validate_skin_material(&skin.material);
+            validate_material(&skin.material.path, skin.material.textures.as_slice());
             if let Some(m) = &skin.material_emissive {
-                validate_skin_material(m);
+                validate_material(&m.path, m.textures.as_slice());
             }
         }
 
         //------------------------------------
         #[inline]
-        fn validate_material(m: &MaterialDef) {
-            assert!(m.render_token.value.exists());
-            assert!(m.textures.len() > 0);
-            for tx in m.textures.iter() {
+        fn validate_material(pathbuf: &PathBuf, txs: &[IniTokenTexture]) {
+            assert!(pathbuf.exists());
+            assert!(txs.len() > 0);
+            for tx in txs.iter() {
                 assert!(tx.value.path.exists(), "Material missing texture: \"{}\"", tx.value.path.to_str().unwrap());
-            }
-        }
-
-        #[inline]
-        fn validate_skin_material(m: &SkinMaterial) {
-            assert!(m.path.exists());
-            assert!(m.textures.len() > 0);
-            for tx in m.textures.iter() {
-                assert!(tx.value.path.exists(), "Emissive material missing texture: \"{}\"", tx.value.path.to_str().unwrap());
             }
         }
     }
@@ -428,10 +426,13 @@ fn resolve_prefixed_path(pfx: PathPrefix, path_str: &str, local_root: &Path) -> 
 fn read_to_string_buf(path: &Path, buf: &mut String) {
     use std::io::Read;
 
-    let mut file = fs::File::open(path).unwrap();
-    let meta = file.metadata().unwrap();
-    let sz: usize = meta.len().try_into().unwrap();
-    buf.reserve(sz);
-    file.read_to_string(buf).unwrap();
+    if let Ok(mut file) = fs::File::open(path) {
+        let meta = file.metadata().unwrap();
+        let sz: usize = meta.len().try_into().unwrap();
+        buf.reserve(sz);
+        file.read_to_string(buf).unwrap();
+    } else {
+        panic!("Cannot read file \"{}\"", path.display());
+    }
 }
 
