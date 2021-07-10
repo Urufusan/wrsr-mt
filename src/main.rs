@@ -108,8 +108,7 @@ const MAX_BUILDINGS_IN_MOD: u8 = 99;
 
 const MAX_BUILDINGS: usize = MAX_MODS * (MAX_BUILDINGS_IN_MOD as usize);
 
-// TODO: check this.
-const MAX_SKINS_IN_MOD: u8 = 99;
+const MAX_SKINS_IN_MOD: u8 = 16;
 
 // Paths in ini files:
 const SRX_PATH_PREFIX: &str = "([~.$]/)";
@@ -199,10 +198,14 @@ impl BuildingDef<'_> {
         assert!(path_option_valid(&self.imagegui));
 
         assert!(self.model.value.exists());
+
         let buf = fs::read(&self.model.value).unwrap();
         let (_nmf, rest) = nmf::Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
+        // NOTE: debug
+        //println!("{}", _nmf);
+
         assert_eq!(rest.len(), 0, "Model nmf parsed with leftovers");
-        println!("{}", _nmf);
+
         
 
         assert!(ini_token_valid(&self.model_lod1));
