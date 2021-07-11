@@ -223,6 +223,9 @@ impl BuildingDef<'_> {
         let mtl_model_lod2 = self.model_lod2.as_ref().map(validate_modeldef);
         let mtl_model_emissive = self.model_emissive.as_ref().map(validate_modeldef);
 
+        // NOTE: DEBUG
+        println!("Model's actual use of submaterials: {:?}", mtl_model);
+
         // TODO: look for *.mtl <-> *.nmf mismatches
 
         validate_material(&self.material.render_token.value, self.material.textures.as_slice());
@@ -255,17 +258,43 @@ impl BuildingDef<'_> {
             println!("{}", nmf);
             assert_eq!(rest.len(), 0, "Model nmf parsed with leftovers");
 
-            let sm: Vec<String> = nmf.submaterials.iter().map(|sm| {
-                if let nmf::CStrName::Valid(s, _) = &sm.name {
-                    s.to_string()
-                } else {
-                    panic!("model contains invalid name: {}", sm)
+            let mut used: Vec<(&nmf::SubMaterial, bool)> = nmf.submaterials.iter().zip(std::iter::repeat(false)).collect();
+
+            #[inline]
+            fn set_used<'a, 'b, T>(used: &mut Vec<(&'b nmf::SubMaterial<'a>, bool)>, objs: T)
+            where T: Iterator<Item = &'b nmf::Object<'a>> {
+                for obj in objs {
+                    if let Some(idx) = obj.submaterial_idx {
+                        used[idx as usize].1 = true;
+                    }
+                };
+            }
+
+            
+            if let Some(ref p) = m.patch {
+                match p {
+                    ModelPatch::Keep(keeps) => {
+                        let objs = nmf.objects.iter().filter(|x| keeps.iter().any(|y| x.name.as_str().unwrap() == y));
+                        set_used(&mut used, objs);
+                    },
+                    ModelPatch::Remove(rems) => {
+                        let objs = nmf.objects.iter().filter(|x| !rems.iter().any(|y| x.name.as_str().unwrap() == y));
+                        set_used(&mut used, objs);
+                    }
                 }
-            }).collect();
+            } else {
+                let objs = nmf.objects.iter();
+                set_used(&mut used, objs);
+            }
 
-            // TODO: apply patch
-
-            sm
+            used.iter()
+                .filter_map(|(sm, b)| 
+                    if *b {
+                        Some(sm.name.as_str().unwrap().to_string()) 
+                    } else {
+                        None 
+                    }
+                ).collect()
         }
     }
 }

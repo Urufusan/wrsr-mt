@@ -140,6 +140,14 @@ fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hma
     }
 
     // TODO: read model patch
+    def.model.patch = Some(ModelPatch::Remove(
+        vec![String::from("Лепнина_1-235-0.004"),
+             String::from("Куб"),
+             String::from("Куб.001"),
+             //String::from("Куб.003"),
+             String::from("Куб.004"),
+            ]
+    ));
 
     pathbuf.set_file_name("building.skins");
     if pathbuf.exists() {

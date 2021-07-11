@@ -43,9 +43,9 @@ pub enum CStrName<'a> {
 
 #[derive(Debug)]
 pub struct Object<'a> {
-    slice: &'a [u8],
-    name: CStrName<'a>,
-    submaterial_idx: Option<u32>
+    pub slice: &'a [u8],
+    pub name: CStrName<'a>,
+    pub submaterial_idx: Option<u32>
 }
 
 
@@ -198,6 +198,13 @@ impl<'a> CStrName<'a> {
                 }
             },
             None => CStrName::InvalidNotTerminated,
+        }
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            CStrName::Valid(s, _) => Some(s),
+            _ => None
         }
     }
 
