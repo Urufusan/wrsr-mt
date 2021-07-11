@@ -10,7 +10,7 @@ use const_format::concatcp;
 
 use crate::{
     StockBuilding, RenderConfig, StockBuildingsMap,
-    BuildingDef, MaterialDef, Skin, SkinMaterial, 
+    BuildingDef, ModelDef, ModelPatch, MaterialDef, Skin, SkinMaterial, 
     PathPrefix, Texture, IniToken, IniTokenTexture, IniTokenPath,
 
     get_texture_tokens,
@@ -139,6 +139,8 @@ fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hma
         def.imagegui.replace(pathbuf.clone());
     }
 
+    // TODO: read model patch
+
     pathbuf.set_file_name("building.skins");
     if pathbuf.exists() {
         def.skins = get_skins(&pathbuf);
@@ -225,10 +227,10 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini
 
     let fire = if fire.exists() { Some(fire) } else { None };
 
-    let model =          grep_ini_token(&RX_MODEL,      render_source, root_path).unwrap();
-    let model_lod1 =     grep_ini_token(&RX_MODEL_LOD1, render_source, root_path);
-    let model_lod2 =     grep_ini_token(&RX_MODEL_LOD2, render_source, root_path);
-    let model_emissive = grep_ini_token(&RX_MODEL_E,    render_source, root_path);
+    let model      =     grep_ini_token(&RX_MODEL,      render_source, root_path).map(ModelDef::new).unwrap();
+    let model_lod1 =     grep_ini_token(&RX_MODEL_LOD1, render_source, root_path).map(ModelDef::new);
+    let model_lod2 =     grep_ini_token(&RX_MODEL_LOD2, render_source, root_path).map(ModelDef::new);
+    let model_emissive = grep_ini_token(&RX_MODEL_E,    render_source, root_path).map(ModelDef::new);
 
     let material = MaterialDef::new(grep_ini_token(&RX_MATERIAL, render_source, root_path).unwrap());
     let material_emissive = grep_ini_token(&RX_MATERIAL_E, render_source, root_path).map(|x| MaterialDef::new(x));

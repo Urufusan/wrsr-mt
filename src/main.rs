@@ -27,21 +27,15 @@ struct BuildingDef<'stock> {
     fire: Option<PathBuf>,
     imagegui: Option<PathBuf>,
 
-    model: IniTokenPath,
-    model_lod1: Option<IniTokenPath>,
-    model_lod2: Option<IniTokenPath>,
-    model_emissive: Option<IniTokenPath>,
+    model: ModelDef,
+    model_lod1: Option<ModelDef>,
+    model_lod2: Option<ModelDef>,
+    model_emissive: Option<ModelDef>,
 
     material: MaterialDef,
     material_emissive: Option<MaterialDef>,
 
     skins: Vec<Skin>
-}
-
-#[derive(Debug, Clone)]
-enum RenderConfig<'stock> {
-    Stock { key: &'stock str, data: &'stock str },
-    Mod(PathBuf)
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +46,24 @@ struct IniToken<T> {
 
 type IniTokenPath = IniToken<PathBuf>;
 type IniTokenTexture = IniToken<Texture>;
+
+#[derive(Debug, Clone)]
+enum RenderConfig<'stock> {
+    Stock { key: &'stock str, data: &'stock str },
+    Mod(PathBuf)
+}
+
+#[derive(Debug, Clone)]
+struct ModelDef {
+    ini_token: IniTokenPath,
+    patch: Option<ModelPatch>,
+}
+
+#[derive(Debug, Clone)]
+enum ModelPatch {
+    Keep(Vec<String>),
+    Remove(Vec<String>)
+}
 
 #[derive(Debug, Clone)]
 struct MaterialDef {
@@ -142,12 +154,21 @@ fn main() {
         src
     };
 
+
     let dest = get_path_arg_or(2, r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet\workshop_wip");
 
     println!("Pack source:      {}", src.to_str().unwrap());
+    assert!(src.exists(), "Pack source directory does not exist!");
+
     println!("Installing to:    {}", dest.to_str().unwrap());
+    assert!(dest.exists(), "Destination directory does not exist.");
+    
     println!("Stock game files: {}", PATH_ROOT_STOCK.to_str().unwrap());
+    assert!(dest.exists(), "Stock game files directory does not exist.");
+
     println!("Mod files:        {}", PATH_ROOT_MODS.to_str().unwrap());
+    assert!(dest.exists(), "Mod files directory does not exist.");
+
 
     let mut pathbuf: PathBuf = [PATH_ROOT_STOCK.as_os_str(), "buildings".as_ref(), "buildingtypes.ini".as_ref()].iter().collect();
 
@@ -197,20 +218,12 @@ impl BuildingDef<'_> {
         assert!(path_option_valid(&self.fire));
         assert!(path_option_valid(&self.imagegui));
 
-        assert!(self.model.value.exists());
+        let mtl_model = validate_modeldef(&self.model);
+        let mtl_model_lod1 = self.model_lod1.as_ref().map(validate_modeldef);
+        let mtl_model_lod2 = self.model_lod2.as_ref().map(validate_modeldef);
+        let mtl_model_emissive = self.model_emissive.as_ref().map(validate_modeldef);
 
-        let buf = fs::read(&self.model.value).unwrap();
-        let (_nmf, rest) = nmf::Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
-        // NOTE: debug
-        //println!("{}", _nmf);
-
-        assert_eq!(rest.len(), 0, "Model nmf parsed with leftovers");
-
-        
-
-        assert!(ini_token_valid(&self.model_lod1));
-        assert!(ini_token_valid(&self.model_lod2));
-        assert!(ini_token_valid(&self.model_emissive));
+        // TODO: look for *.mtl <-> *.nmf mismatches
 
         validate_material(&self.material.render_token.value, self.material.textures.as_slice());
         if let Some(m) = &self.material_emissive {
@@ -225,13 +238,34 @@ impl BuildingDef<'_> {
         }
 
         //------------------------------------
-        #[inline]
         fn validate_material(pathbuf: &PathBuf, txs: &[IniTokenTexture]) {
             assert!(pathbuf.exists());
             assert!(txs.len() > 0);
             for tx in txs.iter() {
                 assert!(tx.value.path.exists(), "Material missing texture: \"{}\"", tx.value.path.to_str().unwrap());
             }
+        }
+
+        fn validate_modeldef(m: &ModelDef) -> Vec<String> {
+            assert!(m.ini_token.value.exists());
+
+            let buf = fs::read(&m.ini_token.value).unwrap();
+            let (nmf, rest) = nmf::Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
+            // NOTE: debug
+            println!("{}", nmf);
+            assert_eq!(rest.len(), 0, "Model nmf parsed with leftovers");
+
+            let sm: Vec<String> = nmf.submaterials.iter().map(|sm| {
+                if let nmf::CStrName::Valid(s, _) = &sm.name {
+                    s.to_string()
+                } else {
+                    panic!("model contains invalid name: {}", sm)
+                }
+            }).collect();
+
+            // TODO: apply patch
+
+            sm
         }
     }
 }
@@ -328,6 +362,40 @@ impl<'stock> RenderConfig<'stock> {
     }
 }
 
+//--------------------------------------------------------
+impl ModelDef {
+    #[inline]
+    fn new(ini_token: IniTokenPath) -> ModelDef {
+        // TODO: read patch
+        let patch = None; //Vec::<String>::with_capacity(0);
+        ModelDef { ini_token, patch }
+    }
+}
+
+impl fmt::Display for ModelDef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}",  self.ini_token)?;
+        if let Some(ref p) = self.patch {
+            write!(f, "({})", p)
+        } else { Ok(()) }
+    }
+}
+
+//--------------------------------------------------------
+impl fmt::Display for ModelPatch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let v = match self {
+            ModelPatch::Keep(v)   => { write!(f, "patch-keep: {{")?; v },
+            ModelPatch::Remove(v) => { write!(f, "patch-remove: {{")?; v }
+        };
+        
+        for x in v.iter() {
+            write!(f, " \"{}\";", x)?;
+        }
+
+        write!(f, " }}")
+    }
+}
 
 //--------------------------------------------------------
 impl<T> From<(Range<usize>, T)> for IniToken<T> {
@@ -439,3 +507,15 @@ fn read_to_string_buf(path: &Path, buf: &mut String) {
     }
 }
 
+fn read_to_buf(path: &Path, buf: &mut Vec<u8>) {
+    use std::io::Read;
+
+    if let Ok(mut file) = fs::File::open(path) {
+        let meta = file.metadata().unwrap();
+        let sz: usize = meta.len().try_into().unwrap();
+        buf.reserve(sz);
+        file.read(buf).unwrap();
+    } else {
+        panic!("Cannot read file \"{}\"", path.display());
+    }
+}

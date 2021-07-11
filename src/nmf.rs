@@ -15,9 +15,9 @@ pub type ParseResult<'a, T> = Result<(T, &'a [u8]), NmfError>;
 
 #[derive(Debug)]
 pub struct Nmf<'a> {
-    header: NmfHeader,
-    submaterials: Vec<SubMaterial<'a>>,
-    objects: Vec<Object<'a>>,
+    pub header: NmfHeader,
+    pub submaterials: Vec<SubMaterial<'a>>,
+    pub objects: Vec<Object<'a>>,
 
 }
 
@@ -29,8 +29,8 @@ pub enum NmfHeader {
 
 #[derive(Debug)]
 pub struct SubMaterial<'a> {
-    slice: &'a [u8],
-    name: CStrName<'a>
+    pub slice: &'a [u8],
+    pub name: CStrName<'a>
 }
 
 #[derive(Debug)]
@@ -79,7 +79,8 @@ impl fmt::Display for NmfHeader {
 impl fmt::Display for CStrName<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            CStrName::Valid(s, n) => write!(f, "\"{}\" ({} bytes)", s, n),
+            //CStrName::Valid(s, n) => write!(f, "\"{}\" ({} bytes)", s, n),
+            CStrName::Valid(s, _) => write!(f, "\"{}\"", s),
             CStrName::InvalidNotTerminated => write!(f, "Invalid (not terminated)"),
             CStrName::InvalidEmpty => write!(f, "Invalid (empty)"),
             CStrName::InvalidUtf8(e) => write!(f, "Invalid (utf-8 error: {})", e)
@@ -97,12 +98,11 @@ impl fmt::Display for SubMaterial<'_> {
 
 impl fmt::Display for Object<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "Name: {}, total size: {} bytes", self.name, self.slice.len())?;
         if let Some(idx) = self.submaterial_idx {
-            write!(f, ", submaterial index: {}", idx)
-        } else { 
-            Ok(()) 
+            write!(f, "[{}] ", idx)?;
         }
+        
+        write!(f, "Name: {}, total size: {} bytes", self.name, self.slice.len())
     }
 }
 

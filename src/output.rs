@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::io::Read;
 use std::ops::Range;
 
-use crate::{BuildingDef, RenderConfig, IniToken, Texture, Skin,
+use crate::{BuildingDef, ModelDef, RenderConfig, IniToken, Texture, Skin,
             MAX_BUILDINGS_IN_MOD, MAX_SKINS_IN_MOD, MOD_IDS_START, MOD_IDS_END,
             read_to_string_buf
            };
@@ -175,12 +175,15 @@ fn install_building_files<'bld, 'stock>(
     copy_file_opt(&bld.fire, pathbuf, "building.fire");
     copy_file_opt(&bld.imagegui, pathbuf, "imagegui.png");
 
-    let mut copy_asset = |x| format!("../../nmf/{}", copy_asset_md5(x, pathbuf_models, buf_assets, assets_map));
+    let mut copy_model = |model_def: &'bld ModelDef| -> String { 
+        let x = copy_asset_md5(&model_def.ini_token.value, pathbuf_models, buf_assets, assets_map);
+        format!("../../nmf/{}", x)
+    };
 
-    let new_model = (bld.model.range.clone(), copy_asset(&bld.model.value));
-    let new_model_lod1 = bld.model_lod1.as_ref().map(|x| (x.range.clone(), copy_asset(&x.value)));
-    let new_model_lod2 = bld.model_lod2.as_ref().map(|x| (x.range.clone(), copy_asset(&x.value)));
-    let new_model_emissive = bld.model_emissive.as_ref().map(|x| (x.range.clone(), copy_asset(&x.value)));
+    let new_model = (bld.model.ini_token.range.clone(), copy_model(&bld.model));
+    let new_model_lod1 = bld.model_lod1.as_ref().map(|x| (x.ini_token.range.clone(), copy_model(x)));
+    let new_model_lod2 = bld.model_lod2.as_ref().map(|x| (x.ini_token.range.clone(), copy_model(x)));
+    let new_model_emissive = bld.model_emissive.as_ref().map(|x| (x.ini_token.range.clone(), copy_model(x)));
 
     let new_material = {
         pathbuf.push(FILENAME_MTL);
