@@ -139,15 +139,11 @@ fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hma
         def.imagegui.replace(pathbuf.clone());
     }
 
-    // TODO: read model patch
-    def.model.patch = Some(ModelPatch::Remove(
-        vec![String::from("Лепнина_1-235-0.004"),
-             String::from("Куб"),
-             String::from("Куб.001"),
-             //String::from("Куб.003"),
-             String::from("Куб.004"),
-            ]
-    ));
+    pathbuf.set_file_name("model.patch");
+    if pathbuf.exists() {
+        let pfile = fs::read_to_string(&pathbuf).unwrap();
+        def.model.patch = Some(ModelPatch::from(&pfile));
+    }
 
     pathbuf.set_file_name("building.skins");
     if pathbuf.exists() {
@@ -175,7 +171,7 @@ fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hma
     // -----------------------------
 
     // NOTE: Debug
-    //println!("{}", &def);
+    println!("{}", &def);
 
     def.validate();
     def

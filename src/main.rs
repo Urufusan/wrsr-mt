@@ -148,6 +148,14 @@ fn get_path_arg_or(idx: usize, default: &str) -> PathBuf {
 // ------------------------------------------------------------------
 
 fn main() {
+/*
+    let test = fs::read_to_string(r"z:\wrsr-mg\pack\7L\model.patch").unwrap();
+    let res = ModelPatch::from(&test);
+
+    println!("{}", res);
+
+    return;
+*/
     let src = {
         let mut src = PathBuf::from(std::env::current_dir().unwrap());
         src.push(ARGS.get(1).map(String::as_str).unwrap_or("."));
@@ -213,7 +221,6 @@ fn main() {
 impl BuildingDef<'_> {
     fn validate(&self) {
         assert!(self.building_ini.exists());
-        
         assert!(self.bbox.exists());
         assert!(path_option_valid(&self.fire));
         assert!(path_option_valid(&self.imagegui));
@@ -224,9 +231,9 @@ impl BuildingDef<'_> {
         let mtl_model_emissive = self.model_emissive.as_ref().map(validate_modeldef);
 
         // NOTE: DEBUG
-        println!("Model's actual use of submaterials: {:?}", mtl_model);
+        //println!("Model's actual use of submaterials: {:?}", mtl_model);
 
-        // TODO: look for *.mtl <-> *.nmf mismatches
+        // TODO: look for *.mtl <-> *.nmf mismatches for all model types
 
         validate_material(&self.material.render_token.value, self.material.textures.as_slice());
         if let Some(m) = &self.material_emissive {
@@ -249,13 +256,14 @@ impl BuildingDef<'_> {
             }
         }
 
+        // TODO: this function sucks
         fn validate_modeldef(m: &ModelDef) -> Vec<String> {
             assert!(m.ini_token.value.exists());
 
             let buf = fs::read(&m.ini_token.value).unwrap();
             let (nmf, rest) = nmf::Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
             // NOTE: debug
-            println!("{}", nmf);
+            //println!("{}", nmf);
             assert_eq!(rest.len(), 0, "Model nmf parsed with leftovers");
 
             let mut used: Vec<(&nmf::SubMaterial, bool)> = nmf.submaterials.iter().zip(std::iter::repeat(false)).collect();
@@ -269,17 +277,29 @@ impl BuildingDef<'_> {
                     }
                 };
             }
-
             
             if let Some(ref p) = m.patch {
                 match p {
                     ModelPatch::Keep(keeps) => {
-                        let objs = nmf.objects.iter().filter(|x| keeps.iter().any(|y| x.name.as_str().unwrap() == y));
+                        let objs = keeps.iter()
+                                        .map(|k| nmf.objects.iter()
+                                                            .find(|o| k == o.name.as_str().unwrap())
+                                                            .expect(&format!("ModelPatch error: cannot find object to keep {:?}", k)));
                         set_used(&mut used, objs);
                     },
                     ModelPatch::Remove(rems) => {
-                        let objs = nmf.objects.iter().filter(|x| !rems.iter().any(|y| x.name.as_str().unwrap() == y));
-                        set_used(&mut used, objs);
+                        let to_keep: Vec<&nmf::Object> = 
+                            nmf.objects.iter()
+                                       .filter(|o| !rems.iter().any(|r| *r == o.name.as_str().unwrap()))
+                                       .collect();
+                        
+                        // TODO: this is not good
+                        let undeleted = to_keep.len() + rems.len() - nmf.objects.len();
+                        if undeleted != 0 {
+                            panic!("ModelPatch error: cannot find {} objects to delete", undeleted);
+                        }
+
+                        set_used(&mut used, to_keep.iter().map(|x| *x));
                     }
                 }
             } else {
@@ -308,7 +328,7 @@ fn path_option_valid(opt: &Option<PathBuf>) -> bool {
     }
 }
 
-
+/*
 #[inline]
 fn ini_token_valid(opt: &Option<IniTokenPath>) -> bool {
     match opt {
@@ -316,60 +336,54 @@ fn ini_token_valid(opt: &Option<IniTokenPath>) -> bool {
         Some(IniToken { value: ref p, .. }) => p.exists()
     }
 }
-
-// TODO: remove Strings cruft
+*/
 
 impl fmt::Display for BuildingDef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        //write!(f, "\ //"BuildingDef {{\n\
-        write!(f, "\
-        {indent}renderconfig      {}\n\
-        {indent}building_ini      {}\n\
-        {indent}bbox              {}\n\
-        {indent}fire              {}\n\
-        {indent}imagegui          {}\n\
-        {indent}model             {}\n\
-        {indent}model_lod1        {}\n\
-        {indent}model_lod2        {}\n\
-        {indent}model_emissive    {}\n\
-        {indent}material          {}\n\
-        {indent}material_emissive {}\n\
-        ", //}}",
-        self.render_config, 
-        self.building_ini.to_str().unwrap(),
-        self.bbox.to_str().unwrap(),
-        print_path_option(&self.fire),
-        print_path_option(&self.imagegui),
-        self.model,
-        print_displayed_option(&self.model_lod1),
-        print_displayed_option(&self.model_lod2),
-        print_displayed_option(&self.model_emissive),
-        self.material,
-        print_option(&self.material_emissive, |x| x.to_string()),
-        indent = "   " 
-        )?;
+        const INDENT: &str = "    ";
 
-        write!(f, "Skins: {:#?}", self.skins)
+        write!(f, "{}renderconfig      {}\n", INDENT, self.render_config)?;
+        write!(f, "{}building_ini      {}\n", INDENT, self.building_ini.to_str().unwrap())?;
+        write!(f, "{}bbox              {}\n", INDENT, self.bbox.to_str().unwrap())?;
+        write!(f, "{}fire              ",     INDENT)?;
+        write_path_option_ln(f, &self.fire)?;
+        write!(f, "{}imagegui          ",     INDENT)?;
+        write_path_option_ln(f, &self.imagegui)?;
+        write!(f, "{}model             {}\n", INDENT, &self.model)?;
+
+        write!(f, "{}model_lod1        ",     INDENT)?;
+        write_option_ln(f, &self.model_lod1)?;
+        write!(f, "{}model_lod2        ",     INDENT)?;
+        write_option_ln(f, &self.model_lod2)?;
+        write!(f, "{}model_emissive    ",     INDENT)?;
+        write_option_ln(f, &self.model_emissive)?;
+
+        write!(f, "{}material          {}\n", INDENT, &self.material)?;
+        write!(f, "{}material_emissive ",     INDENT)?;
+        write_option_ln(f, &self.model_emissive)?;
+
+        write!(f, "{}Skins: {:#?}", INDENT, self.skins)?;
+
+        return Ok(());
+
+        //------------------------------------------------
+
+        #[inline]
+        fn write_option_ln<T>(f: &mut fmt::Formatter, option: &Option<T>) -> fmt::Result
+        where T: fmt::Display {
+            match option {
+                None => write!(f, "<none>\n"),
+                Some(ref p) => write!(f, "{}\n", p)
+            }
+        }
+
+        #[inline]
+        fn write_path_option_ln(f: &mut fmt::Formatter, option: &Option<PathBuf>) -> fmt::Result {
+            write_option_ln(f, &option.as_ref().map(|x| x.to_str().unwrap()))
+        }
     }
 }
 
-#[inline]
-fn print_path_option(o: &Option<PathBuf>) -> String {
-    print_option(o, |x| String::from(x.to_str().unwrap()))
-}
-
-#[inline]
-fn print_displayed_option<T: fmt::Display>(o: &Option<T>) -> String {
-    print_option(o, T::to_string)
-}
-
-#[inline]
-fn print_option<T, F: Fn(&T) -> String>(o: &Option<T>, f: F) -> String {
-    match o {
-        None => String::from("<none>"),
-        Some(ref p) => f(p)
-    }
-}
 
 
 //--------------------------------------------------------
@@ -395,9 +409,7 @@ impl<'stock> RenderConfig<'stock> {
 impl ModelDef {
     #[inline]
     fn new(ini_token: IniTokenPath) -> ModelDef {
-        // TODO: read patch
-        let patch = None; //Vec::<String>::with_capacity(0);
-        ModelDef { ini_token, patch }
+        ModelDef { ini_token, patch: None }
     }
 }
 
@@ -405,7 +417,7 @@ impl fmt::Display for ModelDef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}",  self.ini_token)?;
         if let Some(ref p) = self.patch {
-            write!(f, "({})", p)
+            write!(f, " ({})", p)
         } else { Ok(()) }
     }
 }
@@ -425,6 +437,32 @@ impl fmt::Display for ModelPatch {
         write!(f, " }}")
     }
 }
+
+impl<'a, T> From<T> for ModelPatch 
+where T: AsRef<str>
+{
+    fn from(text: T) -> ModelPatch {
+        lazy_static! {
+            static ref RX_LINES: Regex = Regex::new(r"\r?\n").unwrap();
+        }
+
+        let mut lines = RX_LINES.split(text.as_ref());
+        let ptype = lines.next().expect("Cannot parse model.patch");
+
+        let mut tokens = Vec::<String>::with_capacity(8);
+        for l in lines {
+            if l.len() > 0 {
+                tokens.push(String::from(l));
+            }
+        }
+
+        match ptype {
+            "KEEP" => ModelPatch::Keep(tokens),
+            "REMOVE" => ModelPatch::Remove(tokens),
+            z => panic!("Unknown patch type {:?}", z)
+        }
+    }
+} 
 
 //--------------------------------------------------------
 impl<T> From<(Range<usize>, T)> for IniToken<T> {
@@ -535,7 +573,7 @@ fn read_to_string_buf(path: &Path, buf: &mut String) {
         panic!("Cannot read file \"{}\"", path.display());
     }
 }
-
+/*
 fn read_to_buf(path: &Path, buf: &mut Vec<u8>) {
     use std::io::Read;
 
@@ -548,3 +586,4 @@ fn read_to_buf(path: &Path, buf: &mut Vec<u8>) {
         panic!("Cannot read file \"{}\"", path.display());
     }
 }
+*/
