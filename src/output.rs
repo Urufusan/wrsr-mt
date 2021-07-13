@@ -7,7 +7,7 @@ use std::io::Read;
 use std::ops::Range;
 
 use crate::{BuildingDef, ModelDef, RenderConfig, IniToken, Texture, Skin,
-            MAX_BUILDINGS_IN_MOD, MAX_SKINS_IN_MOD, MOD_IDS_START, MOD_IDS_END,
+            AppSettings,
             read_to_string_buf
            };
 
@@ -40,12 +40,12 @@ pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<BuildingDef<'stock>>)
 
     let mut assets_map = AssetsMap::with_capacity(10_000);
     let mut buf_assetbytes = Vec::<u8>::with_capacity(1024*1024*64);
-    let mut mod_id_iter = MOD_IDS_START ..= MOD_IDS_END;
+    let mut mod_id_iter = AppSettings::MOD_IDS_START ..= AppSettings::MOD_IDS_END;
 
     let skins: Vec<(&Vec<Skin>, String)> = write_mod_objects(
         data.iter(), 
         &mut mod_id_iter,
-        MAX_BUILDINGS_IN_MOD,
+        AppSettings::MAX_BUILDINGS_IN_MOD,
         &mut pathbuf,
         "BUILDING",
         |buf, _, dirname| 
@@ -59,7 +59,7 @@ pub(crate) fn generate_mods<'stock>(dest: &Path, data: Vec<BuildingDef<'stock>>)
     write_mod_objects(
         skins_iter,
         &mut mod_id_iter,
-        MAX_SKINS_IN_MOD,
+        AppSettings::MAX_SKINS_IN_MOD,
         &mut pathbuf,
         "BUILDINGSKIN",
         |buf, (skin, bld_ref), dirname| {

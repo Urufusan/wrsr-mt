@@ -1,2 +1,2 @@
 #!/bin/bash
-clear && cargo run "z:\wrsr-mg\pack" "c:\projects\out" "z:\wrsr-mg\media_soviet" "z:\wrsr-mg\mods"
+clear && cargo run -- --stock z:\wrsr-mg\media_soviet --workshop z:\wrsr-mg\mods install z:\wrsr-mg\pack ..\out --check

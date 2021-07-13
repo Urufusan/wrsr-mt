@@ -16,9 +16,7 @@ use crate::{
     get_texture_tokens,
     resolve_prefixed_path, read_to_string_buf,
 
-    SRX_PATH_PREFIX, SRX_PATH, SRX_PATH_EXT, SRX_EOL, 
-    PATH_ROOT_MODS,
-    MAX_BUILDINGS,
+    AppSettings, APP_SETTINGS
     };
 
 
@@ -37,7 +35,7 @@ pub(crate) fn read_validate_sources<'stock>(src: &Path, stock_buildings: &mut St
 
     push_buildings(&mut pathbuf, &mut data, &mut buf_sources, stock_buildings, &mut String::with_capacity(10));
 
-    assert!(data.len() <= MAX_BUILDINGS);
+    assert!(data.len() <= AppSettings::MAX_BUILDINGS);
 
     data
 }
@@ -73,7 +71,7 @@ fn push_buildings<'stock>(pathbuf: &mut PathBuf,
             if let Some(src_stock) = RX_SOURCE_STOCK.captures(&buf_sources) {
                 SourceType::Stock(src_stock.get(1).unwrap().as_str())
             } else if let Some(src_mod) = RX_SOURCE_MOD.find(&buf_sources) {
-                SourceType::Mod(PATH_ROOT_MODS.join(src_mod.as_str()))
+                SourceType::Mod(APP_SETTINGS.path_workshop.join(src_mod.as_str()))
             } else {
                 panic!("Cannot parse building source ({:?})", &buf_sources);
             }
@@ -194,13 +192,13 @@ fn get_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildin
 fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini> {
 
     lazy_static! {
-        static ref RX_MODEL:      Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL\s+?",            SRX_PATH, SRX_EOL)).unwrap();
-        static ref RX_MODEL_LOD1: Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL_LOD\s+?",        SRX_PATH, SRX_EOL)).unwrap();
-        static ref RX_MODEL_LOD2: Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL_LOD2\s+?",       SRX_PATH, SRX_EOL)).unwrap();
-        static ref RX_MODEL_E:    Regex = Regex::new(concatcp!(r"(?m)^\s?MODELEMISSIVE\s+?",    SRX_PATH, SRX_EOL)).unwrap();
+        static ref RX_MODEL:      Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL\s+?",            AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
+        static ref RX_MODEL_LOD1: Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL_LOD\s+?",        AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
+        static ref RX_MODEL_LOD2: Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL_LOD2\s+?",       AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
+        static ref RX_MODEL_E:    Regex = Regex::new(concatcp!(r"(?m)^\s?MODELEMISSIVE\s+?",    AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
 
-        static ref RX_MATERIAL:   Regex = Regex::new(concatcp!(r"(?m)^\s?MATERIAL\s+?",         SRX_PATH, SRX_EOL)).unwrap();
-        static ref RX_MATERIAL_E: Regex = Regex::new(concatcp!(r"(?m)^\s?MATERIALEMISSIVE\s+?", SRX_PATH, SRX_EOL)).unwrap();
+        static ref RX_MATERIAL:   Regex = Regex::new(concatcp!(r"(?m)^\s?MATERIAL\s+?",         AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
+        static ref RX_MATERIAL_E: Regex = Regex::new(concatcp!(r"(?m)^\s?MATERIALEMISSIVE\s+?", AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
     }
 
     let mut buf_mod_renderconfig = String::with_capacity(0);
@@ -249,8 +247,18 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini
 
 
 fn get_skins(skinfile_path: &PathBuf) -> Vec<Skin> {
+    const SKIN_RX: &str = concatcp!(
+        r"(?m)^", 
+        AppSettings::SRX_PATH_PREFIX, 
+        AppSettings::SRX_PATH, 
+        r"(\s+?\+\s+?", 
+        AppSettings::SRX_PATH_PREFIX, 
+        AppSettings::SRX_PATH, 
+        r")?\r\n"
+    );
+
     lazy_static! {
-        static ref RX: Regex = Regex::new(concatcp!(r"(?m)^", SRX_PATH_PREFIX, SRX_PATH, r"(\s+?\+\s+?", SRX_PATH_PREFIX, SRX_PATH, r")?\r\n")).unwrap();
+        static ref RX: Regex = Regex::new(SKIN_RX).unwrap();
     }
 
     let mut result = {
@@ -318,7 +326,7 @@ fn get_texture_tokens_ext(mtlx_path: &Path) -> Vec<IniTokenTexture> {
 
     lazy_static! {
         static ref RX_LINE: Regex = Regex::new(r"(?m)^\$TEXTURE_EXT\s+([^\r\n]+)").unwrap();
-        static ref RX_VAL:  Regex = Regex::new(concatcp!(r"([012])\s+", "\"", SRX_PATH_PREFIX, SRX_PATH_EXT, "\"")).unwrap();
+        static ref RX_VAL:  Regex = Regex::new(concatcp!(r"([012])\s+", "\"", AppSettings::SRX_PATH_PREFIX, AppSettings::SRX_PATH_EXT, "\"")).unwrap();
         static ref RX_REJECT: Regex = Regex::new(r"(?m)^\s*\$TEXTURE(_MTL)?\s").unwrap();
     }
 

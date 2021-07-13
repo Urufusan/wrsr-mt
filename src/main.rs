@@ -107,40 +107,119 @@ enum StockBuilding<'stock> {
     Parsed(BuildingDef<'stock>)
 }
 
+enum AppCommand {
+    Install(InstallCommand),
+    Nmf(NmfCommand)
+}
 
-//-----------------------------------------------
-//              Global constants
+struct InstallCommand {
+    source: PathBuf,
+    destination: PathBuf,
+    is_check: bool
+}
 
-// mod folder is 7 digits and cannot start from zero.
-const MOD_IDS_START: u32 = 1_000_000;
-const MOD_IDS_END: u32 = 9_999_999;
-const MAX_MODS: usize = (MOD_IDS_END - MOD_IDS_START) as usize;
+enum NmfCommand {
+    Show(NmfShowCommand),
+    Patch(NmfPatchCommand)
+}
 
-const MAX_BUILDINGS_IN_MOD: u8 = 99;
+struct NmfShowCommand {
+    path: PathBuf,
+    with_patch: Option<PathBuf>
+}
 
-const MAX_BUILDINGS: usize = MAX_MODS * (MAX_BUILDINGS_IN_MOD as usize);
+struct NmfPatchCommand {
+    path: PathBuf,
+    patch: PathBuf,
+    in_place: bool
+}
 
-const MAX_SKINS_IN_MOD: u8 = 16;
+struct AppSettings {
+    path_stock: PathBuf,
+    path_workshop: PathBuf,
 
-// Paths in ini files:
-const SRX_PATH_PREFIX: &str = "([~.$]/)";
-const SRX_PATH: &str = r"([^\r\s\n]+?)";
-const SRX_PATH_EXT: &str = "([^\"\\r\\n]+?)";
-const SRX_EOL: &str = r"(:?[\s\r\n$])";
+    command: AppCommand,
+}
+
+impl AppSettings {
+
+    // mod folder is 7 digits and cannot start from zero.
+    const MOD_IDS_START:        u32 = 1_000_000;
+    const MOD_IDS_END:          u32 = 9_999_999;
+    const MAX_BUILDINGS_IN_MOD: u8  = 99;
+    const MAX_SKINS_IN_MOD:     u8  = 16;
+
+    const MAX_MODS:      usize = (AppSettings::MOD_IDS_END - AppSettings::MOD_IDS_START) as usize;
+    const MAX_BUILDINGS: usize = AppSettings::MAX_MODS * (AppSettings::MAX_BUILDINGS_IN_MOD as usize);
+
+    // Paths in ini files:
+    const SRX_PATH_PREFIX: &'static str =  "([~.$]/)";
+    const SRX_PATH:        &'static str = r"([^\r\s\n]+?)";
+    const SRX_PATH_EXT:    &'static str =  "([^\"\\r\\n]+?)";
+    const SRX_EOL:         &'static str = r"(:?[\s\r\n$])";
+}
+
 
 
 lazy_static! {
-    static ref ARGS: Vec<String> = std::env::args().collect();
-    static ref PATH_ROOT_STOCK: PathBuf = get_path_arg_or(3, r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet");
-    static ref PATH_ROOT_MODS:  PathBuf = get_path_arg_or(4, r"C:\Program Files (x86)\Steam\steamapps\workshop\content\784150");
-}
+    static ref APP_SETTINGS: AppSettings = {
+        // TODO: read from configuration + arguments
+        use clap::{App, Arg, SubCommand};
 
-fn get_path_arg_or(idx: usize, default: &str) -> PathBuf {
-    if let Some(p) = ARGS.get(idx) {
-        PathBuf::from(p)
-    } else {
-        PathBuf::from(default)
-    }
+        let cmd_install = SubCommand::with_name("install")
+            .arg(Arg::with_name("in").required(true))
+            .arg(Arg::with_name("out")
+                .default_value(r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet\workshop_wip"))
+            .arg(Arg::with_name("check").long("check").takes_value(false));
+
+        let m = App::new("wrsr-mt")
+            .author("kromgart@gmail.com")
+            .version("0.1")
+            .about("Modding tools for \"Workers & Resources: Soviet Rebuplic\"")
+            .arg(
+                Arg::with_name("stock")
+                    .long("stock")
+                    .default_value(r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet")
+            )
+            .arg(
+                Arg::with_name("workshop")
+                    .long("workshop")
+                    .default_value(r"C:\Program Files (x86)\Steam\steamapps\workshop\content\784150")
+            )
+            .subcommand(cmd_install)
+            .get_matches();
+
+        let path_stock = PathBuf::from(m.value_of("stock").unwrap());
+        let path_workshop = PathBuf::from(m.value_of("workshop").unwrap());
+
+
+        let command = { 
+            let mut src = PathBuf::from(std::env::current_dir().unwrap());
+            src.push("pack");
+
+            match m.subcommand() {
+                ("install", Some(m)) => {
+                    let run_dir = std::env::current_dir().unwrap();
+                    let source = run_dir.join(m.value_of("in").unwrap());
+                    let destination = run_dir.join(m.value_of("out").unwrap());
+                    let is_check = m.is_present("check");
+
+                    AppCommand::Install(InstallCommand {
+                        source,
+                        destination,
+                        is_check
+                    })
+                },
+                (cname, _) => panic!("Unknown command '{}'" , cname)
+            }
+        };
+
+        AppSettings {
+            path_stock,
+            path_workshop,
+            command
+        }
+    };
 }
 
 
@@ -156,59 +235,64 @@ fn main() {
 
     return;
 */
-    let src = {
-        let mut src = PathBuf::from(std::env::current_dir().unwrap());
-        src.push(ARGS.get(1).map(String::as_str).unwrap_or("."));
-        src
-    };
+
+    match &APP_SETTINGS.command {
+        AppCommand::Install(InstallCommand{ source, destination, is_check }) => {
+
+            println!("Installing from source: {}", source.to_str().unwrap());
+            assert!(source.exists(), "Pack source directory does not exist!");
+
+            println!("Installing to:          {}", destination.to_str().unwrap());
+            assert!(destination.exists(), "Destination directory does not exist.");
+            
+            println!("Stock game files:       {}", APP_SETTINGS.path_stock.to_str().unwrap());
+            assert!(APP_SETTINGS.path_stock.exists(), "Stock game files directory does not exist.");
+
+            println!("Workshop directory:     {}", APP_SETTINGS.path_workshop.to_str().unwrap());
+            assert!(APP_SETTINGS.path_workshop.exists(), "Workshop directory does not exist.");
 
 
-    let dest = get_path_arg_or(2, r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet\workshop_wip");
+            let mut pathbuf: PathBuf = APP_SETTINGS.path_stock.clone();
+            pathbuf.push("buildings");
+            pathbuf.push("buildingtypes.ini");
 
-    println!("Pack source:      {}", src.to_str().unwrap());
-    assert!(src.exists(), "Pack source directory does not exist!");
+            let stock_buildings_ini = fs::read_to_string(&pathbuf).unwrap();
+            let mut stock_buildings = { 
+                let mut mp = HashMap::with_capacity(512);
+                let rx = Regex::new(r"\$TYPE ([_[:alnum:]]+?)\r\n((?s).+?\n END\r\n)").unwrap();
 
-    println!("Installing to:    {}", dest.to_str().unwrap());
-    assert!(dest.exists(), "Destination directory does not exist.");
-    
-    println!("Stock game files: {}", PATH_ROOT_STOCK.to_str().unwrap());
-    assert!(dest.exists(), "Stock game files directory does not exist.");
+                for caps in rx.captures_iter(&stock_buildings_ini) {
+                    let key = caps.get(1).unwrap().as_str();
+                    mp.insert(
+                        key, 
+                        (key, StockBuilding::Unparsed(caps.get(2).unwrap().as_str()))
+                    );
+                }
+                
+                mp
+            };
 
-    println!("Mod files:        {}", PATH_ROOT_MODS.to_str().unwrap());
-    assert!(dest.exists(), "Mod files directory does not exist.");
+            println!("Found {} stock buildings", stock_buildings.len());
+
+            pathbuf.push(source);
+            println!("Reading sources...");
+            let data = input::read_validate_sources(pathbuf.as_path(), &mut stock_buildings);
+            println!("Sources verified.");
+
+            if *is_check {
+                println!("Check complete.");
+            } else {
+                println!("Creating mods...");
+                pathbuf.push(destination);
+
+                output::generate_mods(pathbuf.as_path(), data);
+            }
+        },
 
 
-    let mut pathbuf: PathBuf = [PATH_ROOT_STOCK.as_os_str(), "buildings".as_ref(), "buildingtypes.ini".as_ref()].iter().collect();
-
-    let stock_buildings_ini = fs::read_to_string(&pathbuf).unwrap();
-    let mut stock_buildings = { 
-        let mut mp = HashMap::with_capacity(512);
-        let rx = Regex::new(r"\$TYPE ([_[:alnum:]]+?)\r\n((?s).+?\n END\r\n)").unwrap();
-
-        for caps in rx.captures_iter(&stock_buildings_ini) {
-            let key = caps.get(1).unwrap().as_str();
-            mp.insert(
-                key, 
-                (key, StockBuilding::Unparsed(caps.get(2).unwrap().as_str()))
-            );
+        AppCommand::Nmf(_) => {
         }
-        
-        mp
     };
-
-    println!("Found {} stock buildings", stock_buildings.len());
-
-    pathbuf.push(src);
-    println!("Reading sources...");
-    let data = input::read_validate_sources(pathbuf.as_path(), &mut stock_buildings);
-    println!("Sources verified.");
-
-
-    println!("Creating mods...");
-    pathbuf.push(dest);
-
-    output::generate_mods(pathbuf.as_path(), data);
-
 }
 
 
@@ -399,7 +483,7 @@ impl fmt::Display for RenderConfig<'_> {
 impl<'stock> RenderConfig<'stock> {
     fn root_path(&self) -> &Path {
         match self {
-            RenderConfig::Stock { .. } => PATH_ROOT_STOCK.as_path(),
+            RenderConfig::Stock { .. } => APP_SETTINGS.path_stock.as_path(),
             RenderConfig::Mod(render_cfg_path) => render_cfg_path.parent().unwrap()
         }
     }
@@ -490,7 +574,7 @@ impl MaterialDef {
 impl fmt::Display for MaterialDef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let t = &self.render_token;
-        write!(f, "({}..{}) {} (contains {} textures)", t.range.start, t.range.end, t.value.to_str().unwrap(), self.textures.len())
+        write!(f, "({}..{}) {} ({} textures)", t.range.start, t.range.end, t.value.to_str().unwrap(), self.textures.len())
         //write!(f, "({}..{}) {} (textures: {:#?})", t.range.start, t.range.end, t.value.to_str().unwrap(), self.textures)
     }
 }
@@ -518,7 +602,7 @@ fn get_texture_tokens(mtl_path: &Path) -> Vec<IniToken<Texture>> {
     use path_slash::PathBufExt;
 
     lazy_static! {
-        static ref RX: Regex = Regex::new(concatcp!(r"(?m)^(\$TEXTURE(_MTL)?\s+?([012])\s+?", SRX_PATH, ")", SRX_EOL)).unwrap();
+        static ref RX: Regex = Regex::new(concatcp!(r"(?m)^(\$TEXTURE(_MTL)?\s+?([012])\s+?", AppSettings::SRX_PATH, ")", AppSettings::SRX_EOL)).unwrap();
     }
 
     let ext = mtl_path.extension().unwrap();
@@ -537,7 +621,7 @@ fn get_texture_tokens(mtl_path: &Path) -> Vec<IniToken<Texture>> {
         let tx_root = if is_mtl { 
             mtl_path.parent().unwrap() 
         } else {
-            PATH_ROOT_STOCK.as_path()
+            APP_SETTINGS.path_stock.as_path()
         };
 
         let path = tx_root.join(PathBuf::from_slash(tx_path_str));
@@ -553,8 +637,8 @@ fn resolve_prefixed_path(pfx: PathPrefix, path_str: &str, local_root: &Path) -> 
     use path_slash::PathBufExt;
 
     let root = match pfx {
-        PathPrefix::Stock => PATH_ROOT_STOCK.as_path(),
-        PathPrefix::Workshop => PATH_ROOT_MODS.as_path(),
+        PathPrefix::Stock => APP_SETTINGS.path_stock.as_path(),
+        PathPrefix::Workshop => APP_SETTINGS.path_workshop.as_path(),
         PathPrefix::CurrentDir => local_root,
     };
 

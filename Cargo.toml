@@ -1,5 +1,7 @@
+#cargo-features = ["strip"]
+
 [package]
-name = "wrsr-mg"
+name = "wrsr-mt"
 version = "0.1.0"
 authors = ["Kromgart <kromgart@gmail.com>"]
 edition = "2018"
@@ -13,3 +15,10 @@ md5 = "0.7"
 lazy_static = "1.4"
 const_format = "0.2"
 path-slash = "0.1"
+clap = { version = "2.33.3", default-features = false }
+# structopt = { version = "0.3.22" }
+
+[profile.release]
+lto = true
+codegen_units = 1
+#strip = "symbols"
