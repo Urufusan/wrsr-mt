@@ -85,8 +85,18 @@ fn main() {
                     let buf = fs::read(path).expect("Cannot read nmf file at the specified path");
                     let (nmf, rest) = nmf::Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
 
-                    println!("{}", nmf);
-                    assert_eq!(rest.len(), 0, "Model nmf parsed with leftovers");
+                    println!("{}\n", nmf);
+
+                    let unused: Vec<_> = nmf.get_unused_submaterials().map(|sm| &sm.name).collect();
+                    if unused.len() > 0 {
+                        print!("WARNING: has unused materials [ ");
+                        for sm in unused {
+                            print!("{}; ", sm);
+                        }
+                        println!("]\n");
+                    }
+
+                    assert_eq!(rest.len(), 0, "Model nmf parsed with leftovers ({} bytes)", rest.len());
                 },
                 cfg::NmfCommand::Patch(_) => {
                     // TODO

@@ -57,12 +57,12 @@ impl fmt::Display for Nmf<'_> {
 
         writeln!(f, "Submaterials: {}", self.submaterials.len())?;
         for (i, sm) in self.submaterials.iter().enumerate() {
-            writeln!(f, "  {:2}: {:2}", i, sm)?;
+            writeln!(f, "{:2}) {:2}", i, sm)?;
         }
 
         writeln!(f, "Objects: {}", self.objects.len())?;
         for (i, o) in self.objects.iter().enumerate() {
-            writeln!(f, "  {:2}: {:2}", i, o)?;
+            writeln!(f, "{:2}) {:2}", i, o)?;
         }
 
         Ok(())
@@ -93,7 +93,7 @@ impl fmt::Display for CStrName<'_> {
 
 impl fmt::Display for SubMaterial<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "Name: {}", self.name)
+        write!(f, "{}", self.name)
     }
 }
 
@@ -101,10 +101,10 @@ impl fmt::Display for SubMaterial<'_> {
 impl fmt::Display for Object<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         if let Some(idx) = self.submaterial_idx {
-            write!(f, "[{}] ", idx)?;
+            write!(f, "submtl: {:2},  ", idx)?;
         }
         
-        write!(f, "Name: {}, real size: {} bytes", self.name, self.slice.len())
+        write!(f, "size: {:7},  name: {}", self.slice.len(), self.name)
     }
 }
 
@@ -171,6 +171,35 @@ impl<'a> Nmf<'a> {
 
 
         Ok((Nmf{ header, submaterials, objects }, rest))
+    }
+
+    pub fn get_unused_submaterials(&'a self) -> impl Iterator<Item = &'a SubMaterial> + 'a {
+        self.submaterials
+            .iter()
+            .enumerate()
+            .filter_map(move |(i, sm)| 
+                if self.objects.iter().all(|o| 
+                    o.submaterial_idx.map(|idx| idx as usize != i).unwrap_or(true)) 
+                {
+                    Some(sm)
+                } else {
+                    None
+                })
+    }
+
+    pub fn get_used_submaterials(&'a self) -> impl Iterator<Item = &'a SubMaterial> + 'a  {
+        self.submaterials
+            .iter()
+            .enumerate()
+            .filter_map(move |(i, sm)| 
+                if self.objects.iter().any(|o| 
+                    o.submaterial_idx.map(|idx| idx as usize == i).unwrap_or(false)) 
+                {
+                    Some(sm)
+                } else {
+                    None
+                })
+        
     }
 }
 
@@ -257,19 +286,3 @@ impl<'a> FromBytes<'a> for Object<'a> {
         Ok((Object { slice: slice.get(0 .. obj_size).unwrap(), name, submaterial_idx }, rest_of_nmf))
     }
 }
-
-/*
-fn main() {
-    
-
-    let filepath = PathBuf::from(r"z:\nmf\0cfddb3cf6d5e2e619f114d288eed911.nmf");
-    assert!(filepath.exists());
-
-    let data = fs::read(filepath).unwrap();
-
-    let (nmf, rest) = Nmf::parse_bytes(&data).unwrap();
-
-    println!("{}", nmf);
-
-    assert_eq!(rest.len(), 0);
-}*/
