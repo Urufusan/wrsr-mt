@@ -6,10 +6,11 @@ use std::path::{Path, PathBuf};
 use std::io::Read;
 use std::ops::Range;
 
-use crate::{BuildingDef, ModelDef, RenderConfig, IniToken, Texture, Skin,
-            AppSettings,
-            read_to_string_buf
-           };
+use crate::cfg::AppSettings;
+
+use crate::data::{BuildingDef, ModelDef, RenderConfig, IniToken, Texture, Skin,
+                  read_to_string_buf
+                 };
 
 
 const FILENAME_MTL: &str = "material.mtl";

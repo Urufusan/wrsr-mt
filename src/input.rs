@@ -8,15 +8,17 @@ use regex::Regex;
 use lazy_static::lazy_static;
 use const_format::concatcp;
 
-use crate::{
+
+use crate::cfg::{AppSettings, APP_SETTINGS};
+
+use crate::data::{
     StockBuilding, RenderConfig, StockBuildingsMap,
     BuildingDef, ModelDef, ModelPatch, MaterialDef, Skin, SkinMaterial, 
     PathPrefix, Texture, IniToken, IniTokenTexture, IniTokenPath,
 
     get_texture_tokens,
     resolve_prefixed_path, read_to_string_buf,
-
-    AppSettings, APP_SETTINGS
+    
     };
 
 
