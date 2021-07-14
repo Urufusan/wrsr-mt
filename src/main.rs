@@ -19,9 +19,7 @@ fn main() {
 /*
     let test = fs::read_to_string(r"z:\wrsr-mg\pack\7L\model.patch").unwrap();
     let res = ModelPatch::from(&test);
-
     println!("{}", res);
-
     return;
 */
 
@@ -82,6 +80,8 @@ fn main() {
         cfg::AppCommand::Nmf(cmd) => {
             match cmd {
                 cfg::NmfCommand::Show(cfg::NmfShowCommand { path, .. }) => {
+                    // TODO: with patch option
+
                     let buf = fs::read(path).expect("Cannot read nmf file at the specified path");
                     let (nmf, rest) = nmf::Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
 

@@ -1,2 +1,2 @@
-# wrsr-mg
-Mod generator for "Workers &amp; Resources: Soviet Republic"
+# wrsr-mt
+Modding tools for "Workers &amp; Resources: Soviet Republic"
