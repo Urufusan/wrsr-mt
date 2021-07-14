@@ -57,13 +57,15 @@ impl fmt::Display for Nmf<'_> {
 
         writeln!(f, "Submaterials: {}", self.submaterials.len())?;
         for (i, sm) in self.submaterials.iter().enumerate() {
-            writeln!(f, "  {}: {}", i, sm)?;
+            writeln!(f, "  {:2}: {:2}", i, sm)?;
         }
 
         writeln!(f, "Objects: {}", self.objects.len())?;
-        Ok(for (i, o) in self.objects.iter().enumerate() {
-            writeln!(f, "  {}: {}", i, o)?;
-        })
+        for (i, o) in self.objects.iter().enumerate() {
+            writeln!(f, "  {:2}: {:2}", i, o)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -102,7 +104,7 @@ impl fmt::Display for Object<'_> {
             write!(f, "[{}] ", idx)?;
         }
         
-        write!(f, "Name: {}, total size: {} bytes", self.name, self.slice.len())
+        write!(f, "Name: {}, real size: {} bytes", self.name, self.slice.len())
     }
 }
 

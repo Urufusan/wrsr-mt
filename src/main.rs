@@ -10,7 +10,7 @@ mod input;
 mod output;
 mod nmf;
 
-use cfg::{APP_SETTINGS, AppCommand, InstallCommand};
+use cfg::APP_SETTINGS;
 
 
 
@@ -26,7 +26,7 @@ fn main() {
 */
 
     match &APP_SETTINGS.command {
-        AppCommand::Install(InstallCommand{ source, destination, is_check }) => {
+        cfg::AppCommand::Install(cfg::InstallCommand{ source, destination, is_check }) => {
 
             println!("Installing from source: {}", source.to_str().unwrap());
             assert!(source.exists(), "Pack source directory does not exist!");
@@ -79,7 +79,20 @@ fn main() {
         },
 
 
-        AppCommand::Nmf(_) => {
+        cfg::AppCommand::Nmf(cmd) => {
+            match cmd {
+                cfg::NmfCommand::Show(cfg::NmfShowCommand { path, .. }) => {
+                    let buf = fs::read(path).expect("Cannot read nmf file at the specified path");
+                    let (nmf, rest) = nmf::Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
+
+                    println!("{}", nmf);
+                    assert_eq!(rest.len(), 0, "Model nmf parsed with leftovers");
+                },
+                cfg::NmfCommand::Patch(_) => {
+                    // TODO
+                    todo!("nmf patch is not implemented")
+                }
+            }
         }
     };
 }

@@ -69,6 +69,17 @@ lazy_static! {
                 .default_value(r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet\workshop_wip"))
             .arg(Arg::with_name("check").long("check").takes_value(false));
 
+        let cmd_nmf = {
+            let cmd_nmf_show = SubCommand::with_name("show")
+                .arg(Arg::with_name("nmf path").required(true));
+
+            let cmd_nmf_patch = SubCommand::with_name("patch")
+                .arg(Arg::with_name("in").required(true));
+
+            SubCommand::with_name("nmf").subcommand(cmd_nmf_show)
+                                        .subcommand(cmd_nmf_patch)
+        };
+
         let m = App::new("wrsr-mt")
             .author("kromgart@gmail.com")
             .version("0.1")
@@ -84,6 +95,7 @@ lazy_static! {
                     .default_value(r"C:\Program Files (x86)\Steam\steamapps\workshop\content\784150")
             )
             .subcommand(cmd_install)
+            .subcommand(cmd_nmf)
             .get_matches();
 
         let path_stock = PathBuf::from(m.value_of("stock").unwrap());
@@ -91,12 +103,9 @@ lazy_static! {
 
 
         let command = { 
-            let mut src = PathBuf::from(std::env::current_dir().unwrap());
-            src.push("pack");
-
+            let run_dir = std::env::current_dir().unwrap();
             match m.subcommand() {
                 ("install", Some(m)) => {
-                    let run_dir = std::env::current_dir().unwrap();
                     let source = run_dir.join(m.value_of("in").unwrap());
                     let destination = run_dir.join(m.value_of("out").unwrap());
                     let is_check = m.is_present("check");
@@ -106,6 +115,22 @@ lazy_static! {
                         destination,
                         is_check
                     })
+                },
+                ("nmf", Some(m)) => {
+                    let command = match m.subcommand() {
+                        ("show", Some(m)) => {
+                            let path = run_dir.join(m.value_of("nmf path").unwrap());
+
+                            NmfCommand::Show(NmfShowCommand {
+                                path,
+                                with_patch: None
+                            })
+                        },
+                        ("patch", _) => todo!("nmf patch"),
+                        (cname, _) => panic!("Unknown nmf subcommand '{}'" , cname)
+                    };
+
+                    AppCommand::Nmf(command)
                 },
                 (cname, _) => panic!("Unknown command '{}'" , cname)
             }
