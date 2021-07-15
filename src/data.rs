@@ -334,7 +334,7 @@ impl ModelPatch {
             ModelPatch::Remove(rems) => {
                 let mut rems: Vec<&str> = rems.iter().map(|r| r.as_str()).collect();
                 let kept = src.objects.iter().filter_map(|o| {
-                    if let Some((i, r)) = rems.iter().enumerate().find(|(_, &r)| r == o.name.as_str().unwrap()) {
+                    if let Some((i, _)) = rems.iter().enumerate().find(|(_, &r)| r == o.name.as_str().unwrap()) {
                         rems.remove(i);
                         None
                     } else {

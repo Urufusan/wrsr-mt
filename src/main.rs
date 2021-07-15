@@ -130,8 +130,9 @@ fn main() {
 
                     let patched = patch.apply(&nmf);
 
-                    let mut file = std::fs::File::create(output).unwrap();
-                    patched.write_bytes(&mut file);
+                    let file = std::fs::File::create(output).unwrap();
+                    let mut writer = std::io::BufWriter::new(file);
+                    patched.write_bytes(&mut writer);
 
                     println!("Done");
                 }
