@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 
 pub enum AppCommand {
     Install(InstallCommand),
-    Nmf(NmfCommand)
+    Nmf(NmfCommand),
 }
 
 pub struct InstallCommand {
@@ -26,9 +26,9 @@ pub struct NmfShowCommand {
 }
 
 pub struct NmfPatchCommand {
-    pub path: PathBuf,
+    pub input: PathBuf,
     pub patch: PathBuf,
-    pub in_place: bool
+    pub output: PathBuf
 }
 
 pub struct AppSettings {
@@ -71,10 +71,13 @@ lazy_static! {
 
         let cmd_nmf = {
             let cmd_nmf_show = SubCommand::with_name("show")
-                .arg(Arg::with_name("nmf path").required(true));
+                .arg(Arg::with_name("nmf-path").required(true))
+                .arg(Arg::with_name("with-patch").long("with-patch").takes_value(true));
 
             let cmd_nmf_patch = SubCommand::with_name("patch")
-                .arg(Arg::with_name("in").required(true));
+                .arg(Arg::with_name("nmf-input").required(true))
+                .arg(Arg::with_name("nmf-patch").required(true))
+                .arg(Arg::with_name("nmf-output").required(true));
 
             SubCommand::with_name("nmf").subcommand(cmd_nmf_show)
                                         .subcommand(cmd_nmf_patch)
@@ -119,20 +122,36 @@ lazy_static! {
                 ("nmf", Some(m)) => {
                     let command = match m.subcommand() {
                         ("show", Some(m)) => {
-                            let path = run_dir.join(m.value_of("nmf path").unwrap());
+                            let path = run_dir.join(m.value_of("nmf-path").unwrap());
+                            let patch = m.value_of("with-patch").map(|p| run_dir.join(p));
 
                             NmfCommand::Show(NmfShowCommand {
                                 path,
-                                with_patch: None
+                                with_patch: patch
                             })
                         },
-                        ("patch", _) => todo!("nmf patch"),
+
+                        ("patch", Some(m)) => {
+                            let input = run_dir.join(m.value_of("nmf-input").unwrap());
+                            let patch = run_dir.join(m.value_of("nmf-patch").unwrap());
+                            let output = run_dir.join(m.value_of("nmf-output").unwrap());
+
+                            NmfCommand::Patch(NmfPatchCommand {
+                                input,
+                                patch,
+                                output
+                            })
+                        },
+
                         (cname, _) => panic!("Unknown nmf subcommand '{}'" , cname)
                     };
 
                     AppCommand::Nmf(command)
                 },
-                (cname, _) => panic!("Unknown command '{}'" , cname)
+                _ => {
+                    println!("Error: missing arguments. Run with '--help' to see usage instructions");
+                    std::process::exit(1);
+                }
             }
         };
 

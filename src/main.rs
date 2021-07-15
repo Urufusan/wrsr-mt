@@ -11,6 +11,7 @@ mod output;
 mod nmf;
 
 use cfg::APP_SETTINGS;
+use nmf::Nmf;
 
 
 
@@ -79,28 +80,60 @@ fn main() {
 
         cfg::AppCommand::Nmf(cmd) => {
             match cmd {
-                cfg::NmfCommand::Show(cfg::NmfShowCommand { path, .. }) => {
-                    // TODO: with patch option
+                cfg::NmfCommand::Show(cfg::NmfShowCommand { path, with_patch }) => {
 
                     let buf = fs::read(path).expect("Cannot read nmf file at the specified path");
-                    let (nmf, rest) = nmf::Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
+                    let (nmf, rest) = Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
+                    if !rest.is_empty() {
+                        println!("WARNING: nmf parsed with leftovers ({} bytes)", rest.len());
+                    };
 
-                    println!("{}\n", nmf);
+                    print_out(&nmf);
 
-                    let unused: Vec<_> = nmf.get_unused_submaterials().map(|sm| &sm.name).collect();
-                    if unused.len() > 0 {
-                        print!("WARNING: has unused materials [ ");
-                        for sm in unused {
-                            print!("{}; ", sm);
-                        }
-                        println!("]\n");
+                    if let Some(p) = with_patch {
+                        let buf_patch = fs::read_to_string(p).expect("Cannot read patch file at the specified path");
+                        println!("Applying patch at {}...", p.to_str().unwrap());
+                        let patch = data::ModelPatch::from(&buf_patch);
+                        println!("{}\n", &patch);
+
+                        let patched = patch.apply(&nmf);
+                        print_out(&patched);
                     }
 
-                    assert_eq!(rest.len(), 0, "Model nmf parsed with leftovers ({} bytes)", rest.len());
+                    //---------------------------------------------------
+                    fn print_out(nmf: &Nmf) {
+                        println!("{}", nmf);
+
+                        let unused: Vec<_> = nmf.get_unused_submaterials()
+                                                .map(|sm| &sm.name)
+                                                .collect();
+
+                        if !unused.is_empty() {
+                            print!("\nWARNING: has unused materials [ ");
+                            for sm in unused {
+                                print!("{}; ", sm);
+                            }
+                            println!("]");
+                        }
+                    }
                 },
-                cfg::NmfCommand::Patch(_) => {
-                    // TODO
-                    todo!("nmf patch is not implemented")
+                cfg::NmfCommand::Patch(cfg::NmfPatchCommand { input, patch, output }) => {
+                    let buf = fs::read(input).expect("Cannot read nmf file at the specified path");
+                    let (nmf, rest) = Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
+                    if !rest.is_empty() {
+                        panic!("Nmf parsed with leftovers ({} bytes)", rest.len());
+                    };
+
+
+                    let buf_patch = fs::read_to_string(patch).expect("Cannot read patch file at the specified path");
+                    let patch = data::ModelPatch::from(&buf_patch);
+
+                    let patched = patch.apply(&nmf);
+
+                    let mut file = std::fs::File::create(output).unwrap();
+                    patched.write_bytes(&mut file);
+
+                    println!("Done");
                 }
             }
         }

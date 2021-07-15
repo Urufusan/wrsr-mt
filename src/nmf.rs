@@ -27,13 +27,13 @@ pub enum NmfHeader {
     B3dmh10
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SubMaterial<'a> {
     pub slice: &'a [u8],
     pub name: CStrName<'a>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CStrName<'a> {
     Valid(&'a str, usize),
     InvalidNotTerminated,
@@ -41,11 +41,11 @@ pub enum CStrName<'a> {
     InvalidUtf8(str::Utf8Error)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Object<'a> {
-    pub slice: &'a [u8],
+    slice: &'a [u8],
     pub name: CStrName<'a>,
-    pub submaterial_idx: Option<u32>
+    pub submaterial_idx: Option<usize>
 }
 
 
@@ -132,6 +132,19 @@ fn parse_u32<'a>(slice: &'a [u8]) -> ParseResult<u32> {
     Ok((u, rest))
 }
 
+#[inline]
+fn write_usize32<T>(i: usize, wr: &mut T)
+where T: std::io::Write
+{
+    assert!(i <= u32::MAX as usize);
+
+    wr.write_all(
+        unsafe {
+            std::mem::transmute::<&usize, &[u8; 4]>(&i)
+        }
+    ).unwrap();
+}
+
 trait FromBytes<'a> {
     fn parse_bytes(b: &'a [u8], nmf_type: NmfHeader) -> ParseResult<'a, Self> where Self: Sized;
 }
@@ -173,13 +186,38 @@ impl<'a> Nmf<'a> {
         Ok((Nmf{ header, submaterials, objects }, rest))
     }
 
+    pub fn write_bytes<T>(&self, wr: &mut T) 
+    where T: std::io::Write {
+        let nmf_len = 8 // header
+                    + 4 // submaterial count
+                    + 4 // objects count
+                    + 4 // nmf length
+                    + 64 * self.submaterials.len()
+                    + self.objects.iter().fold(0_usize, |sz, obj| sz + obj.slice.len());
+        
+        self.header.write_bytes(wr);
+        write_usize32(self.submaterials.len(), wr);
+        write_usize32(self.objects.len(), wr);
+        write_usize32(nmf_len, wr);
+
+        for sm in self.submaterials.iter() {
+            wr.write_all(sm.slice).unwrap();
+            sm.slice.len();
+        }
+
+        for obj in self.objects.iter() {
+            obj.write_bytes(wr, self.header);
+            obj.slice.len();
+        }
+    }
+
     pub fn get_unused_submaterials(&'a self) -> impl Iterator<Item = &'a SubMaterial> + 'a {
         self.submaterials
             .iter()
             .enumerate()
             .filter_map(move |(i, sm)| 
                 if self.objects.iter().all(|o| 
-                    o.submaterial_idx.map(|idx| idx as usize != i).unwrap_or(true)) 
+                    o.submaterial_idx.map(|idx| idx != i).unwrap_or(true)) 
                 {
                     Some(sm)
                 } else {
@@ -193,24 +231,36 @@ impl<'a> Nmf<'a> {
             .enumerate()
             .filter_map(move |(i, sm)| 
                 if self.objects.iter().any(|o| 
-                    o.submaterial_idx.map(|idx| idx as usize == i).unwrap_or(false)) 
+                    o.submaterial_idx.map(|idx| idx == i).unwrap_or(false)) 
                 {
                     Some(sm)
                 } else {
                     None
                 })
-        
     }
 }
 
 
 impl NmfHeader {
+    const FROM_OBJ: &'static [u8] = b"fromObj\0";
+    const B3DMH_10: &'static [u8] = b"B3DMH\010";
+
     fn parse_bytes<'a>(b: &'a [u8]) -> ParseResult<'a, NmfHeader> {
         match chop_subslice(b, 8)? {
-            (b"fromObj\0", rest) => Ok((NmfHeader::FromObj, rest)),
-            (b"B3DMH\010", rest) => Ok((NmfHeader::B3dmh10, rest)),
+            (Self::FROM_OBJ, rest) => Ok((NmfHeader::FromObj, rest)),
+            (Self::B3DMH_10, rest) => Ok((NmfHeader::B3dmh10, rest)),
             _ => Err(NmfError::UnknownHeader)
         }
+    }
+
+    fn write_bytes<T>(&self, wr: &mut T)
+    where T: std::io::Write {
+        let bytes = match self {
+            NmfHeader::FromObj => Self::FROM_OBJ,
+            NmfHeader::B3dmh10 => Self::B3DMH_10
+        };
+
+        wr.write_all(bytes).unwrap();
     }
 }
 
@@ -275,7 +325,7 @@ impl<'a> FromBytes<'a> for Object<'a> {
                 let y = obj_remainder.len();
                 let sm_bytes = obj_remainder.get(y - 4 .. y).unwrap();
                 let (i, _) = parse_u32(sm_bytes)?;
-                Some(i)
+                Some(i as usize)
             },
             NmfHeader::B3dmh10 => None
         };
@@ -284,5 +334,30 @@ impl<'a> FromBytes<'a> for Object<'a> {
         let name = CStrName::from_slice(obj_remainder);
 
         Ok((Object { slice: slice.get(0 .. obj_size).unwrap(), name, submaterial_idx }, rest_of_nmf))
+    }
+}
+
+
+impl Object<'_> {
+    fn write_bytes<T>(&self, wr: &mut T, nmf_type: NmfHeader)
+    where T: std::io::Write
+    {
+
+        // object starts with 4 zero-bytes (0x00_00_00_00) ...
+        wr.write_all(&[0u8; 4]).unwrap();
+
+        match nmf_type {
+            NmfHeader::FromObj => {
+                let sz = self.slice.len();
+                write_usize32(sz, wr);
+                wr.write_all(&self.slice[8 .. sz - 4]).unwrap();
+                write_usize32(self.submaterial_idx.unwrap(), wr);
+            },
+            // these have weird size error:
+            NmfHeader::B3dmh10 => {
+                write_usize32(self.slice.len() + 4, wr);
+                wr.write_all(&self.slice[8 .. ]).unwrap();
+            }
+        };
     }
 }

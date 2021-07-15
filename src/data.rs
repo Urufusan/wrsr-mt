@@ -162,7 +162,7 @@ impl BuildingDef<'_> {
             where T: Iterator<Item = &'b nmf::Object<'a>> {
                 for obj in objs {
                     if let Some(idx) = obj.submaterial_idx {
-                        used[idx as usize].1 = true;
+                        used[idx].1 = true;
                     }
                 };
             }
@@ -312,6 +312,77 @@ impl fmt::Display for ModelDef {
 }
 
 //--------------------------------------------------------
+impl ModelPatch {
+    pub fn apply<'data>(&self, src: &nmf::Nmf<'data>) -> nmf::Nmf<'data> {
+
+        let mut sm_usage: Vec<Option<usize>> = vec![None; src.submaterials.len()];
+        let mut set_used = |obj: &nmf::Object<'data>| if let Some(idx) = obj.submaterial_idx {
+            sm_usage[idx] = Some(idx);
+        };
+
+        // Removing objects
+        let mut objects: Vec<_> = match self {
+            ModelPatch::Keep(keeps) => keeps.iter().map(|k| {
+                let obj = src.objects.iter()
+                    .find(|o| o.name.as_str().unwrap() == k)
+                    .expect(&format!("ModelPatch error: cannot find object to keep - '{}'", k));
+                
+                set_used(&obj);
+                obj.clone()
+            }).collect(),
+
+            ModelPatch::Remove(rems) => {
+                let mut rems: Vec<&str> = rems.iter().map(|r| r.as_str()).collect();
+                let kept = src.objects.iter().filter_map(|o| {
+                    if let Some((i, r)) = rems.iter().enumerate().find(|(_, &r)| r == o.name.as_str().unwrap()) {
+                        rems.remove(i);
+                        None
+                    } else {
+                        set_used(&o);
+                        Some(o.clone())
+                    }
+                }).collect();
+
+                if !rems.is_empty() {
+                    panic!("ModelPatch error: could not delete some objects ({:?})", rems);
+                }
+
+                kept
+            }
+        };
+
+        // Removing unused submaterials
+        let mut offset = 0usize;
+        for new_i in sm_usage.iter_mut() {
+            if let Some(idx) = *new_i {
+                *new_i = Some(idx - offset);
+            } else {
+                offset += 1;
+            }
+        }
+
+        // NOTE: DEBUG
+        // println!("sm usage: {:?}", &sm_usage);
+
+        let submaterials = sm_usage.iter().enumerate().filter_map(|(i, opt)| 
+            opt.map(|_| src.submaterials[i].clone())
+        ).collect();
+
+        // fixing objects' submaterial references
+        for obj in objects.iter_mut() {
+            if let Some(old_idx) = obj.submaterial_idx {
+                obj.submaterial_idx = sm_usage[old_idx];
+            }
+        }
+        
+        nmf::Nmf {
+            header: src.header,
+            submaterials,
+            objects
+        }
+    }
+}
+
 impl fmt::Display for ModelPatch {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let v = match self {
