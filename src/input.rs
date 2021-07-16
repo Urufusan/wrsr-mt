@@ -89,7 +89,7 @@ fn push_buildings<'stock>(pathbuf: &mut PathBuf,
 
         for subdir in get_subdirs(&pathbuf) {
             let dir_name = subdir.file_name();
-            if dir_name.to_str().unwrap().starts_with("_") {
+            if dir_name.to_str().unwrap().starts_with(&['_', '.'][..]) {
                 continue;
             }
 
@@ -171,7 +171,7 @@ fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hma
     // -----------------------------
 
     // NOTE: Debug
-    println!("{}", &def);
+    //println!("{}", &def);
 
     def.validate();
     def

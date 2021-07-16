@@ -20,5 +20,5 @@ clap = { version = "2.33.3", default-features = false }
 
 [profile.release]
 lto = true
-codegen_units = 1
+codegen-units = 1
 #strip = "symbols"

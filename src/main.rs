@@ -23,6 +23,11 @@ fn main() {
     println!("{}", res);
     return;
 */
+    println!("Stock game files:   {}", APP_SETTINGS.path_stock.to_str().unwrap());
+    assert!(APP_SETTINGS.path_stock.exists(), "Stock game files directory does not exist.");
+
+    println!("Workshop directory: {}", APP_SETTINGS.path_workshop.to_str().unwrap());
+    assert!(APP_SETTINGS.path_workshop.exists(), "Workshop directory does not exist.");
 
     match &APP_SETTINGS.command {
         cfg::AppCommand::Install(cfg::InstallCommand{ source, destination, is_check }) => {
@@ -33,13 +38,6 @@ fn main() {
             println!("Installing to:          {}", destination.to_str().unwrap());
             assert!(destination.exists(), "Destination directory does not exist.");
             
-            println!("Stock game files:       {}", APP_SETTINGS.path_stock.to_str().unwrap());
-            assert!(APP_SETTINGS.path_stock.exists(), "Stock game files directory does not exist.");
-
-            println!("Workshop directory:     {}", APP_SETTINGS.path_workshop.to_str().unwrap());
-            assert!(APP_SETTINGS.path_workshop.exists(), "Workshop directory does not exist.");
-
-
             let mut pathbuf: PathBuf = APP_SETTINGS.path_stock.clone();
             pathbuf.push("buildings");
             pathbuf.push("buildingtypes.ini");
@@ -117,6 +115,7 @@ fn main() {
                         }
                     }
                 },
+                
                 cfg::NmfCommand::Patch(cfg::NmfPatchCommand { input, patch, output }) => {
                     let buf = fs::read(input).expect("Cannot read nmf file at the specified path");
                     let (nmf, rest) = Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the model nmf");
@@ -134,7 +133,7 @@ fn main() {
                     let mut writer = std::io::BufWriter::new(file);
                     patched.write_bytes(&mut writer);
 
-                    println!("Done");
+                    println!("OK");
                 }
             }
         }
