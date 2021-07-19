@@ -161,8 +161,8 @@ impl BuildingDef<'_> {
             fn set_used<'a, 'b, T>(used: &mut Vec<(&'b nmf::SubMaterial<'a>, bool)>, objs: T)
             where T: Iterator<Item = &'b nmf::Object<'a>> {
                 for obj in objs {
-                    if let Some(idx) = obj.submaterial_idx {
-                        used[idx].1 = true;
+                    for idx in obj.submaterials.iter() {
+                        used[*idx].1 = true;
                     }
                 };
             }
@@ -316,7 +316,7 @@ impl ModelPatch {
     pub fn apply<'data>(&self, src: &nmf::Nmf<'data>) -> nmf::Nmf<'data> {
 
         let mut sm_usage: Vec<Option<usize>> = vec![None; src.submaterials.len()];
-        let mut set_used = |obj: &nmf::Object<'data>| if let Some(idx) = obj.submaterial_idx {
+        let mut set_used = |obj: &nmf::Object<'data>| for &idx in obj.submaterials.iter() {
             sm_usage[idx] = Some(idx);
         };
 
@@ -370,8 +370,9 @@ impl ModelPatch {
 
         // fixing objects' submaterial references
         for obj in objects.iter_mut() {
-            if let Some(old_idx) = obj.submaterial_idx {
-                obj.submaterial_idx = sm_usage[old_idx];
+            for old_idx in obj.submaterials.iter_mut() {
+                let new_idx = sm_usage[*old_idx].unwrap();
+                *old_idx = new_idx;
             }
         }
         

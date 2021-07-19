@@ -1,2 +1,2 @@
 #!/bin/bash
-clear && cargo run -- --stock "z:\wrsr-mg\media_soviet" --workshop "z:\wrsr-mg\mods" nmf show "$@"
+clear && cargo run -- --stock "z:\wrsr-mt\media_soviet" --workshop "z:\wrsr-mt\mods" nmf show "$@"

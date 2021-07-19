@@ -45,7 +45,7 @@ pub enum CStrName<'a> {
 pub struct Object<'a> {
     slice: &'a [u8],
     pub name: CStrName<'a>,
-    pub submaterial_idx: Option<usize>
+    pub submaterials: Vec<usize>
 }
 
 
@@ -100,11 +100,24 @@ impl fmt::Display for SubMaterial<'_> {
 
 impl fmt::Display for Object<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        if let Some(idx) = self.submaterial_idx {
-            write!(f, "submtl: {:2},  ", idx)?;
-        }
+        write!(f, "submtl: ")?;
+
+        if self.submaterials.is_empty() {
+            write!(f, "<NONE>")?;
+        } else {
+            write!(f, "[")?;
+            let mut i = self.submaterials.iter();
+            let fst = i.next().unwrap();
+            write!(f, "{}", fst)?;
+
+            while let Some(x) = i.next() {
+                write!(f, ", {}", x)?;
+            }
+
+            write!(f, "]")?;
+        };
         
-        write!(f, "size: {:7},  name: {}", self.slice.len(), self.name)
+        write!(f, ", size: {:7},  name: {}", self.slice.len(), self.name)
     }
 }
 
@@ -146,14 +159,16 @@ where T: std::io::Write
 }
 
 trait FromBytes<'a> {
-    fn parse_bytes(b: &'a [u8], nmf_type: NmfHeader) -> ParseResult<'a, Self> where Self: Sized;
+    fn parse_bytes(b: &'a [u8]) -> ParseResult<'a, Self> where Self: Sized;
 }
 
-fn parse_vec<'a, T: FromBytes<'a>>(mut slice: &'a [u8], count: usize, nmf_type: NmfHeader) -> ParseResult<Vec<T>> {
+fn parse_vec<'a, T: FromBytes<'a>>(mut slice: &'a [u8], count: usize) -> ParseResult<Vec<T>> {
     let mut result = Vec::<T>::with_capacity(count);
 
-    for _ in 0 .. count {
-        let (sm, r) = T::parse_bytes(slice, nmf_type)?;
+    for _i in 0 .. count {
+        // NOTE: debug
+        // println!("parse vec {}", _i);
+        let (sm, r) = T::parse_bytes(slice)?;
         result.push(sm);
         slice = r;
     }
@@ -171,15 +186,17 @@ impl<'a> Nmf<'a> {
         let (header, rest) = NmfHeader::parse_bytes(slice)?;
 
         let (submat_count, rest) = parse_u32(rest)?;
+        assert!(submat_count > 0);
         let (obj_count, rest)    = parse_u32(rest)?;
+        assert!(obj_count > 0);
         let (nmf_length, rest)   = parse_u32(rest)?;
 
         if (nmf_length as usize) != slice.len() {
             return Err(NmfError::SizeMismatch);
         }
 
-        let (submaterials, rest) = parse_vec::<SubMaterial>(rest, submat_count as usize, header)?;
-        let (objects, rest) = parse_vec::<Object>(rest, obj_count as usize, header)?;
+        let (submaterials, rest) = parse_vec::<SubMaterial>(rest, submat_count as usize)?;
+        let (objects, rest) = parse_vec::<Object>(rest, obj_count as usize)?;
 
 
 
@@ -217,7 +234,7 @@ impl<'a> Nmf<'a> {
             .enumerate()
             .filter_map(move |(i, sm)| 
                 if self.objects.iter().all(|o| 
-                    o.submaterial_idx.map(|idx| idx != i).unwrap_or(true)) 
+                    o.submaterials.iter().all(|&idx| idx != i)) 
                 {
                     Some(sm)
                 } else {
@@ -231,7 +248,7 @@ impl<'a> Nmf<'a> {
             .enumerate()
             .filter_map(move |(i, sm)| 
                 if self.objects.iter().any(|o| 
-                    o.submaterial_idx.map(|idx| idx == i).unwrap_or(false)) 
+                    o.submaterials.iter().any(|&idx| idx == i)) 
                 {
                     Some(sm)
                 } else {
@@ -292,7 +309,7 @@ impl<'a> CStrName<'a> {
 }
 
 impl<'a> FromBytes<'a> for SubMaterial<'a> {
-    fn parse_bytes(slice: &'a [u8], _: NmfHeader) -> ParseResult<'a, SubMaterial> {
+    fn parse_bytes(slice: &'a [u8]) -> ParseResult<'a, SubMaterial> {
         let (slice, rest) = chop_subslice(slice, 64)?;
         let name = CStrName::from_slice(slice);
         Ok((SubMaterial { slice, name }, rest))
@@ -300,40 +317,80 @@ impl<'a> FromBytes<'a> for SubMaterial<'a> {
 }
 
 impl<'a> FromBytes<'a> for Object<'a> {
-    fn parse_bytes(slice: &'a [u8], nmf_type: NmfHeader) -> ParseResult<Object<'a>> {
+    fn parse_bytes(slice: &'a [u8]) -> ParseResult<Object<'a>> {
 
         // object starts with 4 zero-bytes (0x00_00_00_00) ...
-        let (z, rest) = parse_u32(slice)?;
+        let (z, obj_rest) = parse_u32(slice)?;
         if z != 0 {
             return Err(NmfError::ObjectZeroHeadMissing)
         }
 
-        let (obj_size, rest) = {
-            let (x, rest) = parse_u32(rest)?;
-            let x = match nmf_type {
-                NmfHeader::FromObj => x,
-                // these have weird size error:
-                NmfHeader::B3dmh10 => x - 4
+        let (obj_size1, obj_rest) = parse_u32(obj_rest)?;
+
+        let (name_slice, obj_rest) = chop_subslice(obj_rest, 64)?;
+        let name = CStrName::from_slice(name_slice);
+
+        // Next bytes after the object name:
+        //
+        // (4) magic 0_u32
+        // (128) matrix-like bytes (f32)
+        // (24) min-max coords (2 x 3 x f32)
+        // (4) magic 1_u32
+        // (4) additional size (= main size - 228)
+        
+        let (_, obj_rest) = chop_subslice(obj_rest, 160)?;
+        let (obj_size2, _) = parse_u32(obj_rest)?;
+
+        let obj_size = (obj_size1 + obj_size1 - obj_size2 - 232) as usize;
+        /*
+        // keep this for now
+        let obj_size = match nmf_type{
+            NmfHeader::FromObj => obj_size1,
+            NmfHeader::B3dmh10 => obj_size1 + obj_size1 - obj_size2 - 232
+        } as usize;
+        */
+
+        let (obj_slice, nmf_rest) = chop_subslice(slice, obj_size)?;
+
+        // (4) verts count
+        // (4) indices count
+        // (4) submaterials count
+        // (12) magic bytes 00 00 00 00 3A 01 04 00 00 00 00 00
+
+        // Then variable-length arrays of data:
+        //
+        // Indices (2 bytes each - u16)
+        // Vertices (12 bytes each - 3xf32)
+        // smth normals-related (vertices count * 36)
+        // UV map (for each vert 2xf32)
+        // some weird geometry
+
+        // Then trailing submaterials-usage bytes:
+        // 12 bytes x "submaterials count"
+        // 12 bytes are u32(indices start?) u32(indices end) u32(submaterial index)
+
+        let submaterials = {
+            let sm_count = Self::get_submaterials(slice)?;
+            assert!(sm_count > 0, "Object uses 0 submaterials");
+            let mut submaterials = Vec::with_capacity(sm_count);
+
+            let sm_tail = {
+                let tail_start = obj_slice.len() - 12 * sm_count;
+                &obj_slice[tail_start .. ]
             };
-            (x as usize, rest)
+
+            let mut idx_offset = 8;
+
+            for _ in 0 .. sm_count {
+                let (sm_idx, _) = parse_u32(&sm_tail[idx_offset .. ])?;
+                idx_offset += 12;
+                submaterials.push(sm_idx as usize);
+            }
+
+            submaterials
         };
 
-        let (obj_remainder, rest_of_nmf) = chop_subslice(rest, obj_size - 8)?;
-
-        let submaterial_idx = match nmf_type {
-            NmfHeader::FromObj => {
-                let y = obj_remainder.len();
-                let sm_bytes = obj_remainder.get(y - 4 .. y).unwrap();
-                let (i, _) = parse_u32(sm_bytes)?;
-                Some(i as usize)
-            },
-            NmfHeader::B3dmh10 => None
-        };
-
-        // TODO: get other object data from the slice
-        let name = CStrName::from_slice(obj_remainder);
-
-        Ok((Object { slice: slice.get(0 .. obj_size).unwrap(), name, submaterial_idx }, rest_of_nmf))
+        Ok((Object { slice: obj_slice, name, submaterials }, nmf_rest))
     }
 }
 
@@ -342,22 +399,39 @@ impl Object<'_> {
     fn write_bytes<T>(&self, wr: &mut T, nmf_type: NmfHeader)
     where T: std::io::Write
     {
-
         // object starts with 4 zero-bytes (0x00_00_00_00) ...
         wr.write_all(&[0u8; 4]).unwrap();
 
-        match nmf_type {
+        let len = match nmf_type {
             NmfHeader::FromObj => {
-                let sz = self.slice.len();
-                write_usize32(sz, wr);
-                wr.write_all(&self.slice[8 .. sz - 4]).unwrap();
-                write_usize32(self.submaterial_idx.unwrap(), wr);
+                self.slice.len()
             },
             // these have weird size error:
             NmfHeader::B3dmh10 => {
-                write_usize32(self.slice.len() + 4, wr);
-                wr.write_all(&self.slice[8 .. ]).unwrap();
+                self.slice.len() + 4
             }
         };
+
+        write_usize32(len, wr);
+        wr.write_all(&self.slice[8 .. ]).unwrap();
+    }
+
+    pub fn count_vertices(&self) -> Result<usize, NmfError> {
+        let (c, _rest) = parse_u32(&self.slice[236..])?;
+        Ok(c as usize)
+    }
+
+    pub fn count_indices(&self) -> Result<usize, NmfError> {
+        let (c, _rest) = parse_u32(&self.slice[240..])?;
+        Ok(c as usize)
+    }
+
+    fn get_submaterials(slice: &[u8]) -> Result<usize, NmfError> {
+        let (c, _rest) = parse_u32(&slice[244..])?;
+        Ok(c as usize)
+    }
+
+    pub fn count_submaterials(&self) -> Result<usize, NmfError> {
+        Self::get_submaterials(&self.slice[244..])
     }
 }
