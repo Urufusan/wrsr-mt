@@ -1,5 +1,6 @@
 //use std::env;
 use std::fs::{self, File};
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::io::Read;
 use std::convert::TryInto;
@@ -7,7 +8,6 @@ use std::convert::TryInto;
 use regex::Regex;
 use lazy_static::lazy_static;
 use const_format::concatcp;
-
 
 use crate::cfg::{AppSettings, APP_SETTINGS};
 
@@ -25,26 +25,66 @@ use crate::data::{
 #[derive(Debug)]
 enum SourceType<'a> {
     Stock(&'a str),
-    Mod(PathBuf),
+    Mod(PathBuf)
+}
+
+#[derive(Debug)]
+pub enum SourceError {
+    TooManySources(usize),
+    SourceType(PathBuf),
+    BuildingDef(PathBuf, BuildingDefError),
+}
+
+#[derive(Debug)]
+pub enum BuildingDefError {
+    StockBuildingMissing(String)
+    //ModBuilding(String, 
+}
+
+impl fmt::Display for SourceError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SourceError::TooManySources(n) => write!(f, "There are too many source objects ({}). Max supported is {}.", n, AppSettings::MAX_BUILDINGS),
+            SourceError::SourceType(path) => write!(f, "Cannot parse building.source {}", path.to_str().unwrap()),
+            SourceError::BuildingDef(path, e) => write!(f, "Cannot parse BuildingDef at '{}': {}", path.to_str().unwrap(), e)
+        }
+    }
+}
+
+impl fmt::Display for BuildingDefError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BuildingDefError::StockBuildingMissing(key) => write!(f, "Cannot find stock building '{}'", key)
+        }
+    }
 }
 
 
-pub(crate) fn read_validate_sources<'stock>(src: &Path, stock_buildings: &mut StockBuildingsMap<'stock>) -> Vec<BuildingDef<'stock>> {
+
+pub fn read_validate_sources<'stock>(src: &Path, stock_buildings: &mut StockBuildingsMap<'stock>) -> Result<Vec<BuildingDef<'stock>>, Vec<SourceError>> {
 
     let mut buf_sources = String::with_capacity(512);
     let mut pathbuf = src.to_path_buf();
     let mut data: Vec<BuildingDef<'stock>> = Vec::with_capacity(1000);
+    let mut errors = Vec::<SourceError>::with_capacity(0);
 
-    push_buildings(&mut pathbuf, &mut data, &mut buf_sources, stock_buildings, &mut String::with_capacity(10));
+    push_buildings(&mut pathbuf, &mut data, &mut errors, &mut buf_sources, stock_buildings, &mut String::with_capacity(20));
 
-    assert!(data.len() <= AppSettings::MAX_BUILDINGS);
+    if data.len() > AppSettings::MAX_BUILDINGS {
+        errors.push(SourceError::TooManySources(data.len()));
+    }
 
-    data
+    if errors.is_empty() {
+        Ok(data)
+    } else {
+        Err(errors)
+    }
 }
 
 
 fn push_buildings<'stock>(pathbuf: &mut PathBuf, 
                           data: &mut Vec<BuildingDef<'stock>>,
+                          errors: &mut Vec<SourceError>,
                           buf_sources: &mut String,
                           stock_buildings: &mut StockBuildingsMap<'stock>,
                           indent: &mut String
@@ -55,31 +95,42 @@ fn push_buildings<'stock>(pathbuf: &mut PathBuf,
         static ref RX_SOURCE_MOD: Regex = Regex::new(r"^[0-9]{10}\\[^\s\r\n]+").unwrap();
     }
 
-    // NOTE: Debug
-    // println!("+++ {:?} +++", &pathbuf);
-
     pathbuf.push("building.source");
 
     if pathbuf.exists() {
         // leaf dir (building)
+        println!("{}* {}", indent, pathbuf.parent().unwrap().file_name().unwrap().to_str().unwrap());
 
         buf_sources.clear();
         File::open(&pathbuf).unwrap().read_to_string(buf_sources).unwrap();
-        pathbuf.pop(); //pop .source
 
-        println!("{}* {}", indent, pathbuf.file_name().unwrap().to_str().unwrap());
-
-        let src_type: SourceType = {
+        let src_type: Option<SourceType> = {
             if let Some(src_stock) = RX_SOURCE_STOCK.captures(&buf_sources) {
-                SourceType::Stock(src_stock.get(1).unwrap().as_str())
+                Some(SourceType::Stock(
+                    src_stock.get(1).unwrap().as_str()
+                ))
             } else if let Some(src_mod) = RX_SOURCE_MOD.find(&buf_sources) {
-                SourceType::Mod(APP_SETTINGS.path_workshop.join(src_mod.as_str()))
+                Some(SourceType::Mod(
+                    APP_SETTINGS.path_workshop.join(src_mod.as_str())
+                ))
             } else {
-                panic!("Cannot parse building source ({:?})", &buf_sources);
+                None
             }
         };
 
-        data.push(source_to_def(pathbuf, src_type, stock_buildings));
+        match src_type {
+            None => {
+                errors.push(SourceError::SourceType(pathbuf.clone()));
+                pathbuf.pop();
+            },
+            Some(typ) => {
+                pathbuf.pop();
+                match source_to_def(pathbuf, typ, stock_buildings) {
+                    Ok(b) => data.push(b),
+                    Err(e) => errors.push(SourceError::BuildingDef(pathbuf.clone(), e))
+                }
+            }
+        }
 
         return;
     } else {
@@ -97,7 +148,7 @@ fn push_buildings<'stock>(pathbuf: &mut PathBuf,
             indent.push_str("  ");
             pathbuf.push(dir_name);
 
-            push_buildings(pathbuf, data, buf_sources, stock_buildings, indent);
+            push_buildings(pathbuf, data, errors, buf_sources, stock_buildings, indent);
 
             pathbuf.pop();
             indent.truncate(old_indent);
@@ -113,20 +164,20 @@ fn get_subdirs(path: &PathBuf) -> impl Iterator<Item=fs::DirEntry>
         .filter(|x| x.file_type().unwrap().is_dir())
 }
 
-
-fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hmap: &'map mut StockBuildingsMap<'ini>) -> BuildingDef<'ini> {
+fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hmap: &'map mut StockBuildingsMap<'ini>) -> Result<BuildingDef<'ini>, BuildingDefError> {
     let mut def = match source_type {
         SourceType::Stock(key) => {
-            get_stock_building(&key, hmap).unwrap()
+            get_stock_building(&key, hmap)?
         },
         SourceType::Mod(mut bld_dir_path) => {
             bld_dir_path.push("renderconfig.ini");
-            parse_ini_to_def(RenderConfig::Mod(bld_dir_path))
+            parse_ini_to_def(RenderConfig::Mod(bld_dir_path))?
         }
     };
-    
 
-    // TODO: overriding with custom files (if they exist in dir):
+    // TODO: continue other errors
+
+    // overriding with custom files (if they exist in dir):
     // ---------------------------
     
     pathbuf.push("building.ini");
@@ -174,24 +225,27 @@ fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hma
     //println!("{}", &def);
 
     def.validate();
-    def
+
+    Ok(def)
 }
 
 
-fn get_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildingsMap<'ini>) -> Option<BuildingDef<'ini>> {
+fn get_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildingsMap<'ini>) -> Result<BuildingDef<'ini>, BuildingDefError> {
     if let Some(mref) = hmap.get_mut(key) {
         match mref {
-            (_, StockBuilding::Parsed(ref x)) => Some(x.clone()),
+            (_, StockBuilding::Parsed(ref x)) => Ok(x.clone()),
             (k, StockBuilding::Unparsed(y)) => {
-                let x = parse_ini_to_def(RenderConfig::Stock { key: k, data: y }); 
+                let x = parse_ini_to_def(RenderConfig::Stock { key: k, data: y })?; 
                 *mref = (k, StockBuilding::Parsed(x.clone()));
-                Some(x)
+                Ok(x)
             }
         }
-    } else { None }
+    } else {
+        Err(BuildingDefError::StockBuildingMissing(String::from(key)))
+    }
 }
 
-fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini> {
+fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> Result<BuildingDef<'ini>, BuildingDefError> {
 
     fn mk_tokenpath_rx(token: &str) -> Regex {
         Regex::new(&format!(r"(?m)^\s?{}\s+?{}{}", token, AppSettings::SRX_PATH, AppSettings::SRX_EOL))
@@ -237,11 +291,11 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini
     let material = MaterialDef::new(grep_ini_token(&RX_MATERIAL, render_source, root_path).unwrap());
     let material_emissive = grep_ini_token(&RX_MATERIAL_E, render_source, root_path).map(|x| MaterialDef::new(x));
 
-    BuildingDef { 
+    Ok(BuildingDef { 
         render_config, building_ini, imagegui,
         model, model_lod1, model_lod2, model_emissive, 
         material, material_emissive, skins: Vec::with_capacity(0)
-    }
+    })
 }
 
 

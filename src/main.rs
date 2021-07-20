@@ -4,25 +4,18 @@ use std::collections::HashMap;
 
 use regex::Regex;
 
+mod nmf;
 mod cfg;
 mod data;
 mod input;
 mod output;
-mod nmf;
 
 use cfg::APP_SETTINGS;
 use nmf::Nmf;
 
 
-
-
 fn main() {
-/*
-    let test = fs::read_to_string(r"z:\wrsr-mg\pack\7L\model.patch").unwrap();
-    let res = ModelPatch::from(&test);
-    println!("{}", res);
-    return;
-*/
+
     println!("Stock game files:   {}", APP_SETTINGS.path_stock.to_str().unwrap());
     assert!(APP_SETTINGS.path_stock.exists(), "Stock game files directory does not exist.");
 
@@ -42,16 +35,17 @@ fn main() {
             pathbuf.push("buildings");
             pathbuf.push("buildingtypes.ini");
 
-            let stock_buildings_ini = fs::read_to_string(&pathbuf).unwrap();
+            let stock_buildings_ini = fs::read_to_string(&pathbuf).expect("Stock buildings: cannot read buildingtypes.ini");
             let mut stock_buildings = { 
                 let mut mp = HashMap::with_capacity(512);
-                let rx = Regex::new(r"\$TYPE ([_[:alnum:]]+?)\r\n((?s).+?\n END\r\n)").unwrap();
+                let rx = Regex::new(r"\$TYPE ([_[:alnum:]]+?)\r\n((?s).+?\n END\r\n)").expect("Stock buildings: cannot create parsing regex");
 
                 for caps in rx.captures_iter(&stock_buildings_ini) {
                     let key = caps.get(1).unwrap().as_str();
+                    let raw_value = caps.get(2).unwrap().as_str();
                     mp.insert(
                         key, 
-                        (key, data::StockBuilding::Unparsed(caps.get(2).unwrap().as_str()))
+                        (key, data::StockBuilding::Unparsed(raw_value))
                     );
                 }
                 
@@ -61,17 +55,29 @@ fn main() {
             println!("Found {} stock buildings", stock_buildings.len());
 
             pathbuf.push(source);
-            println!("Reading sources...");
-            let data = input::read_validate_sources(pathbuf.as_path(), &mut stock_buildings);
-            println!("Sources verified.");
+            println!("Reading modpack sources...");
 
-            if *is_check {
-                println!("Check complete.");
-            } else {
-                println!("Creating mods...");
-                pathbuf.push(destination);
+            match input::read_validate_sources(pathbuf.as_path(), &mut stock_buildings) {
+                Ok(data) => {
+                    println!("Modpack sources verified.");
 
-                output::generate_mods(pathbuf.as_path(), data);
+                    if *is_check {
+                        println!("Check complete.");
+                    } else {
+                        println!("Creating mods...");
+                        pathbuf.push(destination);
+
+                        output::generate_mods(pathbuf.as_path(), data);
+                    }
+                },
+                Err(errs) => {
+                    eprintln!("The following errors were encountered when processing modpack sources:");
+                    for e in errs {
+                        eprintln!("{}", e);
+                    }
+
+                    std::process::exit(1);
+                }
             }
         },
 

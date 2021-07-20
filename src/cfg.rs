@@ -149,7 +149,7 @@ lazy_static! {
                     AppCommand::Nmf(command)
                 },
                 _ => {
-                    println!("Error: missing arguments. Run with '--help' to see usage instructions");
+                    eprintln!("Error: missing arguments. Run with '--help' to see usage instructions");
                     std::process::exit(1);
                 }
             }
