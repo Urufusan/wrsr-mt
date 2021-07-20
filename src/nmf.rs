@@ -36,7 +36,7 @@ pub struct SubMaterial<'a> {
 #[derive(Debug, Clone)]
 pub enum CStrName<'a> {
     Valid(&'a str, usize),
-    InvalidNotTerminated,
+//    InvalidNotTerminated,
     InvalidEmpty,
     InvalidUtf8(str::Utf8Error)
 }
@@ -81,9 +81,8 @@ impl fmt::Display for NmfHeader {
 impl fmt::Display for CStrName<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            //CStrName::Valid(s, n) => write!(f, "\"{}\" ({} bytes)", s, n),
             CStrName::Valid(s, _) => write!(f, "\"{}\"", s),
-            CStrName::InvalidNotTerminated => write!(f, "Invalid (not terminated)"),
+            //CStrName::InvalidNotTerminated => write!(f, "Invalid (not terminated)"),
             CStrName::InvalidEmpty => write!(f, "Invalid (empty)"),
             CStrName::InvalidUtf8(e) => write!(f, "Invalid (utf-8 error: {})", e)
         }
@@ -284,18 +283,17 @@ impl NmfHeader {
 
 impl<'a> CStrName<'a> {
     fn from_slice(slice: &'a [u8]) -> CStrName<'a> {
-        let len = slice.iter().position(|&x| x == 0);
-        match len {
-            Some(0) => CStrName::InvalidEmpty,
-            Some(n) => {
-                // INVARIANT: 0 < n < slice length
-                let parsed = str::from_utf8(unsafe { slice.get_unchecked(0 .. n) });
-                match parsed {
-                    Ok(s) => CStrName::Valid(s, n + 1),
-                    Err(e) => CStrName::InvalidUtf8(e)
-                }
-            },
-            None => CStrName::InvalidNotTerminated,
+        let len = slice.iter().position(|&x| x == 0).unwrap_or(slice.len());
+
+        if len == 0 {
+            CStrName::InvalidEmpty
+        } else {
+            // INVARIANT: 0 < len <= slice length
+            let parsed = str::from_utf8(unsafe { slice.get_unchecked(0 .. len) });
+            match parsed {
+                Ok(s) => CStrName::Valid(s, len),
+                Err(e) => CStrName::InvalidUtf8(e)
+            }
         }
     }
 
@@ -396,24 +394,22 @@ impl<'a> FromBytes<'a> for Object<'a> {
 
 
 impl Object<'_> {
+    // NOTE: this only overrides submaterials usage, the rest is dumped as original slice
     fn write_bytes<T>(&self, wr: &mut T, nmf_type: NmfHeader)
     where T: std::io::Write
     {
-        // object starts with 4 zero-bytes (0x00_00_00_00) ...
-        wr.write_all(&[0u8; 4]).unwrap();
+        let sm_count = self.submaterials.len();
+        let mut sm_start = self.slice.len() - 12 * sm_count;
 
-        let len = match nmf_type {
-            NmfHeader::FromObj => {
-                self.slice.len()
-            },
-            // these have weird size error:
-            NmfHeader::B3dmh10 => {
-                self.slice.len() + 4
-            }
-        };
+        wr.write_all(&self.slice[0 .. sm_start]).unwrap();
 
-        write_usize32(len, wr);
-        wr.write_all(&self.slice[8 .. ]).unwrap();
+        for sm in self.submaterials.iter() {
+            // boundaries
+            wr.write_all(&self.slice[sm_start .. sm_start + 8]);
+            // submaterial index
+            write_usize32(*sm, wr);
+            sm_start += 12;
+        }
     }
 
     pub fn count_vertices(&self) -> Result<usize, NmfError> {

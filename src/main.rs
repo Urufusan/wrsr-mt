@@ -129,6 +129,9 @@ fn main() {
 
                     let patched = patch.apply(&nmf);
 
+                    // NOTE: DEBUG
+                    //println!("{}", &patched);
+
                     let file = std::fs::File::create(output).unwrap();
                     let mut writer = std::io::BufWriter::new(file);
                     patched.write_bytes(&mut writer);
