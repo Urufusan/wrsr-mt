@@ -8,9 +8,11 @@ use std::ops::Range;
 
 use crate::cfg::AppSettings;
 
-use crate::data::{BuildingDef, ModelDef, RenderConfig, IniToken, Texture, Skin,
+use crate::data::{BuildingDef, ModelDef, ModelPatch, RenderConfig, IniToken, Texture, Skin,
                   read_to_string_buf
                  };
+
+use crate::nmf::Nmf;                 
 
 
 const FILENAME_MTL: &str = "material.mtl";
@@ -172,13 +174,18 @@ fn install_building_files<'bld, 'stock>(
     assets_map: &mut AssetsMap<'bld>) -> Option<(&'bld Vec<Skin>, String)>
 {
     copy_file(&bld.building_ini, pathbuf, "building.ini");
-    copy_file(&bld.bbox, pathbuf, "building.bbox");
-    copy_file_opt(&bld.fire, pathbuf, "building.fire");
     copy_file_opt(&bld.imagegui, pathbuf, "imagegui.png");
 
     let mut copy_model = |model_def: &'bld ModelDef| -> String { 
-        let x = copy_asset_md5(&model_def.ini_token.value, pathbuf_models, buf_assets, assets_map);
-        format!("../../nmf/{}", x)
+        let mut result = String::with_capacity(64);
+        result.push_str("../../nmf/");
+        match model_def.patch {
+            None => result.push_str(copy_asset_md5(&model_def.ini_token.value, pathbuf_models, buf_assets, assets_map)),
+            // NOTE: patched models' md5s are not cached (should not happed often though)
+            Some(ref p) => result.push_str(&copy_patched_nmf(&model_def.ini_token.value, p, pathbuf_models, buf_assets))
+        };
+        
+        result
     };
 
     let new_model = (bld.model.ini_token.range.clone(), copy_model(&bld.model));
@@ -317,6 +324,48 @@ fn copy_asset_md5<'bld, 'map>(
     })
 }
 
+fn copy_patched_nmf<'bld>(
+    src_file: &'bld PathBuf, 
+    patch: &ModelPatch,
+    dest_dir: &mut PathBuf, 
+    buf: &mut Vec<u8>) -> String
+{
+    use std::convert::TryInto;
+    buf.clear();
+    
+    let mut file = fs::File::open(src_file).unwrap();
+    let meta = file.metadata().unwrap();
+    let sz: usize = meta.len().try_into().unwrap();
+    if sz > buf.len() {
+        buf.reserve(sz);
+    }
+
+    file.read_to_end(buf).unwrap();
+
+    let (nmf, rest) = Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the nmf");
+    if !rest.is_empty() {
+        panic!("Nmf parsed with leftovers ({} bytes)", rest.len());
+    };
+
+    let patched = patch.apply(&nmf);
+    // NOTE: DEBUG
+    //println!("{}", &patched);
+
+    let mut out_buf = Vec::with_capacity(patched.calculated_len());
+    patched.write_bytes(&mut out_buf);
+
+    let dig = md5::compute(out_buf.as_mut_slice());
+    let ext = src_file.extension().unwrap().to_str().unwrap();
+    let filename = format!("{:x}.{}", dig, ext);
+
+    dest_dir.push(&filename);
+    if !dest_dir.exists() {
+        fs::write(&dest_dir, &out_buf).unwrap();
+    }
+    dest_dir.pop();
+
+    filename
+}
 
 //--------------------------------------
 fn write_renderconfig<'stock>(

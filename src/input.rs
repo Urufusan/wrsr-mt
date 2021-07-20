@@ -193,43 +193,41 @@ fn get_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildin
 
 fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini> {
 
-    lazy_static! {
-        static ref RX_MODEL:      Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL\s+?",            AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
-        static ref RX_MODEL_LOD1: Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL_LOD\s+?",        AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
-        static ref RX_MODEL_LOD2: Regex = Regex::new(concatcp!(r"(?m)^\s?MODEL_LOD2\s+?",       AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
-        static ref RX_MODEL_E:    Regex = Regex::new(concatcp!(r"(?m)^\s?MODELEMISSIVE\s+?",    AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
+    fn mk_tokenpath_rx(token: &str) -> Regex {
+        Regex::new(&format!(r"(?m)^\s?{}\s+?{}{}", token, AppSettings::SRX_PATH, AppSettings::SRX_EOL))
+        .unwrap()
+    }
 
-        static ref RX_MATERIAL:   Regex = Regex::new(concatcp!(r"(?m)^\s?MATERIAL\s+?",         AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
-        static ref RX_MATERIAL_E: Regex = Regex::new(concatcp!(r"(?m)^\s?MATERIALEMISSIVE\s+?", AppSettings::SRX_PATH, AppSettings::SRX_EOL)).unwrap();
+    lazy_static! {
+        static ref RX_MODEL:      Regex = mk_tokenpath_rx("MODEL");
+        static ref RX_MODEL_LOD1: Regex = mk_tokenpath_rx("MODEL_LOD");
+        static ref RX_MODEL_LOD2: Regex = mk_tokenpath_rx("MODEL_LOD2");
+        static ref RX_MODEL_E:    Regex = mk_tokenpath_rx("MODELEMISSIVE");
+
+        static ref RX_MATERIAL:   Regex = mk_tokenpath_rx("MATERIAL");
+        static ref RX_MATERIAL_E: Regex = mk_tokenpath_rx("MATERIALEMISSIVE");
     }
 
     let mut buf_mod_renderconfig = String::with_capacity(0);
     let root_path = render_config.root_path();
 
-    let (render_source, building_ini, bbox, fire, imagegui) = match render_config {
+    let (render_source, building_ini, imagegui) = match render_config {
         RenderConfig::Stock { key, data } => {
             let mut building_ini = root_path.join("buildings_types");
-
-            let bbox = building_ini.join(format!("{}.bbox", key));
-            let fire = building_ini.join(format!("{}.fire", key));
             building_ini.push(format!("{}.ini", key));
 
-            (data, building_ini, bbox, fire, None)
+            (data, building_ini, None)
         },
         RenderConfig::Mod(ref cfg_path) => {
             read_to_string_buf(cfg_path.as_path(), &mut buf_mod_renderconfig);
 
             let bld_ini = root_path.join("building.ini");
-            let bbox    = root_path.join("building.bbox");
-            let fire    = root_path.join("building.fire");
             let imgui   = root_path.join("imagegui.png");
             let imgui = if imgui.exists() { Some(imgui) } else { None };
 
-            (buf_mod_renderconfig.as_str(), bld_ini, bbox, fire, imgui)
+            (buf_mod_renderconfig.as_str(), bld_ini, imgui)
         }
     };
-
-    let fire = if fire.exists() { Some(fire) } else { None };
 
     let model      =     grep_ini_token(&RX_MODEL,      render_source, root_path).map(ModelDef::new).unwrap();
     let model_lod1 =     grep_ini_token(&RX_MODEL_LOD1, render_source, root_path).map(ModelDef::new);
@@ -240,7 +238,7 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> BuildingDef<'ini
     let material_emissive = grep_ini_token(&RX_MATERIAL_E, render_source, root_path).map(|x| MaterialDef::new(x));
 
     BuildingDef { 
-        render_config, building_ini, bbox, fire, imagegui,
+        render_config, building_ini, imagegui,
         model, model_lod1, model_lod2, model_emissive, 
         material, material_emissive, skins: Vec::with_capacity(0)
     }

@@ -202,19 +202,21 @@ impl<'a> Nmf<'a> {
         Ok((Nmf{ header, submaterials, objects }, rest))
     }
 
+    pub fn calculated_len(&self) -> usize {
+        8 // header
+        + 4 // submaterial count
+        + 4 // objects count
+        + 4 // nmf length
+        + 64 * self.submaterials.len()
+        + self.objects.iter().fold(0_usize, |sz, obj| sz + obj.slice.len())
+    }
+
     pub fn write_bytes<T>(&self, wr: &mut T) 
     where T: std::io::Write {
-        let nmf_len = 8 // header
-                    + 4 // submaterial count
-                    + 4 // objects count
-                    + 4 // nmf length
-                    + 64 * self.submaterials.len()
-                    + self.objects.iter().fold(0_usize, |sz, obj| sz + obj.slice.len());
-        
         self.header.write_bytes(wr);
         write_usize32(self.submaterials.len(), wr);
         write_usize32(self.objects.len(), wr);
-        write_usize32(nmf_len, wr);
+        write_usize32(self.calculated_len(), wr);
 
         for sm in self.submaterials.iter() {
             wr.write_all(sm.slice).unwrap();
@@ -222,7 +224,7 @@ impl<'a> Nmf<'a> {
         }
 
         for obj in self.objects.iter() {
-            obj.write_bytes(wr, self.header);
+            obj.write_bytes(wr);
             obj.slice.len();
         }
     }
@@ -240,7 +242,7 @@ impl<'a> Nmf<'a> {
                     None
                 })
     }
-
+/*
     pub fn get_used_submaterials(&'a self) -> impl Iterator<Item = &'a SubMaterial> + 'a  {
         self.submaterials
             .iter()
@@ -254,6 +256,7 @@ impl<'a> Nmf<'a> {
                     None
                 })
     }
+*/    
 }
 
 
@@ -395,7 +398,7 @@ impl<'a> FromBytes<'a> for Object<'a> {
 
 impl Object<'_> {
     // NOTE: this only overrides submaterials usage, the rest is dumped as original slice
-    fn write_bytes<T>(&self, wr: &mut T, nmf_type: NmfHeader)
+    fn write_bytes<T>(&self, wr: &mut T)
     where T: std::io::Write
     {
         let sm_count = self.submaterials.len();
@@ -405,13 +408,13 @@ impl Object<'_> {
 
         for sm in self.submaterials.iter() {
             // boundaries
-            wr.write_all(&self.slice[sm_start .. sm_start + 8]);
+            wr.write_all(&self.slice[sm_start .. sm_start + 8]).unwrap();
             // submaterial index
             write_usize32(*sm, wr);
             sm_start += 12;
         }
     }
-
+/*
     pub fn count_vertices(&self) -> Result<usize, NmfError> {
         let (c, _rest) = parse_u32(&self.slice[236..])?;
         Ok(c as usize)
@@ -421,13 +424,14 @@ impl Object<'_> {
         let (c, _rest) = parse_u32(&self.slice[240..])?;
         Ok(c as usize)
     }
-
+*/
     fn get_submaterials(slice: &[u8]) -> Result<usize, NmfError> {
         let (c, _rest) = parse_u32(&slice[244..])?;
         Ok(c as usize)
     }
-
+/*
     pub fn count_submaterials(&self) -> Result<usize, NmfError> {
         Self::get_submaterials(&self.slice[244..])
     }
+*/    
 }

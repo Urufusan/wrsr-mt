@@ -21,8 +21,6 @@ pub struct BuildingDef<'stock> {
     pub render_config: RenderConfig<'stock>,
 
     pub building_ini: PathBuf,
-    pub bbox: PathBuf,
-    pub fire: Option<PathBuf>,
     pub imagegui: Option<PathBuf>,
 
     pub model: ModelDef,
@@ -110,14 +108,12 @@ pub enum StockBuilding<'stock> {
 impl BuildingDef<'_> {
     pub fn validate(&self) {
         assert!(self.building_ini.exists());
-        assert!(self.bbox.exists());
-        assert!(path_option_valid(&self.fire));
         assert!(path_option_valid(&self.imagegui));
 
-        let mtl_model = validate_modeldef(&self.model);
-        let mtl_model_lod1 = self.model_lod1.as_ref().map(validate_modeldef);
-        let mtl_model_lod2 = self.model_lod2.as_ref().map(validate_modeldef);
-        let mtl_model_emissive = self.model_emissive.as_ref().map(validate_modeldef);
+        let _mtl_model = validate_modeldef(&self.model);
+        let _mtl_model_lod1 = self.model_lod1.as_ref().map(validate_modeldef);
+        let _mtl_model_lod2 = self.model_lod2.as_ref().map(validate_modeldef);
+        let _mtl_model_emissive = self.model_emissive.as_ref().map(validate_modeldef);
 
         // NOTE: DEBUG
         //println!("Model's actual use of submaterials: {:?}", mtl_model);
@@ -233,9 +229,6 @@ impl fmt::Display for BuildingDef<'_> {
 
         write!(f, "{}renderconfig      {}\n", INDENT, self.render_config)?;
         write!(f, "{}building_ini      {}\n", INDENT, self.building_ini.to_str().unwrap())?;
-        write!(f, "{}bbox              {}\n", INDENT, self.bbox.to_str().unwrap())?;
-        write!(f, "{}fire              ",     INDENT)?;
-        write_path_option_ln(f, &self.fire)?;
         write!(f, "{}imagegui          ",     INDENT)?;
         write_path_option_ln(f, &self.imagegui)?;
         write!(f, "{}model             {}\n", INDENT, &self.model)?;
