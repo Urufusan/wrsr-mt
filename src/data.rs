@@ -92,6 +92,7 @@ pub enum PathPrefix {
     CurrentDir
 }
 
+
 //----------------------------------------------
 //           STOCK BUILDINGS MAP
 
@@ -392,18 +393,19 @@ impl fmt::Display for ModelPatch {
     }
 }
 
-impl<'a, T> From<T> for ModelPatch 
-where T: AsRef<str>
+impl TryFrom<&str> for ModelPatch 
 {
-    fn from(text: T) -> ModelPatch {
+    type Error = String;
+
+    fn try_from(text: &str) -> Result<Self, Self::Error> {
         lazy_static! {
             static ref RX_LINES: Regex = Regex::new(r"\r?\n").unwrap();
         }
 
-        let mut lines = RX_LINES.split(text.as_ref());
-        let ptype = lines.next().expect("Cannot parse model.patch");
+        let mut lines = RX_LINES.split(text);
+        let ptype = lines.next().ok_or_else(|| String::from("Cannot parse ModelPatch"))?;
 
-        let mut tokens = Vec::<String>::with_capacity(8);
+        let mut tokens = Vec::<String>::with_capacity(64);
         for l in lines {
             if l.len() > 0 {
                 tokens.push(String::from(l));
@@ -411,12 +413,13 @@ where T: AsRef<str>
         }
 
         match ptype {
-            "KEEP" => ModelPatch::Keep(tokens),
-            "REMOVE" => ModelPatch::Remove(tokens),
-            z => panic!("Unknown patch type {:?}", z)
+            "KEEP" => Ok(ModelPatch::Keep(tokens)),
+            "REMOVE" => Ok(ModelPatch::Remove(tokens)),
+            z => Err(format!("Unknown patch action: '{}'", z))
         }
     }
 } 
+
 
 //--------------------------------------------------------
 impl<T> From<(Range<usize>, T)> for IniToken<T> {
@@ -435,9 +438,9 @@ impl fmt::Display for IniTokenPath {
 
 //--------------------------------------------------------
 impl MaterialDef {
-    pub fn new(render_token: IniTokenPath) -> MaterialDef {
-        let textures = get_texture_tokens(&render_token.value);
-        MaterialDef { render_token, textures }
+    pub fn new(render_token: IniTokenPath) -> Result<MaterialDef, String> {
+        let textures = get_material_textures(&render_token.value)?;
+        Ok(MaterialDef { render_token, textures })
     }
 }
 
@@ -465,22 +468,38 @@ impl TryFrom<&str> for PathPrefix {
 }
 
 
-//--------------------------------------------------------
 
 
-pub fn get_texture_tokens(mtl_path: &Path) -> Vec<IniToken<Texture>> {
+pub fn get_material_textures(material_path: &Path) -> Result<Vec<IniTokenTexture>, String> {
+    let material_dir = material_path.parent().unwrap();
+
+    match material_path.extension().and_then(|x| x.to_str()) {
+        Some("mtl") => {
+            let material_src = fs::read_to_string(material_path)
+                .map_err(|e| format!("Cannot read material file {:?}: {}", material_path, e))?;
+            get_texture_tokens(material_dir, &material_src)
+                .map_err(|e| format!("Cannot get texture tokens from {:?}: {}", material_path, e))
+        },
+        Some("mtlx") => {
+            let material_src = fs::read_to_string(material_path)
+                .map_err(|e| format!("Cannot read material file {:?}: {}", material_path, e))?;
+            get_texture_tokens_ext(material_dir, &material_src)
+                .map_err(|e| format!("Cannot get texture tokens from {:?}: {}", material_path, e))
+        },
+        Some(ext) => Err(format!("Unsupported material file extension: '{}'", ext)),
+        None => Err(String::from("Material file is missing extension")),
+    }
+}
+
+
+fn get_texture_tokens(mtl_dir: &Path, mtl_src: &str) -> Result<Vec<IniToken<Texture>>, String> {
     use path_slash::PathBufExt;
 
     lazy_static! {
         static ref RX: Regex = Regex::new(concatcp!(r"(?m)^(\$TEXTURE(_MTL)?\s+?([012])\s+?", AppSettings::SRX_PATH, ")", AppSettings::SRX_EOL)).unwrap();
     }
 
-    let ext = mtl_path.extension().unwrap();
-    assert_eq!(ext.to_str().unwrap(), "mtl", "This function must be called only for *.mtl files"); 
-
-    let mtl_src = fs::read_to_string(mtl_path).unwrap();
-
-    RX.captures_iter(&mtl_src).map(move |cap| {
+    let res = RX.captures_iter(&mtl_src).map(move |cap| {
         let range = cap.get(1).unwrap().range();
         // NOTE: Debug
         // println!("CAPTURE: {:?}, {:?}", &range, cap.get(1).unwrap().as_str());
@@ -489,7 +508,7 @@ pub fn get_texture_tokens(mtl_path: &Path) -> Vec<IniToken<Texture>> {
         let tx_path_str = cap.get(4).unwrap().as_str();
 
         let tx_root = if is_mtl { 
-            mtl_path.parent().unwrap() 
+            mtl_dir 
         } else {
             APP_SETTINGS.path_stock.as_path()
         };
@@ -500,8 +519,52 @@ pub fn get_texture_tokens(mtl_path: &Path) -> Vec<IniToken<Texture>> {
             range,
             value: Texture { num, path }
         }
-    }).collect()
+    }).collect();
+
+    Ok(res)
 }
+
+fn get_texture_tokens_ext(mtlx_dir: &Path, mtlx_src: &str) -> Result<Vec<IniTokenTexture>, String> {
+
+    lazy_static! {
+        static ref RX_LINE:   Regex = Regex::new(r"(?m)^\$TEXTURE_EXT\s+([^\r\n]+)").unwrap();
+        static ref RX_VAL:    Regex = Regex::new(concatcp!(r"([012])\s+", "\"", AppSettings::SRX_PATH_PREFIX, AppSettings::SRX_PATH_EXT, "\"")).unwrap();
+        static ref RX_REJECT: Regex = Regex::new(r"(?m)^\s*\$TEXTURE(_MTL)?\s").unwrap();
+    }
+
+    if RX_REJECT.is_match(&mtlx_src) {
+        return Err(String::from("Invalid mtlx file: $TEXTURE and $TEXTURE_MTL tokens are not allowed here."));
+    }
+
+    let mut res = Vec::new();
+    for cap_line in RX_LINE.captures_iter(&mtlx_src) {
+        let m = cap_line.get(0).unwrap();
+        let range = m.range();
+        // NOTE: Debug
+        //println!("[MTLX] Captured line at {:?}: [{}]", &range, m.as_str());
+
+        let values_str = cap_line.get(1).unwrap().as_str();
+        if let Some(cap) = RX_VAL.captures(values_str) {
+
+            let num = cap.get(1).unwrap().as_str().chars().next().unwrap();
+            let tx_path_pfx: PathPrefix = cap.get(2).unwrap().as_str().try_into()?;
+            let tx_path_str = cap.get(3).unwrap().as_str();
+            let path = resolve_prefixed_path(tx_path_pfx, tx_path_str, mtlx_dir);
+
+            res.push(IniToken {
+                range,
+                value: Texture { num, path }
+            });
+        } else {
+            return Err(format!("Invalid MATERIAL_EXT line: [{}]", m.as_str()));
+        }
+    }
+
+    Ok(res)
+}
+
+
+//---------------------------------------------------------
 
 pub fn resolve_prefixed_path(pfx: PathPrefix, path_str: &str, local_root: &Path) -> PathBuf {
     use path_slash::PathBufExt;
@@ -515,6 +578,7 @@ pub fn resolve_prefixed_path(pfx: PathPrefix, path_str: &str, local_root: &Path)
     root.join(PathBuf::from_slash(path_str))
 }
 
+
 pub fn read_to_string_buf(path: &Path, buf: &mut String) {
     use std::io::Read;
 
@@ -527,6 +591,7 @@ pub fn read_to_string_buf(path: &Path, buf: &mut String) {
         panic!("Cannot read file \"{}\"", path.display());
     }
 }
+
 /*
 fn read_to_buf(path: &Path, buf: &mut Vec<u8>) {
     use std::io::Read;

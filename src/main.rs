@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 
 use regex::Regex;
 
@@ -71,10 +72,12 @@ fn main() {
                     }
                 },
                 Err(errs) => {
-                    eprintln!("The following errors were encountered when processing modpack sources:");
-                    for e in errs {
-                        eprintln!("{}", e);
+                    eprintln!("\nThe following {} errors were encountered when processing modpack sources:\n", errs.len());
+                    for (i, e) in errs.iter().enumerate() {
+                        eprintln!("{}) {}", i + 1, e);
                     }
+
+                    eprintln!();
 
                     std::process::exit(1);
                 }
@@ -97,7 +100,7 @@ fn main() {
                     if let Some(p) = with_patch {
                         let buf_patch = fs::read_to_string(p).expect("Cannot read patch file at the specified path");
                         println!("Applying patch at {}...", p.to_str().unwrap());
-                        let patch = data::ModelPatch::from(&buf_patch);
+                        let patch = data::ModelPatch::try_from(buf_patch.as_str()).unwrap();
                         println!("{}\n", &patch);
 
                         let patched = patch.apply(&nmf);
@@ -131,7 +134,7 @@ fn main() {
 
 
                     let buf_patch = fs::read_to_string(patch).expect("Cannot read patch file at the specified path");
-                    let patch = data::ModelPatch::from(&buf_patch);
+                    let patch = data::ModelPatch::try_from(buf_patch.as_str()).unwrap();
 
                     let patched = patch.apply(&nmf);
 

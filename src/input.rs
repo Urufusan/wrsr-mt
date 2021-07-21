@@ -1,9 +1,7 @@
-//use std::env;
-use std::fs::{self, File};
-use std::fmt;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::io::Read;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 
 use regex::Regex;
 use lazy_static::lazy_static;
@@ -11,15 +9,11 @@ use const_format::concatcp;
 
 use crate::cfg::{AppSettings, APP_SETTINGS};
 
-use crate::data::{
-    StockBuilding, RenderConfig, StockBuildingsMap,
-    BuildingDef, ModelDef, ModelPatch, MaterialDef, Skin, SkinMaterial, 
-    PathPrefix, Texture, IniToken, IniTokenTexture, IniTokenPath,
+use crate::data::{StockBuilding, StockBuildingsMap, RenderConfig, 
+                  BuildingDef, ModelDef, ModelPatch, MaterialDef, Skin, SkinMaterial, 
+                  PathPrefix, IniTokenPath,
 
-    get_texture_tokens,
-    resolve_prefixed_path, read_to_string_buf,
-    
-    };
+                  get_material_textures, resolve_prefixed_path, read_to_string_buf};
 
 
 #[derive(Debug)]
@@ -28,50 +22,18 @@ enum SourceType<'a> {
     Mod(PathBuf)
 }
 
-#[derive(Debug)]
-pub enum SourceError {
-    TooManySources(usize),
-    SourceType(PathBuf),
-    BuildingDef(PathBuf, BuildingDefError),
-}
 
-#[derive(Debug)]
-pub enum BuildingDefError {
-    StockBuildingMissing(String)
-    //ModBuilding(String, 
-}
-
-impl fmt::Display for SourceError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SourceError::TooManySources(n) => write!(f, "There are too many source objects ({}). Max supported is {}.", n, AppSettings::MAX_BUILDINGS),
-            SourceError::SourceType(path) => write!(f, "Cannot parse building.source {}", path.to_str().unwrap()),
-            SourceError::BuildingDef(path, e) => write!(f, "Cannot parse BuildingDef at '{}': {}", path.to_str().unwrap(), e)
-        }
-    }
-}
-
-impl fmt::Display for BuildingDefError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            BuildingDefError::StockBuildingMissing(key) => write!(f, "Cannot find stock building '{}'", key)
-        }
-    }
-}
-
-
-
-pub fn read_validate_sources<'stock>(src: &Path, stock_buildings: &mut StockBuildingsMap<'stock>) -> Result<Vec<BuildingDef<'stock>>, Vec<SourceError>> {
+pub fn read_validate_sources<'stock>(src: &Path, stock_buildings: &mut StockBuildingsMap<'stock>) -> Result<Vec<BuildingDef<'stock>>, Vec<String>> {
 
     let mut buf_sources = String::with_capacity(512);
     let mut pathbuf = src.to_path_buf();
     let mut data: Vec<BuildingDef<'stock>> = Vec::with_capacity(1000);
-    let mut errors = Vec::<SourceError>::with_capacity(0);
+    let mut errors = Vec::<String>::with_capacity(0);
 
     push_buildings(&mut pathbuf, &mut data, &mut errors, &mut buf_sources, stock_buildings, &mut String::with_capacity(20));
 
     if data.len() > AppSettings::MAX_BUILDINGS {
-        errors.push(SourceError::TooManySources(data.len()));
+        errors.push(format!("There are too many source objects ({}). Max supported is {}.", data.len(), AppSettings::MAX_BUILDINGS));
     }
 
     if errors.is_empty() {
@@ -82,9 +44,9 @@ pub fn read_validate_sources<'stock>(src: &Path, stock_buildings: &mut StockBuil
 }
 
 
-fn push_buildings<'stock>(pathbuf: &mut PathBuf, 
+fn push_buildings<'stock>(dirbuf: &mut PathBuf, 
                           data: &mut Vec<BuildingDef<'stock>>,
-                          errors: &mut Vec<SourceError>,
+                          errors: &mut Vec<String>,
                           buf_sources: &mut String,
                           stock_buildings: &mut StockBuildingsMap<'stock>,
                           indent: &mut String
@@ -95,50 +57,56 @@ fn push_buildings<'stock>(pathbuf: &mut PathBuf,
         static ref RX_SOURCE_MOD: Regex = Regex::new(r"^[0-9]{10}\\[^\s\r\n]+").unwrap();
     }
 
-    pathbuf.push("building.source");
-
-    if pathbuf.exists() {
+    dirbuf.push("building.source");
+    if dirbuf.exists() {
+        // TODO: move into separate function and do proper error handling
         // leaf dir (building)
-        println!("{}* {}", indent, pathbuf.parent().unwrap().file_name().unwrap().to_str().unwrap());
+        let source_path = dirbuf.clone();
+        dirbuf.pop();
+
+        println!("{}* {}", indent, dirbuf.file_name().unwrap().to_str().unwrap());
 
         buf_sources.clear();
-        File::open(&pathbuf).unwrap().read_to_string(buf_sources).unwrap();
-
-        let src_type: Option<SourceType> = {
-            if let Some(src_stock) = RX_SOURCE_STOCK.captures(&buf_sources) {
-                Some(SourceType::Stock(
-                    src_stock.get(1).unwrap().as_str()
-                ))
-            } else if let Some(src_mod) = RX_SOURCE_MOD.find(&buf_sources) {
-                Some(SourceType::Mod(
-                    APP_SETTINGS.path_workshop.join(src_mod.as_str())
-                ))
-            } else {
-                None
-            }
-        };
-
-        match src_type {
-            None => {
-                errors.push(SourceError::SourceType(pathbuf.clone()));
-                pathbuf.pop();
-            },
-            Some(typ) => {
-                pathbuf.pop();
-                match source_to_def(pathbuf, typ, stock_buildings) {
-                    Ok(b) => data.push(b),
-                    Err(e) => errors.push(SourceError::BuildingDef(pathbuf.clone(), e))
+        match fs::File::open(&source_path) {
+            Ok(mut f) => {
+                match f.read_to_string(buf_sources) {
+                    Ok(_) => (),
+                    Err(e) => {
+                        errors.push(format!("Cannot read source file {:?}: {}", source_path, e));
+                        return;
+                    }
                 }
+            },
+            Err(e) => {
+                errors.push(format!("Cannot open source file {:?}: {}", source_path, e));
+                return;
             }
         }
 
-        return;
+        let src_type = {
+            if let Some(src_stock) = RX_SOURCE_STOCK.captures(&buf_sources) {
+                SourceType::Stock(src_stock.get(1).unwrap().as_str())
+            } else if let Some(src_mod) = RX_SOURCE_MOD.find(&buf_sources) {
+                SourceType::Mod(APP_SETTINGS.path_workshop.join(src_mod.as_str()))
+            } else {
+                errors.push(format!("Cannot parse source file {:?}", source_path));
+                return;
+            }
+        };
+
+        match source_to_def(&dirbuf, src_type, stock_buildings) {
+            Ok(b) => data.push(b),
+            Err(e) => {
+                errors.push(format!("Cannot construct BuildingDef from {:?}: {}", source_path, e));
+                return;
+            }
+        }
     } else {
-        pathbuf.pop();
+        dirbuf.pop();
 
-        println!("{}{}", indent, pathbuf.file_name().unwrap().to_str().unwrap());
+        println!("{}{}", indent, dirbuf.file_name().unwrap().to_str().unwrap());
 
-        for subdir in get_subdirs(&pathbuf) {
+        for subdir in get_subdirs(&dirbuf) {
             let dir_name = subdir.file_name();
             if dir_name.to_str().unwrap().starts_with(&['_', '.'][..]) {
                 continue;
@@ -146,17 +114,17 @@ fn push_buildings<'stock>(pathbuf: &mut PathBuf,
 
             let old_indent = indent.len();
             indent.push_str("  ");
-            pathbuf.push(dir_name);
+            dirbuf.push(dir_name);
 
-            push_buildings(pathbuf, data, errors, buf_sources, stock_buildings, indent);
+            push_buildings(dirbuf, data, errors, buf_sources, stock_buildings, indent);
 
-            pathbuf.pop();
+            dirbuf.pop();
             indent.truncate(old_indent);
         }
     }
 }
 
-fn get_subdirs(path: &PathBuf) -> impl Iterator<Item=fs::DirEntry>
+fn get_subdirs(path: &Path) -> impl Iterator<Item=fs::DirEntry>
 {
     fs::read_dir(path)
         .unwrap()
@@ -164,7 +132,7 @@ fn get_subdirs(path: &PathBuf) -> impl Iterator<Item=fs::DirEntry>
         .filter(|x| x.file_type().unwrap().is_dir())
 }
 
-fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hmap: &'map mut StockBuildingsMap<'ini>) -> Result<BuildingDef<'ini>, BuildingDefError> {
+fn source_to_def<'ini, 'map>(path: &Path, source_type: SourceType, hmap: &'map mut StockBuildingsMap<'ini>) -> Result<BuildingDef<'ini>, String> {
     let mut def = match source_type {
         SourceType::Stock(key) => {
             get_stock_building(&key, hmap)?
@@ -175,10 +143,10 @@ fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hma
         }
     };
 
-    // TODO: continue other errors
-
     // overriding with custom files (if they exist in dir):
     // ---------------------------
+
+    let mut pathbuf = path.to_path_buf();
     
     pathbuf.push("building.ini");
     if pathbuf.exists() { 
@@ -193,25 +161,27 @@ fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hma
     pathbuf.set_file_name("model.patch");
     if pathbuf.exists() {
         let pfile = fs::read_to_string(&pathbuf).unwrap();
-        def.model.patch = Some(ModelPatch::from(&pfile));
+        let patch = ModelPatch::try_from(pfile.as_str()).map_err(|e| format!("Cannot parse ModelPatch at '{:?}': {}", &pathbuf, e))?;
+        def.model.patch = Some(patch);
     }
 
     pathbuf.set_file_name("building.skins");
     if pathbuf.exists() {
-        def.skins = get_skins(&pathbuf);
+        def.skins = get_skins(&pathbuf).map_err(|e| format!("Cannot get skins data from {:?}: {}", &pathbuf, e))?;
     }
 
+    // TODO: continue other errors
     pathbuf.set_file_name("material.mtlx");
     if pathbuf.exists() {
         def.material.render_token.value.push(&pathbuf);
-        def.material.textures = get_texture_tokens_ext(&pathbuf);
+        def.material.textures = get_material_textures(&pathbuf).map_err(|e| format!("Material {:?}: {}", &pathbuf, e))?;
     }
 
     pathbuf.set_file_name("material_e.mtlx");
     if pathbuf.exists() {
         if let Some(ref mut mat_e) = def.material_emissive {
             mat_e.render_token.value.push(&pathbuf);
-            mat_e.textures = get_texture_tokens_ext(pathbuf);
+            mat_e.textures = get_material_textures(&pathbuf).map_err(|e| format!("Emissive material {:?}: {}", &pathbuf, e))?;
         }
         else {
             panic!("Trying to override material_e, while renderconfig does not have it");
@@ -230,7 +200,7 @@ fn source_to_def<'ini, 'map>(pathbuf: &mut PathBuf, source_type: SourceType, hma
 }
 
 
-fn get_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildingsMap<'ini>) -> Result<BuildingDef<'ini>, BuildingDefError> {
+fn get_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildingsMap<'ini>) -> Result<BuildingDef<'ini>, String> {
     if let Some(mref) = hmap.get_mut(key) {
         match mref {
             (_, StockBuilding::Parsed(ref x)) => Ok(x.clone()),
@@ -241,11 +211,11 @@ fn get_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildin
             }
         }
     } else {
-        Err(BuildingDefError::StockBuildingMissing(String::from(key)))
+        Err(format!("Cannot find stock building with key '{}'", key))
     }
 }
 
-fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> Result<BuildingDef<'ini>, BuildingDefError> {
+fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> Result<BuildingDef<'ini>, String> {
 
     fn mk_tokenpath_rx(token: &str) -> Regex {
         Regex::new(&format!(r"(?m)^\s?{}\s+?{}{}", token, AppSettings::SRX_PATH, AppSettings::SRX_EOL))
@@ -283,13 +253,13 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> Result<BuildingD
         }
     };
 
-    let model      =     grep_ini_token(&RX_MODEL,      render_source, root_path).map(ModelDef::new).unwrap();
-    let model_lod1 =     grep_ini_token(&RX_MODEL_LOD1, render_source, root_path).map(ModelDef::new);
-    let model_lod2 =     grep_ini_token(&RX_MODEL_LOD2, render_source, root_path).map(ModelDef::new);
+    let model          = grep_ini_token(&RX_MODEL,      render_source, root_path).map(ModelDef::new).unwrap();
+    let model_lod1     = grep_ini_token(&RX_MODEL_LOD1, render_source, root_path).map(ModelDef::new);
+    let model_lod2     = grep_ini_token(&RX_MODEL_LOD2, render_source, root_path).map(ModelDef::new);
     let model_emissive = grep_ini_token(&RX_MODEL_E,    render_source, root_path).map(ModelDef::new);
 
-    let material = MaterialDef::new(grep_ini_token(&RX_MATERIAL, render_source, root_path).unwrap());
-    let material_emissive = grep_ini_token(&RX_MATERIAL_E, render_source, root_path).map(|x| MaterialDef::new(x));
+    let material = MaterialDef::new(grep_ini_token(&RX_MATERIAL, render_source, root_path).unwrap())?;
+    let material_emissive = grep_ini_token(&RX_MATERIAL_E, render_source, root_path).map(|x| MaterialDef::new(x)).transpose()?;
 
     Ok(BuildingDef { 
         render_config, building_ini, imagegui,
@@ -300,7 +270,7 @@ fn parse_ini_to_def<'ini>(render_config: RenderConfig<'ini>) -> Result<BuildingD
 
 
 
-fn get_skins(skinfile_path: &PathBuf) -> Vec<Skin> {
+fn get_skins(skinfile_path: &PathBuf) -> Result<Vec<Skin>, String> {
     const SKIN_RX: &str = concatcp!(
         r"(?m)^", 
         AppSettings::SRX_PATH_PREFIX, 
@@ -316,106 +286,50 @@ fn get_skins(skinfile_path: &PathBuf) -> Vec<Skin> {
     }
 
     let mut result = {
-        let md = fs::metadata(skinfile_path).unwrap();
+        let md = fs::metadata(skinfile_path).map_err(|e| format!("Cannot get size of skins file '{:?}'. Error: {}", skinfile_path, e))?;
         let c: u64 = md.len() / 50 + 1;
         Vec::with_capacity(c.try_into().unwrap())
     };
 
-    let cfg = fs::read_to_string(skinfile_path).unwrap();
+    let cfg = fs::read_to_string(skinfile_path).map_err(|e| format!("Cannot read skins file '{:?}'. Error: {}", skinfile_path, e))?;
     let skinfile_dir = skinfile_path.parent().unwrap();
 
     for cap in RX.captures_iter(&cfg) {
-        let type1: PathPrefix = cap.get(1).unwrap().as_str().try_into().unwrap();
+        let type1: PathPrefix = cap.get(1).unwrap().as_str().try_into()?;
         let path1 = cap.get(2).unwrap().as_str();
         let m_path = resolve_prefixed_path(type1, path1, skinfile_dir);
 
         let material = SkinMaterial { 
             path: m_path.to_path_buf(),
-            textures: get_material_textures(&m_path) 
+            textures: get_material_textures(&m_path)? 
         };
 
-        let material_emissive = cap.get(4).map(|x| {
-            let type2: PathPrefix = x.as_str().try_into().unwrap();
+        let material_emissive = cap.get(4).map(|x| -> Result<SkinMaterial, String> {
+            let type2: PathPrefix = x.as_str().try_into()?;
             let path2 = cap.get(5).unwrap().as_str();
             let m_path = resolve_prefixed_path(type2, path2, skinfile_dir);
 
-            SkinMaterial {
+            Ok(SkinMaterial {
                 path: m_path.to_path_buf(),
-                textures: get_material_textures(&m_path)
-            }
-        });
+                textures: get_material_textures(&m_path)?
+            })
+        }).transpose()?;
 
         result.push(Skin { material, material_emissive });
     }
 
-    result
-}
-
-
-fn get_material_textures(material_path: &Path) -> Vec<IniTokenTexture> {
-    let ext = material_path.extension().unwrap();
-
-    match ext.to_str().unwrap() {
-        "mtl" => get_texture_tokens(material_path),
-        "mtlx" => get_texture_tokens_ext(material_path),
-        e => panic!("Unknown material extension '{}'", e)
-    }
+    Ok(result)
 }
 
 
 fn grep_ini_token(rx: &Regex, source: &str, root: &Path) -> Option<IniTokenPath> {
     use path_slash::PathBufExt;
 
-    rx.captures(source).map(|cap| {
-        let m = cap.get(1).unwrap();
-        // NOTE: Debug
-        // println!("CAPTURE: {:?}, {:?}", &m.range(), m.as_str());
-        let pth = [root, PathBuf::from_slash(m.as_str()).as_path()].iter().collect();
-        IniTokenPath { range: m.range(), value: pth }
+    rx.captures(source).and_then(|cap| {
+        let m = cap.get(1)?;
+        let pth = root.join(PathBuf::from_slash(m.as_str()));
+        Some(IniTokenPath { range: m.range(), value: pth })
     })
-}
-
-
-fn get_texture_tokens_ext(mtlx_path: &Path) -> Vec<IniTokenTexture> {
-
-    lazy_static! {
-        static ref RX_LINE: Regex = Regex::new(r"(?m)^\$TEXTURE_EXT\s+([^\r\n]+)").unwrap();
-        static ref RX_VAL:  Regex = Regex::new(concatcp!(r"([012])\s+", "\"", AppSettings::SRX_PATH_PREFIX, AppSettings::SRX_PATH_EXT, "\"")).unwrap();
-        static ref RX_REJECT: Regex = Regex::new(r"(?m)^\s*\$TEXTURE(_MTL)?\s").unwrap();
-    }
-
-    let ext = mtlx_path.extension().unwrap();
-    assert_eq!(ext.to_str().unwrap(), "mtlx", "This function must be called only for *.mtlx files"); 
-
-    let mtlx_dir = mtlx_path.parent().unwrap();
-    let mtlx_src = fs::read_to_string(mtlx_path).expect(&format!("Cannot read mtlx file '{}'", mtlx_path.to_str().unwrap()));
-
-    if RX_REJECT.is_match(&mtlx_src) {
-        panic!("Invalid mtlx file ({}): $TEXTURE and $TEXTURE_MTL tokens are not allowed here.", mtlx_path.to_str().unwrap());
-    }
-
-    RX_LINE.captures_iter(&mtlx_src).map(move |cap_line| {
-        let m = cap_line.get(0).unwrap();
-        let range = m.range();
-        // NOTE: Debug
-        //println!("Captured line at {:?}: [{}]", &range, m.as_str());
-
-        let values_str = cap_line.get(1).unwrap().as_str();
-        if let Some(cap) = RX_VAL.captures(values_str) {
-
-            let num = cap.get(1).unwrap().as_str().chars().next().unwrap();
-            let tx_path_pfx: PathPrefix = cap.get(2).unwrap().as_str().try_into().unwrap();
-            let tx_path_str = cap.get(3).unwrap().as_str();
-            let path = resolve_prefixed_path(tx_path_pfx, tx_path_str, mtlx_dir);
-
-            IniToken {
-                range,
-                value: Texture { num, path }
-            }
-        } else {
-            panic!("Invalid MATERIAL_EXT line: [{}]", m.as_str());
-        }
-    }).collect()
 }
 
 
