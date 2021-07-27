@@ -17,12 +17,19 @@ pub struct InstallCommand {
 
 pub enum NmfCommand {
     Show(NmfShowCommand),
+    Scale(NmfScaleCommand),
     Patch(NmfPatchCommand)
 }
 
 pub struct NmfShowCommand {
     pub path: PathBuf,
     pub with_patch: Option<PathBuf>
+}
+
+pub struct NmfScaleCommand {
+    pub input: PathBuf,
+    pub factor: f64,
+    pub output: PathBuf
 }
 
 pub struct NmfPatchCommand {

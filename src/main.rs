@@ -124,6 +124,10 @@ fn main() {
                         }
                     }
                 },
+
+                cfg::NmfCommand::Scale(cfg::NmfScaleCommand { input: _, factor: _, output: _ }) => {
+                    todo!()
+                },
                 
                 cfg::NmfCommand::Patch(cfg::NmfPatchCommand { input, patch, output }) => {
                     let buf = fs::read(input).expect("Cannot read nmf file at the specified path");
