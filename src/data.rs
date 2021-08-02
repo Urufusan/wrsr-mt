@@ -110,10 +110,10 @@ impl BuildingDef<'_> {
         assert!(self.building_ini.exists());
         assert!(path_option_valid(&self.imagegui));
 
-        let _mtl_model = validate_modeldef(&self.model);
-        let _mtl_model_lod1 = self.model_lod1.as_ref().map(validate_modeldef);
-        let _mtl_model_lod2 = self.model_lod2.as_ref().map(validate_modeldef);
-        let _mtl_model_emissive = self.model_emissive.as_ref().map(validate_modeldef);
+        //let _mtl_model = validate_modeldef(&self.model);
+        //let _mtl_model_lod1 = self.model_lod1.as_ref().map(validate_modeldef);
+        //let _mtl_model_lod2 = self.model_lod2.as_ref().map(validate_modeldef);
+        //let _mtl_model_emissive = self.model_emissive.as_ref().map(validate_modeldef);
 
         // NOTE: DEBUG
         //println!("Model's actual use of submaterials: {:?}", mtl_model);
@@ -142,10 +142,10 @@ impl BuildingDef<'_> {
         }
 
         // TODO: this function sucks
+/*        
         fn validate_modeldef(_m: &ModelDef) -> Vec<String> {
             todo!()
 
-/*
             assert!(m.ini_token.value.exists());
 
             let buf = fs::read(&m.ini_token.value).unwrap();
@@ -203,8 +203,8 @@ impl BuildingDef<'_> {
                         None 
                     }
                 ).collect()
-        */
         }
+        */
     }
 }
 

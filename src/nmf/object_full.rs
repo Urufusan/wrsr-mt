@@ -67,6 +67,16 @@ pub struct RawBBox {
     pub v_max: RawVertex,
 }
 
+/*
+#[repr(C)]
+struct SubmaterialUsage {
+    index_1:  u32,
+    index_2:  u32,
+    sm_index: u32
+}
+*/
+
+
 
 
 fn read_u32(bytes: &[u8]) -> Result<u32, ObjectError> {
@@ -206,6 +216,10 @@ impl ObjectFull {
         self.get_slice::<RawFace>(0, self.faces_count)
     }
 
+    pub fn faces_mut<'a>(&'a mut self) -> &'a mut [RawFace] {
+        self.get_slice_mut::<RawFace>(0, self.faces_count)
+    }
+
     pub fn vertices<'a>(&'a self) -> &'a [RawVertex] {
         self.get_slice::<RawVertex>(self.vertices_start, self.vertices_count)
     }
@@ -216,6 +230,10 @@ impl ObjectFull {
 
     pub fn normals_1<'a>(&'a self) -> &'a [RawVertex] {
         self.get_slice::<RawVertex>(self.normals_start, self.vertices_count)
+    }
+
+    pub fn normals_all_mut<'a>(&'a mut self) -> &'a mut [RawVertex] {
+        self.get_slice_mut::<RawVertex>(self.normals_start, self.vertices_count * 3)
     }
 
     pub fn uv_map<'a>(&'a self) -> &'a [RawPoint] {
@@ -231,9 +249,7 @@ impl ObjectFull {
     }
 
     pub fn scale(&mut self, scale_factor: f64) {
-        let bbox = self.bbox_mut();
-        bbox.v_min.scale(scale_factor);
-        bbox.v_max.scale(scale_factor);
+        self.bbox_mut().scale(scale_factor);
 
         for v in self.vertices_mut() {
             v.scale(scale_factor);
@@ -243,21 +259,74 @@ impl ObjectFull {
             *factor = (*factor as f64 * scale_factor) as f32;
         }
 
-        for RawBBox { v_min, v_max } in self.face_bboxes_mut() {
-            v_min.scale(scale_factor); 
-            v_max.scale(scale_factor); 
+        for bbox in self.face_bboxes_mut() {
+            bbox.scale(scale_factor); 
+        }
+    }
+
+    pub fn mirror_x(&mut self) {
+        self.bbox_mut().mirror_x();
+
+        for f in self.faces_mut() {
+            f.reverse();
+        }
+
+        for v in self.vertices_mut() {
+            v.mirror_x();
+        }
+
+        for n in self.normals_all_mut() {
+            n.mirror_x();
+        }
+
+        for RawFaceExtra { auto_normal, .. } in self.face_extras_mut() {
+            auto_normal.mirror_x();
+        }
+
+        for bbox in self.face_bboxes_mut() {
+            bbox.mirror_x();
         }
     }
 }
 
+impl RawFace {
+    fn reverse(&mut self) {
+        std::mem::swap(&mut self.v2, &mut self.v3);
+    }
+}
 
 impl RawVertex {
+
+    #[inline]
     fn scale(&mut self, factor: f64) {
         self.x = (self.x as f64 * factor) as f32;
         self.y = (self.y as f64 * factor) as f32;
         self.z = (self.z as f64 * factor) as f32;
     }
+
+    #[inline]
+    fn mirror_x(&mut self) {
+        self.x = 0f32 - self.x;
+    }
 }
+
+impl RawBBox {
+
+    #[inline]
+    fn scale(&mut self, factor: f64) {
+        self.v_min.scale(factor); 
+        self.v_max.scale(factor); 
+    }
+
+    #[inline]
+    fn mirror_x(&mut self) {
+        let min_x = 0f32 - self.v_max.x;
+        let max_x = 0f32 - self.v_min.x;
+        self.v_min.x = min_x;
+        self.v_max.x = max_x;
+    }
+}
+
 
 
 #[inline]
@@ -270,88 +339,3 @@ fn get_faces_count(indices: usize) -> Result<usize, ObjectError> {
 
     Ok(c)
 }
-//-----------------------------------------------------------------------------
-
-
-//-----------------------------------------------------------------------------
-
-/*
-
-
-#[repr(C)]
-struct SubmaterialUsage {
-    index_1:  u32,
-    index_2:  u32,
-    sm_index: u32
-}
-*/
-
-//----------------------------------------------------------------
-/*
-#[derive(Debug)]
-pub struct ChopEOF {
-    need: usize,
-    have: usize
-}
-
-
-pub type ChopResult<'a, T> = Result<(T, &'a [u8]), ChopEOF>;
-
-
-#[inline]
-fn chop_subslice<'a>(slice: &'a [u8], len: usize) -> ChopResult<&'a [u8]> {
-    if len > slice.len() {
-        Err(ChopEOF { need: len, have: slice.len() })
-    } else {
-        Ok(slice.split_at(len))
-    }
-}
-
-
-#[inline]
-fn chop_as<T>(slice: &[u8]) -> ChopResult<T> {
-    let (s, rest) = chop_subslice(slice, std::mem::size_of::<T>())?;
-    // INVARIANT: s.len() === size_of::<T>()
-    let result: T = unsafe { std::mem::transmute_copy(&s[0]) };
-    Ok((result, rest))
-}
-
-
-#[inline]
-fn chop_u32(slice: &[u8]) -> ChopResult<u32> {
-    chop_as::<u32>(slice)
-}
-
-
-#[inline]
-fn chop_u32_usize(slice: &[u8]) -> ChopResult<usize> {
-   chop_u32(slice).map(|(x, rest)| (x as usize, rest)) 
-}
-
-
-#[inline]
-fn chop_slice_of<'a, T>(slice: &'a [u8], len: usize) -> ChopResult<&'a [T]> {
-    let (s, rest) = chop_subslice(slice, len * std::mem::size_of::<T>())?;
-    // INVARIANT: s.len() >= len
-    let ptr: *const u8 = &s[0];
-    let result = unsafe { std::slice::from_raw_parts(ptr as *const T, len) };
-    Ok((result, rest))
-}
-
-
-#[inline]
-fn chop_vec<'a, T, F, E>(mut slice: &'a [u8], count: usize, parser: F) -> Result<(Vec<T>, &'a [u8]), (usize, E)>
-where F: Fn(&'a [u8]) -> Result<(T, &'a [u8]), E>,
-      T: 'a
-{
-    let mut result = Vec::<T>::with_capacity(count);
-
-    for i in 0 .. count {
-        let (t, rest) = parser(slice).map_err(|e| (i, e))?;
-        result.push(t);
-        slice = rest;
-    }
-
-    Ok((result, slice))
-}
-*/

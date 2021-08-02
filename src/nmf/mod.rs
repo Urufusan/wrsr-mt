@@ -129,7 +129,6 @@ impl<T: ObjectReader<fs::File>> NmfBuf<T> {
 
 impl<R: Read + Seek> ObjectReader<R> for ObjectInfo {
     fn from_reader(rdr: &mut R) -> Result<ObjectInfo, ObjectError> {
-        //let mut head_buf = [0u8; 260];
 
         #[inline]
         fn skip<R: Seek>(reader: &mut R, n: u32) -> Result<u64, ObjectError> {

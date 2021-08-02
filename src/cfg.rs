@@ -20,6 +20,7 @@ pub enum NmfCommand {
     Show(NmfShowCommand),
     ToObj(NmfToObjCommand),
     Scale(NmfScaleCommand),
+    MirrorX(NmfMirrorXCommand),
     Patch(NmfPatchCommand),
 }
 
@@ -35,6 +36,11 @@ pub struct NmfToObjCommand {
 pub struct NmfScaleCommand {
     pub input: PathBuf,
     pub factor: f64,
+    pub output: PathBuf
+}
+
+pub struct NmfMirrorXCommand {
+    pub input: PathBuf,
     pub output: PathBuf
 }
 
@@ -95,6 +101,10 @@ lazy_static! {
                 .arg(Arg::with_name("factor").required(true))
                 .arg(Arg::with_name("nmf-output").required(true));
 
+            let cmd_nmf_mirror_x = SubCommand::with_name("mirror-x")
+                .arg(Arg::with_name("nmf-input").required(true))
+                .arg(Arg::with_name("nmf-output").required(true));
+
             let cmd_nmf_patch = SubCommand::with_name("patch")
                 .arg(Arg::with_name("nmf-input").required(true))
                 .arg(Arg::with_name("nmf-patch").required(true))
@@ -103,6 +113,7 @@ lazy_static! {
             SubCommand::with_name("nmf").subcommand(cmd_nmf_show)
                                         .subcommand(cmd_nmf_toobj)
                                         .subcommand(cmd_nmf_scale)
+                                        .subcommand(cmd_nmf_mirror_x)
                                         .subcommand(cmd_nmf_patch)
         };
 
@@ -167,6 +178,16 @@ lazy_static! {
                             NmfCommand::Scale(NmfScaleCommand {
                                 input,
                                 factor,
+                                output
+                            })
+                        },
+
+                        ("mirror-x", Some(m)) => {
+                            let input = run_dir.join(m.value_of("nmf-input").unwrap());
+                            let output = run_dir.join(m.value_of("nmf-output").unwrap());
+
+                            NmfCommand::MirrorX(NmfMirrorXCommand {
+                                input,
                                 output
                             })
                         },

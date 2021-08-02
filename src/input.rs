@@ -158,12 +158,13 @@ fn source_to_def<'ini, 'map>(path: &Path, source_type: SourceType, hmap: &'map m
         def.imagegui.replace(pathbuf.clone());
     }
 
-    pathbuf.set_file_name("model.patch");
-    if pathbuf.exists() {
-        let pfile = fs::read_to_string(&pathbuf).unwrap();
-        let patch = ModelPatch::try_from(pfile.as_str()).map_err(|e| format!("Cannot parse ModelPatch at '{:?}': {}", &pathbuf, e))?;
-        def.model.patch = Some(patch);
-    }
+    // TODO
+    //pathbuf.set_file_name("model.patch");
+    //if pathbuf.exists() {
+        //let pfile = fs::read_to_string(&pathbuf).unwrap();
+        //let patch = ModelPatch::try_from(pfile.as_str()).map_err(|e| format!("Cannot parse ModelPatch at '{:?}': {}", &pathbuf, e))?;
+        //def.model.patch = Some(patch);
+    //}
 
     pathbuf.set_file_name("building.skins");
     if pathbuf.exists() {

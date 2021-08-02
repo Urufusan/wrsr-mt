@@ -143,6 +143,15 @@ fn main() {
                     nmf.write_to_file(output).unwrap();
                     println!("Done");
                 },
+
+                cfg::NmfCommand::MirrorX(cfg::NmfMirrorXCommand { input, output }) => {
+                    let mut nmf = nmf::NmfBufFull::from_path(input).expect("Failed to read the nmf file");
+                    for o in nmf.objects.iter_mut() {
+                        o.mirror_x();
+                    }
+                    nmf.write_to_file(output).unwrap();
+                    println!("Done");
+                },
                 
                 cfg::NmfCommand::Patch(cfg::NmfPatchCommand { input: _, patch: _, output: _ }) => {
 /*                
