@@ -11,7 +11,6 @@ use lazy_static::lazy_static;
 use const_format::concatcp;
 
 use crate::cfg::{AppSettings, APP_SETTINGS};
-use crate::nmf;
 
 //--------------------------------------------
 //                SOURCES
@@ -143,7 +142,10 @@ impl BuildingDef<'_> {
         }
 
         // TODO: this function sucks
-        fn validate_modeldef(m: &ModelDef) -> Vec<String> {
+        fn validate_modeldef(_m: &ModelDef) -> Vec<String> {
+            todo!()
+
+/*
             assert!(m.ini_token.value.exists());
 
             let buf = fs::read(&m.ini_token.value).unwrap();
@@ -152,10 +154,10 @@ impl BuildingDef<'_> {
             //println!("{}", nmf);
             assert_eq!(rest.len(), 0, "Model nmf parsed with leftovers");
 
-            let mut used: Vec<(&nmf::SubMaterial, bool)> = nmf.submaterials.iter().zip(std::iter::repeat(false)).collect();
+            let mut used: Vec<(&nmf::Submaterial, bool)> = nmf.submaterials.iter().zip(std::iter::repeat(false)).collect();
 
             #[inline]
-            fn set_used<'a, 'b, T>(used: &mut Vec<(&'b nmf::SubMaterial<'a>, bool)>, objs: T)
+            fn set_used<'a, 'b, T>(used: &mut Vec<(&'b nmf::Submaterial<'a>, bool)>, objs: T)
             where T: Iterator<Item = &'b nmf::Object<'a>> {
                 for obj in objs {
                     for idx in obj.submaterials.iter() {
@@ -201,6 +203,7 @@ impl BuildingDef<'_> {
                         None 
                     }
                 ).collect()
+        */
         }
     }
 }
@@ -306,8 +309,12 @@ impl fmt::Display for ModelDef {
 }
 
 //--------------------------------------------------------
+        /*
 impl ModelPatch {
     pub fn apply<'data>(&self, src: &nmf::Nmf<'data>) -> nmf::Nmf<'data> {
+
+        // TODO
+        todo!()
 
         let mut sm_usage: Vec<Option<usize>> = vec![None; src.submaterials.len()];
         let mut set_used = |obj: &nmf::Object<'data>| for &idx in obj.submaterials.iter() {
@@ -375,8 +382,10 @@ impl ModelPatch {
             submaterials,
             objects
         }
+ 
     }
 }
+*/
 
 impl fmt::Display for ModelPatch {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

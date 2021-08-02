@@ -12,7 +12,6 @@ use crate::data::{BuildingDef, ModelDef, ModelPatch, RenderConfig, IniToken, Tex
                   read_to_string_buf
                  };
 
-use crate::nmf::Nmf;                 
 
 
 const FILENAME_MTL: &str = "material.mtl";
@@ -326,8 +325,8 @@ fn copy_asset_md5<'bld, 'map>(
 
 fn copy_patched_nmf<'bld>(
     src_file: &'bld PathBuf, 
-    patch: &ModelPatch,
-    dest_dir: &mut PathBuf, 
+    _patch: &ModelPatch,
+    _dest_dir: &mut PathBuf, 
     buf: &mut Vec<u8>) -> String
 {
     use std::convert::TryInto;
@@ -342,16 +341,23 @@ fn copy_patched_nmf<'bld>(
 
     file.read_to_end(buf).unwrap();
 
+    // TODO
+    todo!()
+
+/*
     let (nmf, rest) = Nmf::parse_bytes(buf.as_slice()).expect("Failed to parse the nmf");
     if !rest.is_empty() {
         panic!("Nmf parsed with leftovers ({} bytes)", rest.len());
     };
 
-    let patched = patch.apply(&nmf);
+    // TODO: apply modifiers from patch
+    // this is old: let patched = patch.apply(&nmf);
+
+    let patched = nmf;
     // NOTE: DEBUG
     //println!("{}", &patched);
 
-    let mut out_buf = Vec::with_capacity(patched.calculated_len());
+    let mut out_buf = Vec::with_capacity(patched.len());
     patched.write_bytes(&mut out_buf);
 
     let dig = md5::compute(out_buf.as_mut_slice());
@@ -365,6 +371,7 @@ fn copy_patched_nmf<'bld>(
     dest_dir.pop();
 
     filename
+*/
 }
 
 //--------------------------------------

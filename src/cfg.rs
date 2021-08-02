@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use lazy_static::lazy_static;
+use std::str::FromStr;
 
 
 
@@ -17,13 +18,18 @@ pub struct InstallCommand {
 
 pub enum NmfCommand {
     Show(NmfShowCommand),
+    ToObj(NmfToObjCommand),
     Scale(NmfScaleCommand),
-    Patch(NmfPatchCommand)
+    Patch(NmfPatchCommand),
 }
 
 pub struct NmfShowCommand {
     pub path: PathBuf,
-    pub with_patch: Option<PathBuf>
+}
+
+pub struct NmfToObjCommand {
+    pub input: PathBuf,
+    pub output: PathBuf
 }
 
 pub struct NmfScaleCommand {
@@ -78,8 +84,16 @@ lazy_static! {
 
         let cmd_nmf = {
             let cmd_nmf_show = SubCommand::with_name("show")
-                .arg(Arg::with_name("nmf-path").required(true))
-                .arg(Arg::with_name("with-patch").long("with-patch").takes_value(true));
+                .arg(Arg::with_name("nmf-path").required(true));
+
+            let cmd_nmf_toobj = SubCommand::with_name("to-obj")
+                .arg(Arg::with_name("nmf-input").required(true))
+                .arg(Arg::with_name("obj-output").required(true));
+
+            let cmd_nmf_scale = SubCommand::with_name("scale")
+                .arg(Arg::with_name("nmf-input").required(true))
+                .arg(Arg::with_name("factor").required(true))
+                .arg(Arg::with_name("nmf-output").required(true));
 
             let cmd_nmf_patch = SubCommand::with_name("patch")
                 .arg(Arg::with_name("nmf-input").required(true))
@@ -87,6 +101,8 @@ lazy_static! {
                 .arg(Arg::with_name("nmf-output").required(true));
 
             SubCommand::with_name("nmf").subcommand(cmd_nmf_show)
+                                        .subcommand(cmd_nmf_toobj)
+                                        .subcommand(cmd_nmf_scale)
                                         .subcommand(cmd_nmf_patch)
         };
 
@@ -130,11 +146,28 @@ lazy_static! {
                     let command = match m.subcommand() {
                         ("show", Some(m)) => {
                             let path = run_dir.join(m.value_of("nmf-path").unwrap());
-                            let patch = m.value_of("with-patch").map(|p| run_dir.join(p));
+                            NmfCommand::Show(NmfShowCommand { path })
+                        },
 
-                            NmfCommand::Show(NmfShowCommand {
-                                path,
-                                with_patch: patch
+                        ("to-obj", Some(m)) => {
+                            let input = run_dir.join(m.value_of("nmf-input").unwrap());
+                            let output = run_dir.join(m.value_of("obj-output").unwrap());
+
+                            NmfCommand::ToObj(NmfToObjCommand {
+                                input,
+                                output
+                            })
+                        },
+
+                        ("scale", Some(m)) => {
+                            let input = run_dir.join(m.value_of("nmf-input").unwrap());
+                            let factor = f64::from_str(m.value_of("factor").unwrap()).expect("Cannot parse scale factor as float");
+                            let output = run_dir.join(m.value_of("nmf-output").unwrap());
+
+                            NmfCommand::Scale(NmfScaleCommand {
+                                input,
+                                factor,
+                                output
                             })
                         },
 
