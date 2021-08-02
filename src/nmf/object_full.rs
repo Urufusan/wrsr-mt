@@ -1,6 +1,6 @@
 use std::mem::size_of;
 use std::alloc;
-use std::io::{Read, Seek};
+use std::io::{Write, Read, Seek};
 use std::convert::TryInto;
 use core::ops::Range;
 
@@ -9,6 +9,7 @@ use super::{ObjectError, ObjectReader, NameBuf};
 
 
 
+#[repr(C)]
 pub struct ObjectFull {
     head_buf: [u8; 260],
     range_name: Option<Range<usize>>,
@@ -21,12 +22,12 @@ pub struct ObjectFull {
     faces_count:    usize,
     submat_count:   usize,
 
-    vertices_start:  usize,
-    normals_start:   usize,
-    uv_map_start:    usize,
-    face_ext_start:  usize,
-    face_bbox_start: usize,
-    submat_start:    usize,
+    vertices_start:    usize,
+    normals_start:     usize,
+    uv_map_start:      usize,
+    face_ext_start:    usize,
+    face_bboxes_start: usize,
+    submat_start:      usize,
 }
 
 
@@ -38,7 +39,6 @@ pub struct RawFace {
 }
 
 
-#[derive(Debug)]
 #[repr(C)]
 pub struct RawVertex {
     pub x: f32,
@@ -47,12 +47,26 @@ pub struct RawVertex {
 }
 
 
-#[derive(Debug)]
 #[repr(C)]
 pub struct RawPoint {
     pub x: f32,
     pub y: f32,
 }
+
+
+#[repr(C)]
+pub struct RawFaceExtra {
+    pub auto_normal: RawVertex,
+    pub factor: f32
+}
+
+
+#[repr(C)]
+pub struct RawBBox {
+    pub v_min: RawVertex,
+    pub v_max: RawVertex,
+}
+
 
 
 fn read_u32(bytes: &[u8]) -> Result<u32, ObjectError> {
@@ -90,16 +104,16 @@ impl<R: Read + Seek> ObjectReader<R> for ObjectFull {
 
         let indices_bytes = indices_count * size_of::<u16>();
 
-        let vertices_start  = indices_bytes   + indices_bytes % size_of::<u32>();
-        let normals_start   = vertices_start  + vertices_count * 12;
-        let uv_map_start    = normals_start   + vertices_count * 36;
-        let face_ext_start  = uv_map_start    + vertices_count * 8;
-        let face_bbox_start = face_ext_start  + faces_count * 16;
-        let submat_start    = face_bbox_start + faces_count * 24;
-        let obj_end         = submat_start    + submat_count * 12;
+        let vertices_start    = indices_bytes     + indices_bytes % size_of::<u32>();
+        let normals_start     = vertices_start    + vertices_count * 12;
+        let uv_map_start      = normals_start     + vertices_count * 36;
+        let face_ext_start    = uv_map_start      + vertices_count * 8;
+        let face_bboxes_start = face_ext_start    + faces_count * 16;
+        let submat_start      = face_bboxes_start + faces_count * 24;
+        let obj_end           = submat_start      + submat_count * 12;
 
         unsafe {
-            let buf_layout = Self::get_buf_layout(obj_end)?;
+            let buf_layout = alloc::Layout::from_size_align(obj_end, 4_usize).map_err(|e| ObjectError::Allocation(format!("{:?}", e)))?;
             // TODO: without zeroed (MaybeUninit etc)
             let buf_ptr = alloc::alloc_zeroed(buf_layout);
             if buf_ptr.is_null() {
@@ -129,7 +143,7 @@ impl<R: Read + Seek> ObjectReader<R> for ObjectFull {
                             normals_start,
                             uv_map_start,
                             face_ext_start,
-                            face_bbox_start,
+                            face_bboxes_start,
                             submat_start,
             })
 
@@ -150,14 +164,27 @@ impl Drop for ObjectFull {
 
 impl ObjectFull {
 
-    fn get_buf_layout(size: usize) -> Result<alloc::Layout, ObjectError> {
-        alloc::Layout::from_size_align(size, 4_usize).map_err(|e| ObjectError::Allocation(format!("{:?}", e)))
+    pub fn write_bytes<W: Write>(&self, mut wr: W) -> Result<(), std::io::Error> {
+        wr.write_all(&self.head_buf)?;
+
+        let slice = self.get_slice::<u8>(0, self.indices_count * size_of::<u16>());
+        wr.write_all(slice)?;
+
+        let slice = self.get_slice::<u8>(self.vertices_start, self.buf_layout.size() - self.vertices_start);
+        wr.write_all(slice)
     }
 
     pub fn name(&self) -> &str {
         match &self.range_name {
             Some(rng) => unsafe { std::str::from_utf8_unchecked(self.head_buf.get_unchecked(rng.clone())) },
             None => &"<not displayable>"
+        }
+    }
+
+    fn bbox_mut<'a>(&'a mut self) -> &'a mut RawBBox {
+        unsafe {
+            let ptr = self.head_buf.as_mut_ptr().add(204).cast::<RawBBox>();
+            ptr.as_mut().unwrap()
         }
     }
 
@@ -173,6 +200,10 @@ impl ObjectFull {
             let ptr = self.buf_ptr.add(offset).cast::<T>();
             std::slice::from_raw_parts_mut(ptr, count)
         }
+    }
+
+    pub fn faces<'a>(&'a self) -> &'a [RawFace] {
+        self.get_slice::<RawFace>(0, self.faces_count)
     }
 
     pub fn vertices<'a>(&'a self) -> &'a [RawVertex] {
@@ -191,8 +222,40 @@ impl ObjectFull {
         self.get_slice::<RawPoint>(self.uv_map_start, self.vertices_count)
     }
 
-    pub fn faces<'a>(&'a self) -> &'a [RawFace] {
-        self.get_slice::<RawFace>(0, self.faces_count)
+    pub fn face_extras_mut<'a>(&'a mut self) -> &'a mut [RawFaceExtra] {
+        self.get_slice_mut::<RawFaceExtra>(self.face_ext_start, self.faces_count)
+    }
+
+    pub fn face_bboxes_mut<'a>(&'a mut self) -> &'a mut [RawBBox] {
+        self.get_slice_mut::<RawBBox>(self.face_bboxes_start, self.faces_count)
+    }
+
+    pub fn scale(&mut self, scale_factor: f64) {
+        let bbox = self.bbox_mut();
+        bbox.v_min.scale(scale_factor);
+        bbox.v_max.scale(scale_factor);
+
+        for v in self.vertices_mut() {
+            v.scale(scale_factor);
+        }
+
+        for RawFaceExtra { factor, .. } in self.face_extras_mut() {
+            *factor = (*factor as f64 * scale_factor) as f32;
+        }
+
+        for RawBBox { v_min, v_max } in self.face_bboxes_mut() {
+            v_min.scale(scale_factor); 
+            v_max.scale(scale_factor); 
+        }
+    }
+}
+
+
+impl RawVertex {
+    fn scale(&mut self, factor: f64) {
+        self.x = (self.x as f64 * factor) as f32;
+        self.y = (self.y as f64 * factor) as f32;
+        self.z = (self.z as f64 * factor) as f32;
     }
 }
 
@@ -214,79 +277,7 @@ fn get_faces_count(indices: usize) -> Result<usize, ObjectError> {
 
 /*
 
-#[derive(Debug)]
-pub enum ObjectError {
-    EOF(usize, ChopEOF, &'static str),
-    ZeroHeadMissing,
-    Name(ChopEOF),
-    WrongIndicesCount(usize),
-}
-*/
 
-/*
-struct ObjectSlice<'a> {
-    slice:   &'a [u8],
-    
-    size_1:  usize,
-    name:    Name<'a>,
-    magic_1: &'a [u8],
-    bbox:    BBox,
-    magic_2: u32,
-    size_2:  usize,
-    magic_3: &'a [u8],
-
-    indices:     &'a [FaceIndices],
-    vertices:    &'a [Vertex3f],
-
-    normals:     &'a [Vertex3f],
-    tangents_1:  &'a [Vertex3f],
-    tangents_2:  &'a [Vertex3f],
-
-    uv_map:      &'a [Point2f],
-    face_extra:  &'a [FaceData],
-    face_bboxes: &'a [BBox],
-
-    submaterials: &'a [SubmaterialUsage]
-}
-*/
-
-/*
-//#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-struct RawVertex {
-    x: f32,
-    y: f32,
-    z: f32
-}
-
-
-//#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-struct RawPoint {
-    x: f32,
-    y: f32,
-}
-
-
-//#[derive(Debug, Clone, Copy)]
-
-//#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-struct RawFaceExtra {
-    auto_normal: RawVertex,
-    factor: f32
-}
-
-
-//#[derive(Debug, Clone, Copy)]
-#[repr(C)]
-struct BBox {
-    v_min:   RawVertex,
-    v_max:   RawVertex,
-}
-
-
-//#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 struct SubmaterialUsage {
     index_1:  u32,
@@ -294,73 +285,6 @@ struct SubmaterialUsage {
     sm_index: u32
 }
 */
-
-//----------------------------------------------------------------
-
-
-/*
-impl<'a> ObjectSlice<'a> {
-
-    pub fn parse_slice(slice: &'a [u8]) -> Result<(ObjectSlice<'a>, &'a [u8]), ObjectError> {
-        let slice_len = slice.len();
-
-        let (zerohead, rest) = chop_u32(slice).map_err(|e| ObjectError::EOF(0, e, "zero header"))?;
-        if zerohead != 0 {
-            return Err(ObjectError::ZeroHeadMissing);
-        }
-
-        let (size_1, rest)  = chop_u32_usize(rest).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "size 1"))?;
-        //let (name, rest)    = chop_subslice(rest, 64).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "name"))?;
-        let (name, rest)    = Name::parse_slice(rest).map_err(ObjectError::Name)?;
-        let (magic_1, rest) = chop_subslice(rest, 132).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "magic 1"))?; // 4 bytes + some matrix-like structure
-
-        let (bbox, rest)    = chop_as::<BBox>(rest).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "bbox"))?;
-        let (magic_2, rest) = chop_u32(rest).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "magic 2"))?;
-
-        let (size_2, rest)        = chop_u32_usize(rest).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "size 2"))?;
-        let (vert_count, rest)    = chop_u32_usize(rest).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "vertices count"))?;
-        let (indices_count, rest) = chop_u32_usize(rest).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "indices count"))?;
-        let (submat_count, rest)  = chop_u32_usize(rest).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "submaterials count"))?;
-
-        let faces_count = {
-            let (c, rm) = num::integer::div_rem(indices_count, 3_usize);
-            if rm != 0 {
-                return Err(ObjectError::WrongIndicesCount(indices_count));
-            }
-
-            c
-        };
-
-        let (magic_3, rest) = chop_subslice(rest, 12).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "magic 3"))?; // always  0x00 00 00 00   3A 01 04 00   00 00 00 00
-
-        let (indices, rest)      = chop_slice_of::<FaceIndices>(rest, faces_count).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "indices"))?;
-        let (vertices, rest)     = chop_slice_of::<Vertex3f>(rest, vert_count).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "vertices"))?;
-        let (normals, rest)      = chop_slice_of::<Vertex3f>(rest, vert_count).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "normals"))?;
-        let (tangents_1, rest)   = chop_slice_of::<Vertex3f>(rest, vert_count).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "tangents 1"))?;
-        let (tangents_2, rest)   = chop_slice_of::<Vertex3f>(rest, vert_count).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "tangents 2"))?;
-        let (uv_map, rest)       = chop_slice_of::<Point2f>(rest, vert_count).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "uv map"))?;
-        let (face_extra, rest)   = chop_slice_of::<FaceData>(rest, faces_count).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "face extras"))?;
-        let (face_bboxes, rest)  = chop_slice_of::<BBox>(rest, faces_count).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "face bboxes"))?;
-        let (submaterials, rest) = chop_slice_of::<SubmaterialUsage>(rest, submat_count).map_err(|e| ObjectError::EOF(slice_len - rest.len(), e, "submaterials"))?;
-
-        // TODO: compare read-length with size1 and size2
-
-        Ok((ObjectSlice {
-            slice,
-            
-            size_1, name, magic_1,
-            bbox, magic_2, size_2, magic_3,
-            indices, vertices,
-            normals, tangents_1, tangents_2,
-            uv_map,
-            face_extra, face_bboxes,
-            submaterials
-        }, rest))
-    }
-
-}
-*/
-
 
 //----------------------------------------------------------------
 /*

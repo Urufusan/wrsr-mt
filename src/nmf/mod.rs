@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fs;
 use std::path::Path;
-use std::io::{self, Read, Seek};
+use std::io::{self, Read, Seek, Write};
 use std::convert::TryInto;
 
 pub mod object_full;
@@ -17,6 +17,8 @@ pub enum Error {
     FileLengthMismatch(usize, u64),
     Submaterial(usize, io::Error),
     Object(usize, ObjectError),
+    U32Conversion(std::num::TryFromIntError),
+    WriteObject(usize, io::Error)
 }
 
 
@@ -183,6 +185,41 @@ impl<R: Read + Seek> ObjectReader<R> for ObjectInfo {
 }
 
 
+impl NmfBuf<ObjectFull> {
+
+    pub fn write_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
+        let path: &Path = path.as_ref();
+        
+        let f_out = fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(path)
+                        .map_err(Error::FileIO)?;
+
+        let mut wr = io::BufWriter::new(f_out);
+
+        self.nmf_type.write_bytes(&mut wr).map_err(Error::FileIO)?;
+        write_num_u32(self.submaterials.len(), &mut wr)?;
+        write_num_u32(self.objects.len(), &mut wr)?;
+        write_num_u32(0, &mut wr)?;
+
+        for sm in self.submaterials.iter() {
+            wr.write_all(&sm.bytes).map_err(Error::FileIO)?;
+        }
+
+        for (i, o) in self.objects.iter().enumerate() {
+            o.write_bytes(&mut wr).map_err(|e| Error::WriteObject(i, e))?;
+        }
+
+        let len = wr.stream_position().map_err(Error::FileIO)?;
+        wr.seek(io::SeekFrom::Start(16)).map_err(Error::FileIO)?;
+        write_num_u32(len, &mut wr)?;
+
+        wr.flush().map_err(Error::FileIO)
+    }
+}
+
+
 impl NmfType {
     const FROM_OBJ: &'static [u8] = b"fromObj\0";
     const B3DMH_10: &'static [u8] = b"B3DMH\010";
@@ -193,6 +230,15 @@ impl NmfType {
             Self::B3DMH_10 => Some(NmfType::B3dmh10),
             _ => None
         }
+    }
+
+    fn write_bytes<W: Write>(&self, mut wr: W) -> Result<(), io::Error> {
+        let slice = match self {
+            NmfType::FromObj => Self::FROM_OBJ,
+            NmfType::B3dmh10 => Self::B3DMH_10,
+        };
+
+        wr.write_all(slice)
     }
 }
 
@@ -257,6 +303,12 @@ fn get_faces_count(indices: u32) -> Result<u32, ObjectError> {
     }
 
     Ok(c)
+}
+
+#[inline]
+fn write_num_u32<T: Write, N: TryInto<u32, Error = std::num::TryFromIntError>>(i: N, wr: &mut T) -> Result<(), Error> {
+    let i = i.try_into().map_err(Error::U32Conversion)?;
+    wr.write_all(&i.to_le_bytes()).map_err(Error::FileIO)
 }
 
 //-----------------------------------------------------------------------------
@@ -400,7 +452,7 @@ impl fmt::Display for NmfBuf<ObjectFull> {
 
         writeln!(f, "Objects: {}", self.objects.len())?;
         for (i, o) in self.objects.iter().enumerate() {
-            writeln!(f, "{:2}) {} {:#?}", i, o.name(), o.vertices())?;
+            writeln!(f, "{:2}) {}", i, o.name())?;
         }
 
         if self.remainder > 0 {

@@ -135,23 +135,13 @@ fn main() {
                     println!("Done");
                 },
 
-                cfg::NmfCommand::Scale(cfg::NmfScaleCommand { input, factor: _, output: _ }) => {
+                cfg::NmfCommand::Scale(cfg::NmfScaleCommand { input, factor, output }) => {
                     let mut nmf = nmf::NmfBufFull::from_path(input).expect("Failed to read the nmf file");
-                    println!("{}", nmf);
-
                     for o in nmf.objects.iter_mut() {
-                        for v in o.vertices_mut() {
-                            v.x += 20.0;
-                        }
+                        o.scale(*factor);
                     }
-
-                    println!("{}", nmf);
-
-//                    let x = std::mem::size_of::<nmf::RawFace>();
-//                    let y = std::mem::align_of::<nmf::RawFace>();
-//                    println!("{} {}", x, y);
-
-                    todo!()
+                    nmf.write_to_file(output).unwrap();
+                    println!("Done");
                 },
                 
                 cfg::NmfCommand::Patch(cfg::NmfPatchCommand { input: _, patch: _, output: _ }) => {
