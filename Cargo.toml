@@ -17,7 +17,6 @@ lazy_static = "1.4"
 const_format = "0.2"
 path-slash = "0.1"
 clap = { version = "2.33.3", default-features = false }
-# structopt = { version = "0.3.22" }
 
 [profile.release]
 lto = true

@@ -8,13 +8,18 @@ use std::str::FromStr;
 pub enum AppCommand {
     Install(InstallCommand),
     Nmf(NmfCommand),
+    Mod(ModCommand),
 }
+
+//-----------------------------
 
 pub struct InstallCommand {
     pub source: PathBuf,
     pub destination: PathBuf,
     pub is_check: bool
 }
+
+//-----------------------------
 
 pub enum NmfCommand {
     Show(NmfShowCommand),
@@ -50,12 +55,25 @@ pub struct NmfPatchCommand {
     pub output: PathBuf
 }
 
+//-------------------------------
+
+pub enum ModCommand {
+    Validate(ModValidateCommand),
+}
+
+pub struct ModValidateCommand {
+    pub path: PathBuf
+}
+
+//-------------------------------
+
 pub struct AppSettings {
     pub path_stock: PathBuf,
     pub path_workshop: PathBuf,
 
     pub command: AppCommand,
 }
+
 
 impl AppSettings {
 
@@ -117,6 +135,13 @@ lazy_static! {
                                         .subcommand(cmd_nmf_patch)
         };
 
+        let cmd_mod = {
+            let cmd_mod_validate = SubCommand::with_name("validate")
+                .arg(Arg::with_name("mod-path").required(true));
+
+            SubCommand::with_name("mod").subcommand(cmd_mod_validate)
+        };
+
         let m = App::new("wrsr-mt")
             .author("kromgart@gmail.com")
             .version("0.1")
@@ -133,6 +158,7 @@ lazy_static! {
             )
             .subcommand(cmd_install)
             .subcommand(cmd_nmf)
+            .subcommand(cmd_mod)
             .get_matches();
 
         let path_stock = PathBuf::from(m.value_of("stock").unwrap());
@@ -141,6 +167,8 @@ lazy_static! {
 
         let command = { 
             let run_dir = std::env::current_dir().unwrap();
+            let mk_path = |m: &clap::ArgMatches, p| run_dir.join(m.value_of(p).unwrap());
+
             match m.subcommand() {
                 ("install", Some(m)) => {
                     let source = run_dir.join(m.value_of("in").unwrap());
@@ -152,6 +180,17 @@ lazy_static! {
                         destination,
                         is_check
                     })
+                },
+                ("mod", Some(m)) => {
+                    let command = match m.subcommand() {
+                        ("validate", Some(m)) => {
+                            let path = mk_path(m, "mod-path");
+                            ModCommand::Validate(ModValidateCommand { path })
+                        },
+                        (cname, _) => panic!("Unknown mod subcommand '{}'" , cname)
+                    };
+
+                    AppCommand::Mod(command)
                 },
                 ("nmf", Some(m)) => {
                     let command = match m.subcommand() {

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use regex::Regex;
 
 mod nmf;
+mod ini;
 mod cfg;
 mod data;
 mod input;
@@ -162,8 +163,7 @@ fn main() {
                     };
 
                     todo!()
-*/
-                    /*
+
                     let buf_patch = fs::read_to_string(patch).expect("Cannot read patch file at the specified path");
                     let patch = data::ModelPatch::try_from(buf_patch.as_str()).unwrap();
 
@@ -180,7 +180,16 @@ fn main() {
                     */
                 }
             }
-        }
+        },
+
+
+        cfg::AppCommand::Mod(cmd) => {
+            match cmd {
+                cfg::ModCommand::Validate(cfg::ModValidateCommand { path }) => {
+                    ini::building::do_stuff();
+                },
+            }
+        },
     };
 }
 
