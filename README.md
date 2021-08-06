@@ -7,7 +7,7 @@ Command-line application, providing a variety of modding-related tools for "Work
    - displaying model structure (submaterials, objects, geometry)
    - scaling
    - mirroring
-   - exporting into Wavefront's \*.obj format
+   - exporting into Wavefront's \*.obj format ([example](https://www.youtube.com/watch?v=vJ6aN4iXCas))
    - deleting objects
  
  - modpacks (generating customized mods in *workshop_wip* directory, using assets from workshop mods and stock buildings)
