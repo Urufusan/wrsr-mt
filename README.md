@@ -30,7 +30,7 @@ Mirror *model.nmf* along X-axis and save it into new file *model_mirrored.nmf*
     $ wrsr-mt nmf mirror-x model.nmf model_mirrored.nmf
     
 
-Export model geometry from *model.nmf* into *model.obj*
+Export model geometry from *model.nmf* into *model.obj* ([example](https://www.youtube.com/watch?v=vJ6aN4iXCas))
 
     $ wrsr-mt nmf to-obj model.nmf model.obj
     
