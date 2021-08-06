@@ -1,18 +1,11 @@
-use std::fs;
-use std::path::PathBuf;
-use std::str::FromStr;
-
-use lazy_static::lazy_static;
-use const_format::concatcp;
-use regex::Regex;
-
 mod display;
 mod parse;
 
-pub use parse::get_tokens;
+use super::IniToken;
 
 
 type Point3f = (f32, f32, f32);
+type Point2f = (f32, f32);
 
 pub enum StrValue<'a> {
     Borrowed(&'a str),
@@ -30,34 +23,47 @@ pub enum Token<'a> {
 //  Name(u32),
 
     BuildingType(BuildingType),
+    CivilBuilding,
+    QualityOfLiving(f32),
 
     Storage((StorageCargoType, f32)),
 
     ConnectionPedestrian((Point3f, Point3f)),
+    ConnectionRoadDead(Point3f),
+    ConnectionsRoadDeadSquare((Point2f, Point2f)),
 
     Particle((ParticleType, Point3f, f32, f32)),
+    TextCaption((Point3f, Point3f)),
 
     CostWork((ConstructionPhase, f32)),
-
     CostWorkBuildingNode(IdStringParam<'a>),
+
     CostResource((ResourceType, f32)),
     CostResourceAuto((ConstructionAutoCost, f32)),
-    CostWorkVehicleStation(IdStringParam<'a>),
+
+    CostWorkVehicleStation((Point3f, Point3f)),
+    CostWorkVehicleStationNode(IdStringParam<'a>),
 }
 
 
 impl<'a> Token<'a> {
-    const NAME_STR:                  &'static str = "NAME_STR";
-    const NAME:                      &'static str = "NAME";
-    const BUILDING_TYPE:             &'static str = "TYPE_";
-    const STORAGE:                   &'static str = "STORAGE";
-    const CONNECTION_PEDESTRIAN:     &'static str = "CONNECTION_PEDESTRIAN";
-    const PARTICLE:                  &'static str = "PARTICLE";
-    const COST_WORK:                 &'static str = "COST_WORK";
-    const COST_WORK_BUILDING_NODE:   &'static str = "COST_WORK_BUILDING_NODE";
-    const COST_RESOURCE:             &'static str = "COST_RESOURCE";
-    const COST_RESOURCE_AUTO:        &'static str = "COST_RESOURCE_AUTO";
-    const COST_WORK_VEHICLE_STATION: &'static str = "COST_WORK_VEHICLE_STATION_ACCORDING_NODE";
+    const NAME_STR:                       &'static str = "NAME_STR";
+    const NAME:                           &'static str = "NAME";
+    const BUILDING_TYPE:                  &'static str = "TYPE_";
+    const CIVIL_BUILDING:                 &'static str = "CIVIL_BUILDING";
+    const QUALITY_OF_LIVING:              &'static str = "QUALITY_OF_LIVING";
+    const STORAGE:                        &'static str = "STORAGE";
+    const CONNECTION_PEDESTRIAN:          &'static str = "CONNECTION_PEDESTRIAN";
+    const CONNECTION_ROAD_DEAD:           &'static str = "CONNECTION_ROAD_DEAD";
+    const CONNECTIONS_ROAD_DEAD_SQUARE:   &'static str = "CONNECTIONS_ROAD_DEAD_SQUARE";
+    const PARTICLE:                       &'static str = "PARTICLE";
+    const TEXT_CAPTION:                   &'static str = "TEXT_CAPTION";
+    const COST_WORK:                      &'static str = "COST_WORK";
+    const COST_WORK_BUILDING_NODE:        &'static str = "COST_WORK_BUILDING_NODE";
+    const COST_RESOURCE:                  &'static str = "COST_RESOURCE";
+    const COST_RESOURCE_AUTO:             &'static str = "COST_RESOURCE_AUTO";
+    const COST_WORK_VEHICLE_STATION     : &'static str = "COST_WORK_VEHICLE_STATION";
+    const COST_WORK_VEHICLE_STATION_NODE: &'static str = "COST_WORK_VEHICLE_STATION_ACCORDING_NODE";
 }
 
 
@@ -364,7 +370,7 @@ impl ResourceType {
 pub fn validate(src: &str) -> Vec<String> {
 
     let mut errors = Vec::with_capacity(0);
-    let tokens = parse::get_tokens(&src);
+    let tokens = Token::parse_tokens(&src);
     for (t_str, t_val) in tokens {
         if let Err(e) = t_val {
             errors.push(format!("Error: {}\nChunk: \n{}\n", e, t_str));

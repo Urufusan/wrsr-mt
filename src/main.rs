@@ -208,6 +208,8 @@ fn main() {
 
 
         cfg::AppCommand::Ini(cmd) => {
+            use ini::IniToken;
+
             match cmd {
                 cfg::IniCommand::Parse(cfg::IniParseCommand { path }) => {
                     if path.exists() {
@@ -215,7 +217,9 @@ fn main() {
                             println!("Parsing building.ini...");
                             let ini_buf = fs::read_to_string(path).unwrap();
 
-                            for (t_str, t_val) in ini::building::get_tokens(&ini_buf) {
+                            let mut tokens = ini::building::Token::parse_tokens(&ini_buf);
+
+                            for (t_str, t_val) in tokens.iter() {
                                 match t_val {
                                     Ok((t, rest)) => {
                                         print!("{}", t);
@@ -227,6 +231,28 @@ fn main() {
                                     Err(e) => println!("Error: {}, chunk: [{}]", e, t_str),
                                 }
                             }
+/*
+                            for (_, t_val) in tokens.iter_mut() {
+                                if let Ok((ini::building::Token::CostWorkVehicleStation((v1, v2)), rest)) = t_val {
+                                    let (x1, y1, z1) = *v1;
+                                    let (x2, y2, z2) = *v2;
+                                    *t_val = Ok(( ini::building::Token::CostWorkVehicleStation(((x1 * 2.0, y1 * 2.0, z1 * 2.0), (x2 * 2.0, y2 * 2.0, z2 * 2.0))), *rest));
+                                }
+                            }
+
+                            for (t_str, t_val) in tokens.iter() {
+                                match t_val {
+                                    Ok((t, rest)) => {
+                                        print!("{}", t);
+                                        if let Some(rest) = rest {
+                                            print!(" [remainder: {:?}]", rest);
+                                        }
+                                        println!();
+                                    },
+                                    Err(e) => println!("Error: {}, chunk: [{}]", e, t_str),
+                                }
+                            }
+*/                            
                         }
                     } else {
                         panic!("File not found: {:?}", path);

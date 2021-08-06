@@ -1,5 +1,3 @@
-use std::fs;
-use std::path::PathBuf;
 use std::str::FromStr;
 
 use lazy_static::lazy_static;
@@ -17,8 +15,11 @@ use super::{BuildingType,
             QuotedStringParam,
             IdStringParam,
             Point3f,
+            Point2f,
 
            };
+
+use super::super::{ParseResult, ParseError, IniToken};
 
 
 const RX_REMAINDER: &str = r"($|\s*(.*))";
@@ -28,8 +29,6 @@ trait ParseSlice<'a> {
 }
 
 
-pub type ParseError = String;
-pub type ParseResult<'a, T> = Result<(T, Option<&'a str>), ParseError>;
 
 
 fn parse_param<'a, T, F: Fn(&'a str) -> Result<T, ParseError>>(src: Option<&'a str>, rx: &Regex, f: F) -> ParseResult<'a, T> {
@@ -366,6 +365,7 @@ impl ParseSlice<'_> for ResourceType {
 
 
 impl<'a> Token<'a> {
+
     fn parse(src: &'a str) -> ParseResult<Token<'a>> {
         let (t_type, rest) = chop_token_type(src)?;
         match t_type {
@@ -378,14 +378,29 @@ impl<'a> Token<'a> {
             Self::BUILDING_TYPE =>
                 BuildingType::parse(rest).map(|(p, rest)| (Self::BuildingType(p), rest)),
 
+            Self::CIVIL_BUILDING =>
+                Ok((Self::CivilBuilding, rest)),
+
+            Self::QUALITY_OF_LIVING =>
+                f32::parse(rest).map(|(p, rest)| (Self::QualityOfLiving(p), rest)),
+
             Self::STORAGE =>
                 <(StorageCargoType, f32)>::parse(rest).map(|(p, rest)| (Self::Storage(p), rest)),
 
             Self::CONNECTION_PEDESTRIAN =>
                 <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::ConnectionPedestrian(p), rest)),
 
+            Self::CONNECTION_ROAD_DEAD =>
+                Point3f::parse(rest).map(|(p, rest)| (Self::ConnectionRoadDead(p), rest)),
+
+            Self::CONNECTIONS_ROAD_DEAD_SQUARE =>
+                <(Point2f, Point2f)>::parse(rest).map(|(p, rest)| (Self::ConnectionsRoadDeadSquare(p), rest)),
+
             Self::PARTICLE =>
                 <(ParticleType, Point3f, f32, f32)>::parse(rest).map(|(p, rest)| (Self::Particle(p), rest)),
+
+            Self::TEXT_CAPTION =>
+                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::TextCaption(p), rest)),
 
             Self::COST_WORK =>
                 <(ConstructionPhase, f32)>::parse(rest).map(|(p, rest)| (Self::CostWork(p), rest)),
@@ -400,9 +415,54 @@ impl<'a> Token<'a> {
                 <(ConstructionAutoCost, f32)>::parse(rest).map(|(p, rest)| (Self::CostResourceAuto(p), rest)),
 
             Self::COST_WORK_VEHICLE_STATION =>
-                IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStation(p), rest)),
+                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStation(p), rest)),
+
+            Self::COST_WORK_VEHICLE_STATION_NODE =>
+                IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStationNode(p), rest)),
 
             _ => Err(format!("Unknown token type: [{}]", t_type))
+        }
+    }
+}
+
+
+lazy_static! {
+    static ref RX_SPLIT: Regex = Regex::new(concatcp!("(^?", r"((\s*\r?)|(--[^\n]*)\n)+", r")(\$|end\s*(\r?\n\s*)*)")).unwrap();
+}
+
+
+impl<'a> IniToken<'a> for Token<'a> {
+    fn parse_tokens(src: &'a str) -> Vec<(&'a str, ParseResult<'a, Self>)> {
+        RX_SPLIT.split(src)
+            .filter(|x| !x.is_empty())
+            .map(|t_str| (t_str, Token::parse(t_str)))
+            .collect()
+    }
+
+    fn parse_strict(src: &'a str) -> Result<Vec<(&'a str, Self)>, Vec<(&'a str, ParseError)>> {
+        let mut res = Vec::with_capacity(100);
+        let mut errors = Vec::with_capacity(0);
+
+        for t_str in RX_SPLIT.split(src).filter(|x| !x.is_empty()) {
+            match Token::parse(t_str) {
+                Ok((t_val, rest)) => {
+                    match rest {
+                        Some(r) if !r.is_empty() => {
+                            errors.push((t_str, format!("Token parsed incomplete. Remaining: {}", r)));
+                        },
+                        _ => res.push((t_str, t_val))
+                    }
+                },
+                Err(e) => {
+                    errors.push((t_str, e));
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(res)
+        } else {
+            Err(errors)
         }
     }
 }
@@ -423,17 +483,3 @@ fn chop_token_type<'a>(src: &'a str) -> ParseResult<&'a str> {
         None => Err(format!("Cannot parse token type from this: [{}]", src))
     }
 }
-
-pub fn get_tokens<'a>(src: &'a str) -> Vec<(&'a str, ParseResult<Token<'a>>)> {
-    const RX_LINES_WS_OR_COMMENT: &str = r"((\s*\r?)|(--[^\r\n]*)\n)+";
-
-    lazy_static! {
-        static ref RX_SPLIT: Regex = Regex::new(concatcp!("(^?", RX_LINES_WS_OR_COMMENT, r")(\$|end\s*(\r?\n\s*)*)")).unwrap();
-    }
-
-    RX_SPLIT.split(src)
-        .filter(|x| !x.is_empty())
-        .map(|t_str| (t_str, Token::parse(t_str)))
-        .collect()
-}
-
