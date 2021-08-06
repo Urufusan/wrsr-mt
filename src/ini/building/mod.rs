@@ -8,91 +8,7 @@ use regex::Regex;
 
 mod display;
 
-
-type ParseError = String;
-
-type ParseResult<'a, T> = Result<(T, Option<&'a str>), ParseError>;
-
-fn parse_param<'a, T, F: Fn(&'a str) -> Result<T, ParseError>>(src: Option<&'a str>, rx: &Regex, f: F) -> ParseResult<'a, T> {
-    let src = src.ok_or(String::from("Parse param failed: no data"))?;
-
-    match rx.captures(src) {
-        Some(caps) => {
-            // allow panic here: this should not happen with valid regex:
-            let t = caps.get(1).expect("Regex is broken").as_str();
-            let rest = caps.get(3).map(|x| x.as_str());
-
-            let v = f(t)?;
-            Ok((v, rest))
-        },
-        None => Err(String::from("Parse param failed (no regex match)"))
-    }
-}
-
-
-trait ParamParser<'a> {
-    type Output;
-
-    fn parse(src: Option<&'a str>) -> ParseResult<Self::Output>;
-}
-
-
-struct ParamNone { }
-
-struct NoParamParser { }
-impl ParamParser<'_> for NoParamParser {
-    type Output = ParamNone;
-
-    fn parse(src: Option<&str>) -> ParseResult<Self::Output> {
-        Ok((ParamNone {}, src))
-    }
-}
-
-const RX_REMAINDER: &str = r"($|\s*(.*))";
-
-struct FloatParamParser { }
-impl ParamParser<'_> for FloatParamParser {
-    type Output = f32;
-
-    fn parse(src: Option<&str>) -> ParseResult<Self::Output> {
-        lazy_static! {
-            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^(-?[0-9]*\.?[0-9]+)", RX_REMAINDER)).unwrap();
-        }
-
-        parse_param(src, &RX, |s| f32::from_str(s).map_err(|e| format!("Float parse failed: {}", e)))
-    }
-}
-
-
-struct IdParamParser { }
-impl<'a> ParamParser<'a> for IdParamParser {
-    type Output = &'a str;
-
-    fn parse(src: Option<&'a str>) -> ParseResult<Self::Output> {
-        lazy_static! {
-            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([^[:space:]]+)", RX_REMAINDER)).unwrap();
-        }
-
-        parse_param(src, &RX, |s| Ok(s))
-    }
-}
-
-
-struct StringParamParser { }
-impl<'a> ParamParser<'a> for StringParamParser {
-    type Output = &'a str;
-
-    fn parse(src: Option<&'a str>) -> ParseResult<Self::Output> {
-        lazy_static! {
-            static ref RX: Regex = Regex::new(concatcp!("(?s)^(\"[^\"\\n]+\")", RX_REMAINDER)).unwrap();
-        }
-
-        parse_param(src, &RX, |s| Ok(s))
-    }
-}
-
-
-enum BuildingType {
+pub enum BuildingType {
     AirplaneGate,
     AirplaneParking,
     AirplaneTower,
@@ -276,22 +192,18 @@ impl BuildingType {
     }
 }
 
-
-struct BuildingTypeParamParser {}
-impl<'a> ParamParser<'a> for BuildingTypeParamParser {
-    type Output = BuildingType;
-
-    fn parse(src: Option<&'a str>) -> ParseResult<Self::Output> {
+impl ParseSlice<'_> for BuildingType {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
         lazy_static! {
             static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([A-Z_]+)", RX_REMAINDER)).unwrap();
         }
 
-        parse_param(src, &RX, |s| BuildingType::from_str(s).ok_or(format!("Unknown building type '{}'", s)))
+        parse_param(src, &RX, |s| Self::from_str(s).ok_or(format!("Unknown building type '{}'", s)))
     }
 }
 
 
-enum StorageCargoType {
+pub enum StorageCargoType {
     Passanger,
     Cement,
     Covered,
@@ -334,12 +246,8 @@ impl StorageCargoType {
     }
 }
 
-
-struct StorageCargoTypeParamParser {}
-impl<'a> ParamParser<'a> for StorageCargoTypeParamParser {
-    type Output = StorageCargoType;
-
-    fn parse(src: Option<&'a str>) -> ParseResult<Self::Output> {
+impl ParseSlice<'_> for StorageCargoType {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
         lazy_static! {
             static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([A-Z_]+)", RX_REMAINDER)).unwrap();
         }
@@ -349,7 +257,111 @@ impl<'a> ParamParser<'a> for StorageCargoTypeParamParser {
 }
 
 
-enum ConstructionAutoCost {
+pub enum ParticleType {
+    ResidentialHeating,
+    BigBlack,
+    MediumBlack,
+    SmallBlack,
+    BigGray,
+    MediumGray,
+    SmallGray,
+    BigWhite,
+    MediumWhite,
+    SmallWhite,
+}
+
+impl ParticleType {
+    const RESIDENTIAL_HEATING : &'static str = "residential_heating";
+    const FACTORY_BIG_BLACK   : &'static str = "factory_big_black";
+    const FACTORY_MEDIUM_BLACK: &'static str = "factory_medium_black";
+    const FACTORY_SMALL_BLACK : &'static str = "factory_small_black";
+    const FACTORY_BIG_GRAY    : &'static str = "factory_big_gray";
+    const FACTORY_MEDIUM_GRAY : &'static str = "factory_medium_gray";
+    const FACTORY_SMALL_GRAY  : &'static str = "factory_small_gray";
+    const FACTORY_BIG_WHITE   : &'static str = "factory_big_white";
+    const FACTORY_MEDIUM_WHITE: &'static str = "factory_medium_white";
+    const FACTORY_SMALL_WHITE : &'static str = "factory_small_white";
+
+    fn from_str(src: &str) -> Option<Self> {
+        match src {
+            Self::RESIDENTIAL_HEATING  => Some(Self::ResidentialHeating),
+            Self::FACTORY_BIG_BLACK    => Some(Self::BigBlack),
+            Self::FACTORY_MEDIUM_BLACK => Some(Self::MediumBlack),
+            Self::FACTORY_SMALL_BLACK  => Some(Self::SmallBlack),
+            Self::FACTORY_BIG_GRAY     => Some(Self::BigGray),
+            Self::FACTORY_MEDIUM_GRAY  => Some(Self::MediumGray),
+            Self::FACTORY_SMALL_GRAY   => Some(Self::SmallGray),
+            Self::FACTORY_BIG_WHITE    => Some(Self::BigWhite),
+            Self::FACTORY_MEDIUM_WHITE => Some(Self::MediumWhite),
+            Self::FACTORY_SMALL_WHITE  => Some(Self::SmallWhite),
+            _ => None
+        }
+    }
+}
+
+impl ParseSlice<'_> for ParticleType {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([a-z_]+)", RX_REMAINDER)).unwrap();
+        }
+
+        parse_param(src, &RX, |s| ParticleType::from_str(s).ok_or(format!("Unknown particle type '{}'", s)))
+    }
+}
+
+
+pub enum ConstructionPhase {
+    Groundworks,
+    BoardsLaying,
+    BricksLaying,
+    SkeletonCasting,
+    SteelLaying,
+    PanelsLaying,
+    RooftopBuilding,
+    WireLaying,
+    Tunneling,
+}
+
+
+impl ConstructionPhase {
+    const GROUNDWORKS:      &'static str = "SOVIET_CONSTRUCTION_GROUNDWORKS";
+    const BOARDS_LAYING:    &'static str = "SOVIET_CONSTRUCTION_BOARDS_LAYING";
+    const BRICKS_LAYING:    &'static str = "SOVIET_CONSTRUCTION_BRICKS_LAYING";
+    const SKELETON_CASTING: &'static str = "SOVIET_CONSTRUCTION_SKELETON_CASTING";
+    const STEEL_LAYING:     &'static str = "SOVIET_CONSTRUCTION_STEEL_LAYING";
+    const PANELS_LAYING:    &'static str = "SOVIET_CONSTRUCTION_PANELS_LAYING";
+    const ROOFTOP_BUILDING: &'static str = "SOVIET_CONSTRUCTION_ROOFTOP_BUILDING";
+    const WIRE_LAYING:      &'static str = "SOVIET_CONSTRUCTION_WIRE_LAYING";
+    const TUNNELING:        &'static str = "SOVIET_CONSTRUCTION_TUNNELING";
+
+    fn from_str(src: &str) -> Option<Self> {
+        match src {
+            Self::GROUNDWORKS      => Some(Self::Groundworks),
+            Self::BOARDS_LAYING    => Some(Self::BoardsLaying),
+            Self::BRICKS_LAYING    => Some(Self::BricksLaying),
+            Self::SKELETON_CASTING => Some(Self::SkeletonCasting),
+            Self::STEEL_LAYING     => Some(Self::SteelLaying),
+            Self::PANELS_LAYING    => Some(Self::PanelsLaying),
+            Self::ROOFTOP_BUILDING => Some(Self::RooftopBuilding),
+            Self::WIRE_LAYING      => Some(Self::WireLaying),
+            Self::TUNNELING        => Some(Self::Tunneling),
+            _ => None
+        }
+    }
+}
+
+impl ParseSlice<'_> for ConstructionPhase {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([A-Z_]+)", RX_REMAINDER)).unwrap();
+        }
+
+        parse_param(src, &RX, |s| ConstructionPhase::from_str(s).ok_or(format!("Unknown construction phase '{}'", s)))
+    }
+}
+
+
+pub enum ConstructionAutoCost {
     Ground,
     GroundAsphalt,
     WallConcrete,
@@ -398,12 +410,8 @@ impl ConstructionAutoCost {
     }
 }
 
-
-struct ConstructionAutoCostParamParser {}
-impl<'a> ParamParser<'a> for ConstructionAutoCostParamParser {
-    type Output = ConstructionAutoCost;
-
-    fn parse(src: Option<&'a str>) -> ParseResult<Self::Output> {
+impl ParseSlice<'_> for ConstructionAutoCost {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
         lazy_static! {
             static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([a-z_]+)", RX_REMAINDER)).unwrap();
         }
@@ -413,62 +421,7 @@ impl<'a> ParamParser<'a> for ConstructionAutoCostParamParser {
 }
 
 
-enum ConstructionPhase {
-    Groundworks,
-    BoardsLaying,
-    BricksLaying,
-    SkeletonCasting,
-    SteelLaying,
-    PanelsLaying,
-    RooftopBuilding,
-    WireLaying,
-    Tunneling,
-}
-
-
-impl ConstructionPhase {
-    const GROUNDWORKS:      &'static str = "SOVIET_CONSTRUCTION_GROUNDWORKS";
-    const BOARDS_LAYING:    &'static str = "SOVIET_CONSTRUCTION_BOARDS_LAYING";
-    const BRICKS_LAYING:    &'static str = "SOVIET_CONSTRUCTION_BRICKS_LAYING";
-    const SKELETON_CASTING: &'static str = "SOVIET_CONSTRUCTION_SKELETON_CASTING";
-    const STEEL_LAYING:     &'static str = "SOVIET_CONSTRUCTION_STEEL_LAYING";
-    const PANELS_LAYING:    &'static str = "SOVIET_CONSTRUCTION_PANELS_LAYING";
-    const ROOFTOP_BUILDING: &'static str = "SOVIET_CONSTRUCTION_ROOFTOP_BUILDING";
-    const WIRE_LAYING:      &'static str = "SOVIET_CONSTRUCTION_WIRE_LAYING";
-    const TUNNELING:        &'static str = "SOVIET_CONSTRUCTION_TUNNELING";
-
-    fn from_str(src: &str) -> Option<Self> {
-        match src {
-            Self::GROUNDWORKS      => Some(Self::Groundworks),
-            Self::BOARDS_LAYING    => Some(Self::BoardsLaying),
-            Self::BRICKS_LAYING    => Some(Self::BricksLaying),
-            Self::SKELETON_CASTING => Some(Self::SkeletonCasting),
-            Self::STEEL_LAYING     => Some(Self::SteelLaying),
-            Self::PANELS_LAYING    => Some(Self::PanelsLaying),
-            Self::ROOFTOP_BUILDING => Some(Self::RooftopBuilding),
-            Self::WIRE_LAYING      => Some(Self::WireLaying),
-            Self::TUNNELING        => Some(Self::Tunneling),
-            _ => None
-        }
-    }
-}
-
-
-struct ConstructionPhaseParamParser {}
-impl<'a> ParamParser<'a> for ConstructionPhaseParamParser {
-    type Output = ConstructionPhase;
-
-    fn parse(src: Option<&'a str>) -> ParseResult<Self::Output> {
-        lazy_static! {
-            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([A-Z_]+)", RX_REMAINDER)).unwrap();
-        }
-
-        parse_param(src, &RX, |s| ConstructionPhase::from_str(s).ok_or(format!("Unknown construction phase '{}'", s)))
-    }
-}
-
-
-enum ResourceType {
+pub enum ResourceType {
     Alcohol,
     Alumina,
     Aluminium,
@@ -562,12 +515,8 @@ impl ResourceType {
     }
 }
 
-
-struct ResourceTypeParamParser {}
-impl<'a> ParamParser<'a> for ResourceTypeParamParser {
-    type Output = ResourceType;
-
-    fn parse(src: Option<&'a str>) -> ParseResult<Self::Output> {
+impl ParseSlice<'_> for ResourceType {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
         lazy_static! {
             static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([a-z0-9_]+)", RX_REMAINDER)).unwrap();
         }
@@ -577,188 +526,191 @@ impl<'a> ParamParser<'a> for ResourceTypeParamParser {
 }
 
 
-enum ParticleType {
-    ResidentialHeating,
-    BigBlack,
-    MediumBlack,
-    SmallBlack,
-    BigGray,
-    MediumGray,
-    SmallGray,
-    BigWhite,
-    MediumWhite,
-    SmallWhite,
+pub enum Token<'a> {
+
+    NameStr(QuotedStringParam<'a>),
+//  Name(u32),
+
+    BuildingType(BuildingType),
+
+    Storage((StorageCargoType, f32)),
+
+    ConnectionPedestrian((Point3f, Point3f)),
+
+    Particle((ParticleType, Point3f, f32, f32)),
+
+    CostWork((ConstructionPhase, f32)),
+
+    CostWorkBuildingNode(IdStringParam<'a>),
+    CostResource((ResourceType, f32)),
+    CostResourceAuto((ConstructionAutoCost, f32)),
+    CostWorkVehicleStation(IdStringParam<'a>),
+
 }
 
-
-impl ParticleType {
-    const RESIDENTIAL_HEATING : &'static str = "residential_heating";
-    const FACTORY_BIG_BLACK   : &'static str = "factory_big_black";
-    const FACTORY_MEDIUM_BLACK: &'static str = "factory_medium_black";
-    const FACTORY_SMALL_BLACK : &'static str = "factory_small_black";
-    const FACTORY_BIG_GRAY    : &'static str = "factory_big_gray";
-    const FACTORY_MEDIUM_GRAY : &'static str = "factory_medium_gray";
-    const FACTORY_SMALL_GRAY  : &'static str = "factory_small_gray";
-    const FACTORY_BIG_WHITE   : &'static str = "factory_big_white";
-    const FACTORY_MEDIUM_WHITE: &'static str = "factory_medium_white";
-    const FACTORY_SMALL_WHITE : &'static str = "factory_small_white";
-
-    fn from_str(src: &str) -> Option<Self> {
-        match src {
-            Self::RESIDENTIAL_HEATING  => Some(Self::ResidentialHeating),
-            Self::FACTORY_BIG_BLACK    => Some(Self::BigBlack),
-            Self::FACTORY_MEDIUM_BLACK => Some(Self::MediumBlack),
-            Self::FACTORY_SMALL_BLACK  => Some(Self::SmallBlack),
-            Self::FACTORY_BIG_GRAY     => Some(Self::BigGray),
-            Self::FACTORY_MEDIUM_GRAY  => Some(Self::MediumGray),
-            Self::FACTORY_SMALL_GRAY   => Some(Self::SmallGray),
-            Self::FACTORY_BIG_WHITE    => Some(Self::BigWhite),
-            Self::FACTORY_MEDIUM_WHITE => Some(Self::MediumWhite),
-            Self::FACTORY_SMALL_WHITE  => Some(Self::SmallWhite),
-            _ => None
-        }
-    }
-}
-
-
-struct ParticleTypeParamParser {}
-impl<'a> ParamParser<'a> for ParticleTypeParamParser {
-    type Output = ParticleType;
-
-    fn parse(src: Option<&'a str>) -> ParseResult<Self::Output> {
-        lazy_static! {
-            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([a-z_]+)", RX_REMAINDER)).unwrap();
-        }
-
-        parse_param(src, &RX, |s| ParticleType::from_str(s).ok_or(format!("Unknown particle type '{}'", s)))
-    }
-}
-
-
-
-#[derive(Debug)]
-struct TokenParams6<'a, P1, P2, P3, P4, P5, P6>
-where P1: ParamParser<'a>,
-      P2: ParamParser<'a>,
-      P3: ParamParser<'a>,
-      P4: ParamParser<'a>,
-      P5: ParamParser<'a>,
-      P6: ParamParser<'a>,
-{
-    p1: P1::Output,
-    p2: P2::Output,
-    p3: P3::Output,
-    p4: P4::Output,
-    p5: P5::Output,
-    p6: P6::Output,
-}
-
-impl<'a, P1, P2, P3, P4, P5, P6> TokenParams6<'a, P1, P2, P3, P4, P5, P6> 
-where P1: ParamParser<'a>, 
-      P2: ParamParser<'a>,
-      P3: ParamParser<'a>,
-      P4: ParamParser<'a>,
-      P5: ParamParser<'a>,
-      P6: ParamParser<'a>,
-{
-    fn parse(src: Option<&'a str>) -> ParseResult<TokenParams6<'a, P1, P2, P3, P4, P5, P6>> {
-        let (p1, src) = P1::parse(src)?;
-        let (p2, src) = P2::parse(src)?;
-        let (p3, src) = P3::parse(src)?;
-        let (p4, src) = P4::parse(src)?;
-        let (p5, src) = P5::parse(src)?;
-        let (p6, src) = P6::parse(src)?;
-
-        Ok((TokenParams6 { p1, p2, p3, p4, p5, p6 }, src))
-    }
-}
-
-
-type TokenParams3<'a, P1, P2, P3> = TokenParams6<'a, P1, P2, P3, NoParamParser, NoParamParser, NoParamParser>;
-type TokenParams2<'a, P1, P2>     = TokenParams3<'a, P1, P2, NoParamParser>;
-type TokenParams1<'a, P1>         = TokenParams2<'a, P1, NoParamParser>;
-type TokenParams0<'a>             = TokenParams1<'a, NoParamParser>;
-
-
-type TokenParams6Floats<'a> = TokenParams6<'a, FloatParamParser, FloatParamParser, FloatParamParser, FloatParamParser, FloatParamParser, FloatParamParser>;
-
-type TokenParamsParticle<'a> = TokenParams6<'a, ParticleTypeParamParser, FloatParamParser, FloatParamParser, FloatParamParser, FloatParamParser, FloatParamParser>;
-
-
-enum Token<'a> {
-
-    NameStr(TokenParams1<'a, StringParamParser>),
-    Name(TokenParams0<'a>),
-
-    BuildingType(TokenParams1<'a, BuildingTypeParamParser>),
-
-    Storage(TokenParams2<'a, StorageCargoTypeParamParser, FloatParamParser>),
-
-    ConnectionPedestrian(TokenParams6Floats<'a>),
-
-    Particle(TokenParamsParticle<'a>),
-
-    CostWork(TokenParams2<'a, ConstructionPhaseParamParser, FloatParamParser>),
-    CostWorkBuildingNode(TokenParams1<'a, IdParamParser>),
-    CostResource(TokenParams2<'a, ResourceTypeParamParser, FloatParamParser>),
-    CostResourceAuto(TokenParams2<'a, ConstructionAutoCostParamParser, FloatParamParser>),
-    CostWorkVehicleStationAccordingNode(TokenParams1<'a, IdParamParser>),
-}
-
+type Point3f = (f32, f32, f32);
 
 impl<'a> Token<'a> {
-    const NAME_STR:                &'static str = "NAME_STR";
-    const NAME:                    &'static str = "NAME";
-    const BUILDING_TYPE:           &'static str = "TYPE_";
-    const STORAGE:                 &'static str = "STORAGE";
-    const CONNECTION_PEDESTRIAN:   &'static str = "CONNECTION_PEDESTRIAN";
-    const PARTICLE:                &'static str = "PARTICLE";
-    const COST_WORK:               &'static str = "COST_WORK";
-    const COST_WORK_BUILDING_NODE: &'static str = "COST_WORK_BUILDING_NODE";
-    const COST_RESOURCE:           &'static str = "COST_RESOURCE";
-    const COST_RESOURCE_AUTO:      &'static str = "COST_RESOURCE_AUTO";
-    const COST_WORK_VEHICLE_STATION_ACCORDING_NODE: &'static str = "COST_WORK_VEHICLE_STATION_ACCORDING_NODE";
+    const NAME_STR:                  &'static str = "NAME_STR";
+    const NAME:                      &'static str = "NAME";
+    const BUILDING_TYPE:             &'static str = "TYPE_";
+    const STORAGE:                   &'static str = "STORAGE";
+    const CONNECTION_PEDESTRIAN:     &'static str = "CONNECTION_PEDESTRIAN";
+    const PARTICLE:                  &'static str = "PARTICLE";
+    const COST_WORK:                 &'static str = "COST_WORK";
+    const COST_WORK_BUILDING_NODE:   &'static str = "COST_WORK_BUILDING_NODE";
+    const COST_RESOURCE:             &'static str = "COST_RESOURCE";
+    const COST_RESOURCE_AUTO:        &'static str = "COST_RESOURCE_AUTO";
+    const COST_WORK_VEHICLE_STATION: &'static str = "COST_WORK_VEHICLE_STATION_ACCORDING_NODE";
 
     fn parse(src: &'a str) -> ParseResult<Token<'a>> {
         let (t_type, rest) = chop_token_type(src)?;
         match t_type {
             Self::NAME_STR => 
-                TokenParams1::<StringParamParser>::parse(rest).map(|(p, rest)| (Self::NameStr(p), rest)),
+                QuotedStringParam::parse(rest).map(|(p, rest)| (Self::NameStr(p), rest)),
 
-            Self::NAME => 
-                TokenParams0::parse(rest).map(|(p, rest)| (Self::Name(p), rest)),
+//            Self::NAME => 
+//                TokenParams0::parse(rest).map(|(p, rest)| (Self::Name(p), rest)),
 
             Self::BUILDING_TYPE =>
-                TokenParams1::<BuildingTypeParamParser>::parse(rest).map(|(p, rest)| (Self::BuildingType(p), rest)),
+                BuildingType::parse(rest).map(|(p, rest)| (Self::BuildingType(p), rest)),
 
             Self::STORAGE =>
-                TokenParams2::<StorageCargoTypeParamParser, FloatParamParser>::parse(rest).map(|(p, rest)| (Self::Storage(p), rest)),
+                <(StorageCargoType, f32)>::parse(rest).map(|(p, rest)| (Self::Storage(p), rest)),
 
             Self::CONNECTION_PEDESTRIAN =>
-                TokenParams6Floats::parse(rest).map(|(p, rest)| (Self::ConnectionPedestrian(p), rest)),
+                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::ConnectionPedestrian(p), rest)),
 
             Self::PARTICLE =>
-                TokenParamsParticle::parse(rest).map(|(p, rest)| (Self::Particle(p), rest)),
+                <(ParticleType, Point3f, f32, f32)>::parse(rest).map(|(p, rest)| (Self::Particle(p), rest)),
 
             Self::COST_WORK =>
-                TokenParams2::<ConstructionPhaseParamParser, FloatParamParser>::parse(rest).map(|(p, rest)| (Self::CostWork(p), rest)),
+                <(ConstructionPhase, f32)>::parse(rest).map(|(p, rest)| (Self::CostWork(p), rest)),
 
             Self::COST_WORK_BUILDING_NODE =>
-                TokenParams1::<IdParamParser>::parse(rest).map(|(p, rest)| (Self::CostWorkBuildingNode(p), rest)),
+                IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkBuildingNode(p), rest)),
 
             Self::COST_RESOURCE =>
-                TokenParams2::<ResourceTypeParamParser, FloatParamParser>::parse(rest).map(|(p, rest)| (Self::CostResource(p), rest)),
+                <(ResourceType, f32)>::parse(rest).map(|(p, rest)| (Self::CostResource(p), rest)),
 
             Self::COST_RESOURCE_AUTO =>
-                TokenParams2::<ConstructionAutoCostParamParser, FloatParamParser>::parse(rest).map(|(p, rest)| (Self::CostResourceAuto(p), rest)),
+                <(ConstructionAutoCost, f32)>::parse(rest).map(|(p, rest)| (Self::CostResourceAuto(p), rest)),
 
-            Self::COST_WORK_VEHICLE_STATION_ACCORDING_NODE =>
-                TokenParams1::<IdParamParser>::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStationAccordingNode(p), rest)),
+            Self::COST_WORK_VEHICLE_STATION =>
+                IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStation(p), rest)),
 
             _ => Err(format!("Unknown token type: [{}]", t_type))
         }
     }
 }
+
+const RX_REMAINDER: &str = r"($|\s*(.*))";
+
+pub type ParseError = String;
+pub type ParseResult<'a, T> = Result<(T, Option<&'a str>), ParseError>;
+
+fn parse_param<'a, T, F: Fn(&'a str) -> Result<T, ParseError>>(src: Option<&'a str>, rx: &Regex, f: F) -> ParseResult<'a, T> {
+    let src = src.ok_or(String::from("Parse param failed: no data"))?;
+
+    match rx.captures(src) {
+        Some(caps) => {
+            // allow panic here: this should not happen with valid regex:
+            let t = caps.get(1).expect("Regex is broken").as_str();
+            let rest = caps.get(3).map(|x| x.as_str());
+
+            let v = f(t)?;
+            Ok((v, rest))
+        },
+        None => Err(String::from("Parse param failed (no regex match)"))
+    }
+}
+
+
+pub trait ParseSlice<'a> {
+    fn parse(src: Option<&'a str>) -> ParseResult<Self> where Self: Sized;
+}
+
+impl ParseSlice<'_> for f32 {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^(-?[0-9]*\.?[0-9]+)", RX_REMAINDER)).unwrap();
+        }
+
+        parse_param(src, &RX, |s| f32::from_str(s).map_err(|e| format!("Float parse failed: {}", e)))
+    }
+}
+
+impl<'a, T1, T2> ParseSlice<'a> for (T1, T2)
+where T1: ParseSlice<'a>,
+      T2: ParseSlice<'a>
+{
+    fn parse(src: Option<&'a str>) -> ParseResult<Self> {
+        let (t1, src) = T1::parse(src)?;
+        let (t2, src) = T2::parse(src)?;
+        Ok(((t1, t2), src))
+    }
+}
+
+impl<'a, T1, T2, T3> ParseSlice<'a> for (T1, T2, T3)
+where T1: ParseSlice<'a>,
+      T2: ParseSlice<'a>,
+      T3: ParseSlice<'a>
+{
+    fn parse(src: Option<&'a str>) -> ParseResult<Self> {
+        let (t1, src) = T1::parse(src)?;
+        let (t2, src) = T2::parse(src)?;
+        let (t3, src) = T3::parse(src)?;
+        Ok(((t1, t2, t3), src))
+    }
+}
+
+impl<'a, T1, T2, T3, T4> ParseSlice<'a> for (T1, T2, T3, T4)
+where T1: ParseSlice<'a>,
+      T2: ParseSlice<'a>,
+      T3: ParseSlice<'a>,
+      T4: ParseSlice<'a>
+{
+    fn parse(src: Option<&'a str>) -> ParseResult<Self> {
+        let (t1, src) = T1::parse(src)?;
+        let (t2, src) = T2::parse(src)?;
+        let (t3, src) = T3::parse(src)?;
+        let (t4, src) = T4::parse(src)?;
+        Ok(((t1, t2, t3, t4), src))
+    }
+}
+
+
+pub enum StrValue<'a> {
+    Borrowed(&'a str),
+    Owned(String),
+}
+
+
+pub struct QuotedStringParam<'a>(StrValue<'a>);
+
+
+impl<'a> ParseSlice<'a> for QuotedStringParam<'a> {
+    fn parse(src: Option<&'a str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(concatcp!("(?s)^\"([^\"\\n]+)\"", RX_REMAINDER)).unwrap();
+        }
+
+        parse_param(src, &RX, |s| Ok(Self(StrValue::Borrowed(s))))
+    }
+}
+
+pub struct IdStringParam<'a>(StrValue<'a>);
+
+impl<'a> ParseSlice<'a> for IdStringParam<'a> {
+    fn parse(src: Option<&'a str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([^[:space:]]+)", RX_REMAINDER)).unwrap();
+        }
+
+        parse_param(src, &RX, |s| Ok(Self(StrValue::Borrowed(s))))
+    }
+}
+
 
 
 fn chop_token_type<'a>(src: &'a str) -> ParseResult<&'a str> {

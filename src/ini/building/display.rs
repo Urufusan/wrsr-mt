@@ -1,24 +1,17 @@
 use std::fmt::{Formatter, Error, Display};
 
-use super::{ParamNone,
-            BuildingType,
+use super::{BuildingType,
             StorageCargoType,
             ConstructionPhase,
             ConstructionAutoCost,
             ResourceType,
             ParticleType,
-            TokenParams6,
             Token,
-            ParamParser,
+            StrValue,
+            QuotedStringParam,
+            IdStringParam,
            };
 
-
-impl Display for ParamNone {
-    #[inline]
-    fn fmt(&self, _: &mut Formatter) -> Result<(), Error> {
-        Ok(())
-    }
-}
 
 
 impl Display for BuildingType {
@@ -205,7 +198,7 @@ impl Display for ParticleType {
     }
 }
 
-
+/*
 impl<'a, P1, P2, P3, P4, P5, P6> Display for TokenParams6<'a, P1, P2, P3, P4, P5, P6>
 where P1: ParamParser<'a>, P1::Output: Display,
       P2: ParamParser<'a>, P2::Output: Display,
@@ -218,22 +211,48 @@ where P1: ParamParser<'a>, P1::Output: Display,
         write!(f, "{{ {} {} {} {} {} {} }}", self.p1, self.p2, self.p3, self.p4, self.p5, self.p6)
     }
 }
+*/
 
+impl Display for QuotedStringParam<'_> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let Self(s) = self;
+        write!(f, "\"{}\"", s)
+    }
+}
+
+impl Display for IdStringParam<'_> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let Self(s) = self;
+        write!(f, "{}", s)
+    }
+}
+
+impl Display for StrValue<'_> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let s: &str = match self {
+            Self::Borrowed(s) => s,
+            Self::Owned(s) => s.as_str()
+        };
+
+        write!(f, "{}", s)
+    }
+}
 
 impl<'a> Display for Token<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "$")?;
         match self {
-            Self::Name(p)                 => write!(f, "{}: {}", Self::NAME, p),
-            Self::NameStr(p)              => write!(f, "{}: {}", Self::NAME_STR, p),
-            Self::BuildingType(p)         => write!(f, "TYPE_{}", p.p1),
-            Self::Storage(p)              => write!(f, "{}: {}", Self::STORAGE, p),
-            Self::ConnectionPedestrian(p) => write!(f, "{}: {}", Self::CONNECTION_PEDESTRIAN, p),
-            Self::Particle(p)             => write!(f, "{}: {}", Self::PARTICLE, p),
-            Self::CostWork(p)             => write!(f, "{}: {}", Self::COST_WORK, p),
-            Self::CostWorkBuildingNode(p) => write!(f, "{}: {}", Self::COST_WORK_BUILDING_NODE, p),
-            Self::CostResource(p)         => write!(f, "{}: {}", Self::COST_RESOURCE, p),
-            Self::CostResourceAuto(p)     => write!(f, "{}: {}", Self::COST_RESOURCE_AUTO, p),
-            Self::CostWorkVehicleStationAccordingNode(p) => write!(f, "{}: {}", Self::COST_WORK_VEHICLE_STATION_ACCORDING_NODE, p)
+            Self::NameStr(p)                   => write!(f, "{} \"{}\"", Self::NAME_STR, p),
+//            Self::Name(p)                      => write!(f, "{}: {}", Self::NAME, p),
+            Self::BuildingType(p)              => write!(f, "TYPE_{}", p),
+            Self::Storage((t, x))              => write!(f, "{} {} {}", Self::STORAGE, t, x),
+            Self::ConnectionPedestrian((x, y)) => write!(f, "{} {:?} {:?}", Self::CONNECTION_PEDESTRIAN, x, y),
+            Self::Particle((t, x, a, s))       => write!(f, "{} {} {:?} {} {}", Self::PARTICLE, t, x, a, s),
+            Self::CostWork((t, x))             => write!(f, "{} {} {}", Self::COST_WORK, t, x),
+            Self::CostWorkBuildingNode(n)      => write!(f, "{} {}", Self::COST_WORK_BUILDING_NODE, n),
+            Self::CostResource((t, x))         => write!(f, "{} {} {}", Self::COST_RESOURCE, t, x),
+            Self::CostResourceAuto((t, x))     => write!(f, "{} {} {}", Self::COST_RESOURCE_AUTO, t, x),
+            Self::CostWorkVehicleStation(p)    => write!(f, "{} {}", Self::COST_WORK_VEHICLE_STATION, p)
         }
     }
 }
