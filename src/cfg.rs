@@ -9,6 +9,7 @@ pub enum AppCommand {
     Install(InstallCommand),
     Nmf(NmfCommand),
     Mod(ModCommand),
+    Ini(IniCommand),
 }
 
 //-----------------------------
@@ -62,6 +63,16 @@ pub enum ModCommand {
 }
 
 pub struct ModValidateCommand {
+    pub path: PathBuf
+}
+
+//-------------------------------
+
+pub enum IniCommand {
+    Parse(IniParseCommand),
+}
+
+pub struct IniParseCommand {
     pub path: PathBuf
 }
 
@@ -142,6 +153,13 @@ lazy_static! {
             SubCommand::with_name("mod").subcommand(cmd_mod_validate)
         };
 
+        let cmd_ini = {
+            let cmd_ini_parse = SubCommand::with_name("parse")
+                .arg(Arg::with_name("ini-path").required(true));
+
+            SubCommand::with_name("ini").subcommand(cmd_ini_parse)
+        };
+
         let m = App::new("wrsr-mt")
             .author("kromgart@gmail.com")
             .version("0.1")
@@ -159,6 +177,7 @@ lazy_static! {
             .subcommand(cmd_install)
             .subcommand(cmd_nmf)
             .subcommand(cmd_mod)
+            .subcommand(cmd_ini)
             .get_matches();
 
         let path_stock = PathBuf::from(m.value_of("stock").unwrap());
@@ -181,6 +200,19 @@ lazy_static! {
                         is_check
                     })
                 },
+
+                ("ini", Some(m)) => {
+                    let command = match m.subcommand() {
+                        ("parse", Some(m)) => {
+                            let path = mk_path(m, "ini-path");
+                            IniCommand::Parse(IniParseCommand { path })
+                        },
+                        (cname, _) => panic!("Unknown ini subcommand '{}'" , cname)
+                    };
+
+                    AppCommand::Ini(command)
+                },
+
                 ("mod", Some(m)) => {
                     let command = match m.subcommand() {
                         ("validate", Some(m)) => {
@@ -192,6 +224,7 @@ lazy_static! {
 
                     AppCommand::Mod(command)
                 },
+
                 ("nmf", Some(m)) => {
                     let command = match m.subcommand() {
                         ("show", Some(m)) => {

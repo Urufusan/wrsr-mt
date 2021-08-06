@@ -186,7 +186,52 @@ fn main() {
         cfg::AppCommand::Mod(cmd) => {
             match cmd {
                 cfg::ModCommand::Validate(cfg::ModValidateCommand { path }) => {
-                    ini::building::do_stuff();
+                    let ini_path = path.join("building.ini");
+                    if ini_path.exists() {
+                        println!("Found building.ini. Validating the target directory as a building mod...");
+                        let ini_buf = fs::read_to_string(ini_path).unwrap();
+
+                        let errors = ini::building::validate(&ini_buf);
+                        if errors.is_empty() {
+                            println!("building.ini: OK");
+                        } else {
+                            for e in errors {
+                                println!("building.ini: {}", e);
+                            }
+                        }
+                    } else {
+                        panic!("Cannot determine mod type at {:?}", path);
+                    }
+                },
+            }
+        },
+
+
+        cfg::AppCommand::Ini(cmd) => {
+            match cmd {
+                cfg::IniCommand::Parse(cfg::IniParseCommand { path }) => {
+                    if path.exists() {
+                        if path.file_name().unwrap() == "building.ini" {
+                            println!("Parsing building.ini...");
+                            let ini_buf = fs::read_to_string(path).unwrap();
+
+                            for (t_str, t_val) in ini::building::get_tokens(&ini_buf) {
+                                match t_val {
+                                    Ok((t, rest)) => {
+                                        print!("{}", t);
+                                        if let Some(rest) = rest {
+                                            print!(" [remainder: {:?}]", rest);
+                                        }
+                                        println!();
+                                    },
+                                    Err(e) => println!("Error: {}, chunk: [{}]", e, t_str),
+                                }
+                            }
+                        }
+                    } else {
+                        panic!("File not found: {:?}", path);
+                    }
+
                 },
             }
         },
