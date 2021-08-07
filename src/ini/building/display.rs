@@ -1,4 +1,5 @@
 use std::fmt::{Formatter, Error, Display};
+use std::io::{Write};
 
 use super::{BuildingType,
             StorageCargoType,
@@ -10,8 +11,78 @@ use super::{BuildingType,
             StrValue,
             QuotedStringParam,
             IdStringParam,
+            Point3f,
            };
 
+
+type IOResult = Result<(), std::io::Error>;
+
+
+impl Token<'_> {
+    pub fn serialize_token<W: Write>(&self, mut wr: W) -> IOResult {
+        match self {
+            Self::NameStr(p)                       => write!(wr, "{} \"{}\"", Self::NAME_STR, p),
+            Self::Name(p)                          => write!(wr, "{} {}", Self::NAME, p),
+            Self::BuildingType(p)                  => write!(wr, "TYPE_{}", p),
+            Self::CivilBuilding                    => write!(wr, "{}", Self::CIVIL_BUILDING),
+            Self::QualityOfLiving(x)               => write!(wr, "{} {}", Self::QUALITY_OF_LIVING, x),
+
+            Self::WorkersNeeded(x)                 => write!(wr, "{} {}", Self::WORKERS_NEEDED, x),
+            Self::CitizenAbleServe(x)              => write!(wr, "{} {}", Self::CITIZEN_ABLE_SERVE, x),
+
+            Self::Storage((t, x))                  => write!(wr, "{} {} {}", Self::STORAGE, t, x),
+
+            Self::ConnectionPedestrian((x, y))     => write!(wr, "{}\r\n{}\r\n{}", Self::CONNECTION_PEDESTRIAN, x, y),
+            Self::ConnectionRoad((x, y))           => write!(wr, "{}\r\n{}\r\n{}", Self::CONNECTION_ROAD, x, y),
+            Self::ConnectionRoadDead(x)            => write!(wr, "{}\r\n{}", Self::CONNECTION_ROAD_DEAD, x),
+            Self::ConnectionsRoadDeadSquare(
+                ((x1, z1), (x2, z2)))              => write!(wr, "{}\r\n{} {}\r\n{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, x1, z1, x2, z2),
+
+            Self::Particle((t, x, a, s))           => write!(wr, "{} {} {} {} {}", Self::PARTICLE, t, x, a, s),
+            Self::TextCaption((x, y))              => write!(wr, "{}\r\n{}\r\n{}", Self::TEXT_CAPTION, x, y),
+
+            Self::CostWork((t, x))                 => write!(wr, "{} {} {}", Self::COST_WORK, t, x),
+            Self::CostWorkBuildingNode(n)          => write!(wr, "{} {}", Self::COST_WORK_BUILDING_NODE, n),
+            Self::CostResource((t, x))             => write!(wr, "{} {} {}", Self::COST_RESOURCE, t, x),
+            Self::CostResourceAuto((t, x))         => write!(wr, "{} {} {}", Self::COST_RESOURCE_AUTO, t, x),
+            Self::CostWorkVehicleStation((x, y))   => write!(wr, "{}\r\n{}\r\n{}", Self::COST_WORK_VEHICLE_STATION, x, y),
+            Self::CostWorkVehicleStationNode(p)    => write!(wr, "{} {}", Self::COST_WORK_VEHICLE_STATION_NODE, p),
+        }
+    }
+}
+
+impl Display for Token<'_> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "$")?;
+        match self {
+            Self::NameStr(p)                       => write!(f, "{} \"{}\"", Self::NAME_STR, p),
+            Self::Name(p)                          => write!(f, "{} {}", Self::NAME, p),
+            Self::BuildingType(p)                  => write!(f, "TYPE_{}", p),
+            Self::CivilBuilding                    => write!(f, "{}", Self::CIVIL_BUILDING),
+            Self::QualityOfLiving(x)               => write!(f, "{} {}", Self::QUALITY_OF_LIVING, x),
+
+            Self::WorkersNeeded(x)                 => write!(f, "{} {}", Self::WORKERS_NEEDED, x),
+            Self::CitizenAbleServe(x)              => write!(f, "{} {}", Self::CITIZEN_ABLE_SERVE, x),
+
+            Self::Storage((t, x))                  => write!(f, "{} {} {}", Self::STORAGE, t, x),
+
+            Self::ConnectionPedestrian((x, y))     => write!(f, "{} {} {}", Self::CONNECTION_PEDESTRIAN, x, y),
+            Self::ConnectionRoad((x, y))           => write!(f, "{} {} {}", Self::CONNECTION_ROAD, x, y),
+            Self::ConnectionRoadDead(x)            => write!(f, "{} {}", Self::CONNECTION_ROAD_DEAD, x),
+            Self::ConnectionsRoadDeadSquare((x,y)) => write!(f, "{} {:?} {:?}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, x, y),
+
+            Self::Particle((t, x, a, s))           => write!(f, "{} {} {} {} {}", Self::PARTICLE, t, x, a, s),
+            Self::TextCaption((x, y))              => write!(f, "{} {} {}", Self::TEXT_CAPTION, x, y),
+
+            Self::CostWork((t, x))                 => write!(f, "{} {} {}", Self::COST_WORK, t, x),
+            Self::CostWorkBuildingNode(n)          => write!(f, "{} {}", Self::COST_WORK_BUILDING_NODE, n),
+            Self::CostResource((t, x))             => write!(f, "{} {} {}", Self::COST_RESOURCE, t, x),
+            Self::CostResourceAuto((t, x))         => write!(f, "{} {} {}", Self::COST_RESOURCE_AUTO, t, x),
+            Self::CostWorkVehicleStation((x, y))   => write!(f, "{} {} {}", Self::COST_WORK_VEHICLE_STATION, x, y),
+            Self::CostWorkVehicleStationNode(p)    => write!(f, "{} {}", Self::COST_WORK_VEHICLE_STATION_NODE, p),
+        }
+    }
+}
 
 
 impl Display for BuildingType {
@@ -198,20 +269,12 @@ impl Display for ParticleType {
     }
 }
 
-/*
-impl<'a, P1, P2, P3, P4, P5, P6> Display for TokenParams6<'a, P1, P2, P3, P4, P5, P6>
-where P1: ParamParser<'a>, P1::Output: Display,
-      P2: ParamParser<'a>, P2::Output: Display,
-      P3: ParamParser<'a>, P3::Output: Display,
-      P4: ParamParser<'a>, P4::Output: Display,
-      P5: ParamParser<'a>, P5::Output: Display,
-      P6: ParamParser<'a>, P6::Output: Display,
-{
+
+impl Display for Point3f {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{{ {} {} {} {} {} {} }}", self.p1, self.p2, self.p3, self.p4, self.p5, self.p6)
+        write!(f, "{} {} {}", self.x, self.y, self.z)
     }
 }
-*/
 
 impl Display for QuotedStringParam<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
@@ -235,33 +298,5 @@ impl Display for StrValue<'_> {
         };
 
         write!(f, "{}", s)
-    }
-}
-
-impl<'a> Display for Token<'a> {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "$")?;
-        match self {
-            Self::NameStr(p)                       => write!(f, "{} \"{}\"", Self::NAME_STR, p),
-//            Self::Name(p)                      => write!(f, "{}: {}", Self::NAME, p),
-            Self::BuildingType(p)                  => write!(f, "TYPE_{}", p),
-            Self::CivilBuilding                    => write!(f, "{}", Self::CIVIL_BUILDING),
-            Self::QualityOfLiving(x)               => write!(f, "{} {}", Self::QUALITY_OF_LIVING, x),
-            Self::Storage((t, x))                  => write!(f, "{} {} {}", Self::STORAGE, t, x),
-
-            Self::ConnectionPedestrian((x, y))     => write!(f, "{} {:?} {:?}", Self::CONNECTION_PEDESTRIAN, x, y),
-            Self::ConnectionRoadDead(x)            => write!(f, "{} {:?}", Self::CONNECTION_ROAD_DEAD, x),
-            Self::ConnectionsRoadDeadSquare((x,y)) => write!(f, "{} {:?} {:?}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, x, y),
-
-            Self::Particle((t, x, a, s))           => write!(f, "{} {} {:?} {} {}", Self::PARTICLE, t, x, a, s),
-            Self::TextCaption((x, y))              => write!(f, "{} {:?} {:?}", Self::TEXT_CAPTION, x, y),
-
-            Self::CostWork((t, x))                 => write!(f, "{} {} {}", Self::COST_WORK, t, x),
-            Self::CostWorkBuildingNode(n)          => write!(f, "{} {}", Self::COST_WORK_BUILDING_NODE, n),
-            Self::CostResource((t, x))             => write!(f, "{} {} {}", Self::COST_RESOURCE, t, x),
-            Self::CostResourceAuto((t, x))         => write!(f, "{} {} {}", Self::COST_RESOURCE_AUTO, t, x),
-            Self::CostWorkVehicleStation((x, y))   => write!(f, "{} {:?} {:?}", Self::COST_WORK_VEHICLE_STATION, x, y),
-            Self::CostWorkVehicleStationNode(p)    => write!(f, "{} {}", Self::COST_WORK_VEHICLE_STATION_NODE, p),
-        }
     }
 }

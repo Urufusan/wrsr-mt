@@ -1,34 +1,47 @@
 mod display;
 mod parse;
 
-use super::IniToken;
 
+#[derive(Clone, Copy)]
+pub struct Point3f {
+    x: f32,
+    y: f32,
+    z: f32
+}
 
-type Point3f = (f32, f32, f32);
 type Point2f = (f32, f32);
 
+
+#[derive(Clone)]
 pub enum StrValue<'a> {
     Borrowed(&'a str),
     Owned(String),
 }
 
+#[derive(Clone)]
 pub struct QuotedStringParam<'a>(StrValue<'a>);
 
+#[derive(Clone)]
 pub struct IdStringParam<'a>(StrValue<'a>);
 
 
+#[derive(Clone)]
 pub enum Token<'a> {
 
     NameStr(QuotedStringParam<'a>),
-//  Name(u32),
+    Name(u32),
 
     BuildingType(BuildingType),
     CivilBuilding,
     QualityOfLiving(f32),
 
+    WorkersNeeded(u32),
+    CitizenAbleServe(u32),
+
     Storage((StorageCargoType, f32)),
 
     ConnectionPedestrian((Point3f, Point3f)),
+    ConnectionRoad((Point3f, Point3f)),
     ConnectionRoadDead(Point3f),
     ConnectionsRoadDeadSquare((Point2f, Point2f)),
 
@@ -52,8 +65,11 @@ impl<'a> Token<'a> {
     const BUILDING_TYPE:                  &'static str = "TYPE_";
     const CIVIL_BUILDING:                 &'static str = "CIVIL_BUILDING";
     const QUALITY_OF_LIVING:              &'static str = "QUALITY_OF_LIVING";
+    const WORKERS_NEEDED:                 &'static str = "WORKERS_NEEDED";
+    const CITIZEN_ABLE_SERVE:             &'static str = "CITIZEN_ABLE_SERVE";
     const STORAGE:                        &'static str = "STORAGE";
     const CONNECTION_PEDESTRIAN:          &'static str = "CONNECTION_PEDESTRIAN";
+    const CONNECTION_ROAD:                &'static str = "CONNECTION_ROAD";
     const CONNECTION_ROAD_DEAD:           &'static str = "CONNECTION_ROAD_DEAD";
     const CONNECTIONS_ROAD_DEAD_SQUARE:   &'static str = "CONNECTIONS_ROAD_DEAD_SQUARE";
     const PARTICLE:                       &'static str = "PARTICLE";
@@ -64,11 +80,33 @@ impl<'a> Token<'a> {
     const COST_RESOURCE_AUTO:             &'static str = "COST_RESOURCE_AUTO";
     const COST_WORK_VEHICLE_STATION     : &'static str = "COST_WORK_VEHICLE_STATION";
     const COST_WORK_VEHICLE_STATION_NODE: &'static str = "COST_WORK_VEHICLE_STATION_ACCORDING_NODE";
+
+    pub fn maybe_scale(&self, factor: f64) -> Option<Self> {
+        match self {
+            Self::ConnectionPedestrian(p) => Some(Self::ConnectionPedestrian(scale_2_points(factor, *p))),
+            Self::ConnectionRoad(p)       => Some(Self::ConnectionRoad(scale_2_points(factor, *p))),
+            _ => None
+        }
+    }
 }
 
 
+impl<'a> super::IniToken<'a> for Token<'a> {
+    fn serialize<W: std::io::Write>(&self, wr: W) -> Result<(), std::io::Error>{
+        self.serialize_token(wr)
+    }
+
+    fn parse_tokens(src: &'a str) -> Vec<(&'a str, super::ParseResult<'a, Self>)> {
+        parse::parse_tokens_all(src)
+    }
+
+    fn parse_strict(src: &'a str) -> Result<Vec<(&'a str, Self)>, Vec<(&'a str, super::ParseError)>> {
+        parse::parse_tokens_strict(src)
+    }
+}
 
 
+#[derive(Clone)]
 pub enum BuildingType {
     AirplaneGate,
     AirplaneParking,
@@ -191,6 +229,7 @@ impl BuildingType {
 }
 
 
+#[derive(Clone)]
 pub enum StorageCargoType {
     Passanger,
     Cement,
@@ -219,6 +258,7 @@ impl StorageCargoType {
 }
 
 
+#[derive(Clone)]
 pub enum ParticleType {
     ResidentialHeating,
     BigBlack,
@@ -246,6 +286,7 @@ impl ParticleType {
 }
 
 
+#[derive(Clone)]
 pub enum ConstructionPhase {
     Groundworks,
     BoardsLaying,
@@ -272,6 +313,7 @@ impl ConstructionPhase {
 }
 
 
+#[derive(Clone)]
 pub enum ConstructionAutoCost {
     Ground,
     GroundAsphalt,
@@ -304,6 +346,7 @@ impl ConstructionAutoCost {
 }
 
 
+#[derive(Clone)]
 pub enum ResourceType {
     Alcohol,
     Alumina,
@@ -366,17 +409,15 @@ impl ResourceType {
 }
 
 
-
-pub fn validate(src: &str) -> Vec<String> {
-
-    let mut errors = Vec::with_capacity(0);
-    let tokens = Token::parse_tokens(&src);
-    for (t_str, t_val) in tokens {
-        if let Err(e) = t_val {
-            errors.push(format!("Error: {}\nChunk: \n{}\n", e, t_str));
-        }
-    }
-
-    errors
+#[inline]
+fn scale_point(factor: f64, mut p: Point3f) -> Point3f {
+    p.x = ((p.x as f64) * factor) as f32;
+    p.y = ((p.y as f64) * factor) as f32;
+    p.z = ((p.z as f64) * factor) as f32;
+    p
 }
 
+#[inline]
+fn scale_2_points(factor: f64, (p1, p2): (Point3f, Point3f)) -> (Point3f, Point3f) {
+    (scale_point(factor, p1), scale_point(factor, p2))
+}

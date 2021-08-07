@@ -1,6 +1,6 @@
 use std::fs;
-use std::io::Write;
-use std::path::PathBuf;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 
 use regex::Regex;
@@ -92,16 +92,14 @@ fn main() {
 
                     let f_out = fs::OpenOptions::new()
                                     .write(true)
-                                    .create(true)
-                                    //.create_new(true)
+                                    //.create(true)
+                                    .create_new(true)
                                     .open(output)
                                     .expect("Cannot create output file");
 
                     let mut wr = std::io::BufWriter::new(f_out);
 
                     let mut d_v = 1_usize;
-                    //let mut d_uv = 1_usize;
-                    //let mut d_n = 1_usize;
 
                     for obj in nmf.objects.iter() {
                         writeln!(wr, "o {}", obj.name()).unwrap();
@@ -128,8 +126,6 @@ fn main() {
                         }
 
                         d_v += verts.len();
-                        //d_uv += uvs.len();
-                        //d_n += ns.len();
                     }
 
                     wr.flush().expect("Failed flushing the output");
@@ -183,30 +179,65 @@ fn main() {
         },
 
 
+        //---------------- mod subcommand --------------------------------
         cfg::AppCommand::Mod(cmd) => {
             match cmd {
-                cfg::ModCommand::Validate(cfg::ModValidateCommand { path }) => {
-                    let ini_path = path.join("building.ini");
+                cfg::ModCommand::Validate(cfg::ModValidateCommand { dir_input }) => {
+                    let ini_path = dir_input.join("building.ini");
                     if ini_path.exists() {
                         println!("Found building.ini. Validating the target directory as a building mod...");
                         let ini_buf = fs::read_to_string(ini_path).unwrap();
 
-                        let errors = ini::building::validate(&ini_buf);
-                        if errors.is_empty() {
-                            println!("building.ini: OK");
-                        } else {
-                            for e in errors {
-                                println!("building.ini: {}", e);
+                        let ini = ini::BuildingIni::from_slice(&ini_buf);
+                        match ini {
+                            Ok(_) => println!("building.ini: OK"),
+                            Err(errors) => {
+                                println!("building.ini: {} errors", errors.len());
+                                for (chunk, e) in errors {
+                                    println!("{}; chunk: [{}]\n", e, chunk);
+                                }
                             }
                         }
                     } else {
-                        panic!("Cannot determine mod type at {:?}", path);
+                        panic!("Unknown mod type at {:?}", dir_input);
+                    }
+                },
+
+                cfg::ModCommand::Scale(cfg::ModScaleCommand { dir_input, factor, dir_output }) => {
+                    let ini_path = dir_input.join("building.ini");
+                    if ini_path.exists() {
+                        println!("Found building.ini. Scaling the target directory as a building mod...");
+                        let ini_buf = fs::read_to_string(ini_path).unwrap();
+
+                        let ini = ini::BuildingIni::from_slice(&ini_buf);
+                        match ini {
+                            Ok(mut ini) => { 
+                                copy_directory(&dir_input, &dir_output).expect("Cannot copy mod directory");
+                                let out_path = dir_output.join("building.ini");
+                                ini.scale(*factor);
+
+                                let mut ini_out = io::BufWriter::new(fs::OpenOptions::new().write(true).truncate(true).open(out_path).unwrap());
+                                ini.write_to(&mut ini_out).expect("Cannot write building.ini");
+                                ini_out.flush().unwrap();
+
+                                println!("building.ini: updated");
+                            },
+                            Err(errors) => {
+                                println!("building.ini: {} errors", errors.len());
+                                for (chunk, e) in errors {
+                                    println!("{}; chunk: [{}]\n", e, chunk);
+                                }
+                            }
+                        }
+                    } else {
+                        panic!("Unknown mod type at {:?}", dir_input);
                     }
                 },
             }
         },
 
 
+        //---------------- ini subcommand --------------------------------
         cfg::AppCommand::Ini(cmd) => {
             use ini::IniToken;
 
@@ -217,7 +248,7 @@ fn main() {
                             println!("Parsing building.ini...");
                             let ini_buf = fs::read_to_string(path).unwrap();
 
-                            let mut tokens = ini::building::Token::parse_tokens(&ini_buf);
+                            let tokens = ini::building::Token::parse_tokens(&ini_buf);
 
                             for (t_str, t_val) in tokens.iter() {
                                 match t_val {
@@ -231,28 +262,6 @@ fn main() {
                                     Err(e) => println!("Error: {}, chunk: [{}]", e, t_str),
                                 }
                             }
-/*
-                            for (_, t_val) in tokens.iter_mut() {
-                                if let Ok((ini::building::Token::CostWorkVehicleStation((v1, v2)), rest)) = t_val {
-                                    let (x1, y1, z1) = *v1;
-                                    let (x2, y2, z2) = *v2;
-                                    *t_val = Ok(( ini::building::Token::CostWorkVehicleStation(((x1 * 2.0, y1 * 2.0, z1 * 2.0), (x2 * 2.0, y2 * 2.0, z2 * 2.0))), *rest));
-                                }
-                            }
-
-                            for (t_str, t_val) in tokens.iter() {
-                                match t_val {
-                                    Ok((t, rest)) => {
-                                        print!("{}", t);
-                                        if let Some(rest) = rest {
-                                            print!(" [remainder: {:?}]", rest);
-                                        }
-                                        println!();
-                                    },
-                                    Err(e) => println!("Error: {}, chunk: [{}]", e, t_str),
-                                }
-                            }
-*/                            
                         }
                     } else {
                         panic!("File not found: {:?}", path);
@@ -261,6 +270,8 @@ fn main() {
                 },
             }
         },
+
+        //---------------- subcommands end --------------------------------
     };
 }
 
@@ -271,4 +282,24 @@ fn print_dirs() {
 
     println!("Workshop directory: {}", APP_SETTINGS.path_workshop.to_str().unwrap());
     assert!(APP_SETTINGS.path_workshop.exists(), "Workshop directory does not exist.");
+}
+
+
+fn copy_directory(src: &Path, dest: &Path) -> io::Result<()> {
+    if !dest.exists() {
+        fs::create_dir_all(dest)?;
+    }
+
+    for d_res in fs::read_dir(src)? {
+        let e = d_res?;
+        let ftyp = e.file_type()?;
+        if ftyp.is_file() {
+            fs::copy(&e.path(), &dest.join(e.file_name()))?;
+
+        } else if ftyp.is_dir() {
+            copy_directory(&e.path(), &dest.join(e.file_name()))?;
+        } 
+    }
+
+    Ok(())
 }

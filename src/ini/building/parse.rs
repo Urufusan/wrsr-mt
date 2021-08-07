@@ -16,10 +16,9 @@ use super::{BuildingType,
             IdStringParam,
             Point3f,
             Point2f,
-
            };
 
-use super::super::{ParseResult, ParseError, IniToken};
+use super::super::{ParseResult, ParseError};
 
 
 const RX_REMAINDER: &str = r"($|\s*(.*))";
@@ -87,6 +86,13 @@ where T1: ParseSlice<'a>,
     }
 }
 
+impl ParseSlice<'_> for Point3f {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        let((x, y, z), src) = <(f32, f32, f32) as ParseSlice>::parse(src)?;
+        Ok((Point3f { x, y, z }, src))
+
+    }
+}
 
 impl ParseSlice<'_> for f32 {
     fn parse(src: Option<&str>) -> ParseResult<Self> {
@@ -94,7 +100,18 @@ impl ParseSlice<'_> for f32 {
             static ref RX: Regex = Regex::new(concatcp!(r"(?s)^(-?[0-9]*\.?[0-9]+)", RX_REMAINDER)).unwrap();
         }
 
-        parse_param(src, &RX, |s| f32::from_str(s).map_err(|e| format!("Float parse failed: {}", e)))
+        parse_param(src, &RX, |s| f32::from_str(s).map_err(|e| format!("f32 parse failed: {}", e)))
+    }
+}
+
+
+impl ParseSlice<'_> for u32 {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([0-9]+)", RX_REMAINDER)).unwrap();
+        }
+
+        parse_param(src, &RX, |s| u32::from_str(s).map_err(|e| format!("u32 parse failed: {}", e)))
     }
 }
 
@@ -372,8 +389,8 @@ impl<'a> Token<'a> {
             Self::NAME_STR => 
                 QuotedStringParam::parse(rest).map(|(p, rest)| (Self::NameStr(p), rest)),
 
-//            Self::NAME => 
-//                TokenParams0::parse(rest).map(|(p, rest)| (Self::Name(p), rest)),
+            Self::NAME => 
+                u32::parse(rest).map(|(p, rest)| (Self::Name(p), rest)),
 
             Self::BUILDING_TYPE =>
                 BuildingType::parse(rest).map(|(p, rest)| (Self::BuildingType(p), rest)),
@@ -384,11 +401,20 @@ impl<'a> Token<'a> {
             Self::QUALITY_OF_LIVING =>
                 f32::parse(rest).map(|(p, rest)| (Self::QualityOfLiving(p), rest)),
 
+            Self::WORKERS_NEEDED =>
+                u32::parse(rest).map(|(p, rest)| (Self::WorkersNeeded(p), rest)),
+
+            Self::CITIZEN_ABLE_SERVE =>
+                u32::parse(rest).map(|(p, rest)| (Self::CitizenAbleServe(p), rest)),
+
             Self::STORAGE =>
                 <(StorageCargoType, f32)>::parse(rest).map(|(p, rest)| (Self::Storage(p), rest)),
 
             Self::CONNECTION_PEDESTRIAN =>
                 <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::ConnectionPedestrian(p), rest)),
+
+            Self::CONNECTION_ROAD =>
+                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::ConnectionRoad(p), rest)),
 
             Self::CONNECTION_ROAD_DEAD =>
                 Point3f::parse(rest).map(|(p, rest)| (Self::ConnectionRoadDead(p), rest)),
@@ -420,7 +446,7 @@ impl<'a> Token<'a> {
             Self::COST_WORK_VEHICLE_STATION_NODE =>
                 IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStationNode(p), rest)),
 
-            _ => Err(format!("Unknown token type: [{}]", t_type))
+            _ => Err(format!("Unknown token type: \"${}\"", t_type))
         }
     }
 }
@@ -431,39 +457,37 @@ lazy_static! {
 }
 
 
-impl<'a> IniToken<'a> for Token<'a> {
-    fn parse_tokens(src: &'a str) -> Vec<(&'a str, ParseResult<'a, Self>)> {
-        RX_SPLIT.split(src)
-            .filter(|x| !x.is_empty())
-            .map(|t_str| (t_str, Token::parse(t_str)))
-            .collect()
-    }
+pub fn parse_tokens_all<'a>(src: &'a str) -> Vec<(&'a str, ParseResult<'a, Token<'a>>)> {
+    RX_SPLIT.split(src)
+        .filter(|x| !x.is_empty())
+        .map(|t_str| (t_str, Token::parse(t_str)))
+        .collect()
+}
 
-    fn parse_strict(src: &'a str) -> Result<Vec<(&'a str, Self)>, Vec<(&'a str, ParseError)>> {
-        let mut res = Vec::with_capacity(100);
-        let mut errors = Vec::with_capacity(0);
+pub fn parse_tokens_strict<'a>(src: &'a str) -> Result<Vec<(&'a str, Token<'a>)>, Vec<(&'a str, ParseError)>> {
+    let mut res = Vec::with_capacity(100);
+    let mut errors = Vec::with_capacity(0);
 
-        for t_str in RX_SPLIT.split(src).filter(|x| !x.is_empty()) {
-            match Token::parse(t_str) {
-                Ok((t_val, rest)) => {
-                    match rest {
-                        Some(r) if !r.is_empty() => {
-                            errors.push((t_str, format!("Token parsed incomplete. Remaining: {}", r)));
-                        },
-                        _ => res.push((t_str, t_val))
-                    }
-                },
-                Err(e) => {
-                    errors.push((t_str, e));
+    for t_str in RX_SPLIT.split(src).filter(|x| !x.is_empty()) {
+        match Token::parse(t_str) {
+            Ok((t_val, rest)) => {
+                match rest {
+                    Some(r) if !r.is_empty() => {
+                        errors.push((t_str, format!("Token parsed incomplete. Remaining: {}", r)));
+                    },
+                    _ => res.push((t_str, t_val))
                 }
+            },
+            Err(e) => {
+                errors.push((t_str, e));
             }
         }
+    }
 
-        if errors.is_empty() {
-            Ok(res)
-        } else {
-            Err(errors)
-        }
+    if errors.is_empty() {
+        Ok(res)
+    } else {
+        Err(errors)
     }
 }
 

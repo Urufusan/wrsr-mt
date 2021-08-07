@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::io::Read;
-use std::convert::{TryFrom, TryInto};
+use std::convert::{TryInto};
 
 use regex::Regex;
 use lazy_static::lazy_static;
@@ -10,7 +10,7 @@ use const_format::concatcp;
 use crate::cfg::{AppSettings, APP_SETTINGS};
 
 use crate::data::{StockBuilding, StockBuildingsMap, RenderConfig, 
-                  BuildingDef, ModelDef, ModelPatch, MaterialDef, Skin, SkinMaterial, 
+                  BuildingDef, ModelDef, MaterialDef, Skin, SkinMaterial, 
                   PathPrefix, IniTokenPath,
 
                   get_material_textures, resolve_prefixed_path, read_to_string_buf};

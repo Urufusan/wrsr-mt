@@ -60,10 +60,17 @@ pub struct NmfPatchCommand {
 
 pub enum ModCommand {
     Validate(ModValidateCommand),
+    Scale(ModScaleCommand),
 }
 
 pub struct ModValidateCommand {
-    pub path: PathBuf
+    pub dir_input: PathBuf
+}
+
+pub struct ModScaleCommand {
+    pub dir_input: PathBuf,
+    pub factor: f64,
+    pub dir_output: PathBuf
 }
 
 //-------------------------------
@@ -148,9 +155,15 @@ lazy_static! {
 
         let cmd_mod = {
             let cmd_mod_validate = SubCommand::with_name("validate")
-                .arg(Arg::with_name("mod-path").required(true));
+                .arg(Arg::with_name("dir-input").required(true));
+
+            let cmd_mod_scale = SubCommand::with_name("scale")
+                .arg(Arg::with_name("dir-input").required(true))
+                .arg(Arg::with_name("factor").required(true))
+                .arg(Arg::with_name("dir-output").required(true));
 
             SubCommand::with_name("mod").subcommand(cmd_mod_validate)
+                                        .subcommand(cmd_mod_scale)
         };
 
         let cmd_ini = {
@@ -190,15 +203,11 @@ lazy_static! {
 
             match m.subcommand() {
                 ("install", Some(m)) => {
-                    let source = run_dir.join(m.value_of("in").unwrap());
-                    let destination = run_dir.join(m.value_of("out").unwrap());
+                    let source = mk_path(m, "in");
+                    let destination = mk_path(m, "out");
                     let is_check = m.is_present("check");
 
-                    AppCommand::Install(InstallCommand {
-                        source,
-                        destination,
-                        is_check
-                    })
+                    AppCommand::Install(InstallCommand { source, destination, is_check })
                 },
 
                 ("ini", Some(m)) => {
@@ -216,8 +225,14 @@ lazy_static! {
                 ("mod", Some(m)) => {
                     let command = match m.subcommand() {
                         ("validate", Some(m)) => {
-                            let path = mk_path(m, "mod-path");
-                            ModCommand::Validate(ModValidateCommand { path })
+                            let dir_input = mk_path(m, "dir-input");
+                            ModCommand::Validate(ModValidateCommand { dir_input })
+                        },
+                        ("scale", Some(m)) => {
+                            let dir_input = mk_path(m, "dir-input");
+                            let factor = f64::from_str(m.value_of("factor").unwrap()).expect("Cannot parse scale factor as float");
+                            let dir_output = mk_path(m, "dir-output");
+                            ModCommand::Scale(ModScaleCommand { dir_input, factor, dir_output })
                         },
                         (cname, _) => panic!("Unknown mod subcommand '{}'" , cname)
                     };
@@ -228,52 +243,38 @@ lazy_static! {
                 ("nmf", Some(m)) => {
                     let command = match m.subcommand() {
                         ("show", Some(m)) => {
-                            let path = run_dir.join(m.value_of("nmf-path").unwrap());
+                            let path = mk_path(m, "nmf-path");
                             NmfCommand::Show(NmfShowCommand { path })
                         },
 
                         ("to-obj", Some(m)) => {
-                            let input = run_dir.join(m.value_of("nmf-input").unwrap());
-                            let output = run_dir.join(m.value_of("obj-output").unwrap());
+                            let input = mk_path(m, "nmf-input");
+                            let output = mk_path(m, "obj-output");
 
-                            NmfCommand::ToObj(NmfToObjCommand {
-                                input,
-                                output
-                            })
+                            NmfCommand::ToObj(NmfToObjCommand { input, output })
                         },
 
                         ("scale", Some(m)) => {
-                            let input = run_dir.join(m.value_of("nmf-input").unwrap());
+                            let input = mk_path(m, "nmf-input");
                             let factor = f64::from_str(m.value_of("factor").unwrap()).expect("Cannot parse scale factor as float");
-                            let output = run_dir.join(m.value_of("nmf-output").unwrap());
+                            let output = mk_path(m, "nmf-output");
 
-                            NmfCommand::Scale(NmfScaleCommand {
-                                input,
-                                factor,
-                                output
-                            })
+                            NmfCommand::Scale(NmfScaleCommand { input, factor, output })
                         },
 
                         ("mirror-x", Some(m)) => {
-                            let input = run_dir.join(m.value_of("nmf-input").unwrap());
-                            let output = run_dir.join(m.value_of("nmf-output").unwrap());
+                            let input = mk_path(m, "nmf-input");
+                            let output = mk_path(m, "nmf-output");
 
-                            NmfCommand::MirrorX(NmfMirrorXCommand {
-                                input,
-                                output
-                            })
+                            NmfCommand::MirrorX(NmfMirrorXCommand { input, output })
                         },
 
                         ("patch", Some(m)) => {
-                            let input = run_dir.join(m.value_of("nmf-input").unwrap());
-                            let patch = run_dir.join(m.value_of("nmf-patch").unwrap());
-                            let output = run_dir.join(m.value_of("nmf-output").unwrap());
+                            let input = mk_path(m, "nmf-input");
+                            let patch = mk_path(m, "nmf-patch");
+                            let output = mk_path(m, "nmf-output");
 
-                            NmfCommand::Patch(NmfPatchCommand {
-                                input,
-                                patch,
-                                output
-                            })
+                            NmfCommand::Patch(NmfPatchCommand { input, patch, output })
                         },
 
                         (cname, _) => panic!("Unknown nmf subcommand '{}'" , cname)
