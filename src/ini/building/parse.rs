@@ -15,7 +15,7 @@ use super::{BuildingType,
             QuotedStringParam,
             IdStringParam,
             Point3f,
-            Point2f,
+            Rect,
            };
 
 use super::super::{ParseResult, ParseError};
@@ -90,7 +90,13 @@ impl ParseSlice<'_> for Point3f {
     fn parse(src: Option<&str>) -> ParseResult<Self> {
         let((x, y, z), src) = <(f32, f32, f32) as ParseSlice>::parse(src)?;
         Ok((Point3f { x, y, z }, src))
+    }
+}
 
+impl ParseSlice<'_> for Rect {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        let((x1, z1, x2, z2), src) = <(f32, f32, f32, f32) as ParseSlice>::parse(src)?;
+        Ok((Rect { x1, z1, x2, z2 }, src))
     }
 }
 
@@ -420,7 +426,7 @@ impl<'a> Token<'a> {
                 Point3f::parse(rest).map(|(p, rest)| (Self::ConnectionRoadDead(p), rest)),
 
             Self::CONNECTIONS_ROAD_DEAD_SQUARE =>
-                <(Point2f, Point2f)>::parse(rest).map(|(p, rest)| (Self::ConnectionsRoadDeadSquare(p), rest)),
+                <Rect>::parse(rest).map(|(p, rest)| (Self::ConnectionsRoadDeadSquare(p), rest)),
 
             Self::PARTICLE =>
                 <(ParticleType, Point3f, f32, f32)>::parse(rest).map(|(p, rest)| (Self::Particle(p), rest)),

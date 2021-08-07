@@ -9,7 +9,14 @@ pub struct Point3f {
     z: f32
 }
 
-type Point2f = (f32, f32);
+
+#[derive(Clone, Copy)]
+pub struct Rect {
+    x1: f32,
+    z1: f32,
+    x2: f32,
+    z2: f32
+}
 
 
 #[derive(Clone)]
@@ -43,7 +50,7 @@ pub enum Token<'a> {
     ConnectionPedestrian((Point3f, Point3f)),
     ConnectionRoad((Point3f, Point3f)),
     ConnectionRoadDead(Point3f),
-    ConnectionsRoadDeadSquare((Point2f, Point2f)),
+    ConnectionsRoadDeadSquare(Rect),
 
     Particle((ParticleType, Point3f, f32, f32)),
     TextCaption((Point3f, Point3f)),

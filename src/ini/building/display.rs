@@ -12,6 +12,7 @@ use super::{BuildingType,
             QuotedStringParam,
             IdStringParam,
             Point3f,
+            Rect,
            };
 
 
@@ -21,7 +22,7 @@ type IOResult = Result<(), std::io::Error>;
 impl Token<'_> {
     pub fn serialize_token<W: Write>(&self, mut wr: W) -> IOResult {
         match self {
-            Self::NameStr(p)                       => write!(wr, "{} \"{}\"", Self::NAME_STR, p),
+            Self::NameStr(p)                       => write!(wr, "{} {}", Self::NAME_STR, p),
             Self::Name(p)                          => write!(wr, "{} {}", Self::NAME, p),
             Self::BuildingType(p)                  => write!(wr, "TYPE_{}", p),
             Self::CivilBuilding                    => write!(wr, "{}", Self::CIVIL_BUILDING),
@@ -36,7 +37,7 @@ impl Token<'_> {
             Self::ConnectionRoad((x, y))           => write!(wr, "{}\r\n{}\r\n{}", Self::CONNECTION_ROAD, x, y),
             Self::ConnectionRoadDead(x)            => write!(wr, "{}\r\n{}", Self::CONNECTION_ROAD_DEAD, x),
             Self::ConnectionsRoadDeadSquare(
-                ((x1, z1), (x2, z2)))              => write!(wr, "{}\r\n{} {}\r\n{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, x1, z1, x2, z2),
+                Rect { x1, z1, x2, z2 })           => write!(wr, "{}\r\n{} {}\r\n{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, x1, z1, x2, z2),
 
             Self::Particle((t, x, a, s))           => write!(wr, "{} {} {} {} {}", Self::PARTICLE, t, x, a, s),
             Self::TextCaption((x, y))              => write!(wr, "{}\r\n{}\r\n{}", Self::TEXT_CAPTION, x, y),
@@ -55,7 +56,7 @@ impl Display for Token<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "$")?;
         match self {
-            Self::NameStr(p)                       => write!(f, "{} \"{}\"", Self::NAME_STR, p),
+            Self::NameStr(p)                       => write!(f, "{} {}", Self::NAME_STR, p),
             Self::Name(p)                          => write!(f, "{} {}", Self::NAME, p),
             Self::BuildingType(p)                  => write!(f, "TYPE_{}", p),
             Self::CivilBuilding                    => write!(f, "{}", Self::CIVIL_BUILDING),
@@ -69,7 +70,7 @@ impl Display for Token<'_> {
             Self::ConnectionPedestrian((x, y))     => write!(f, "{} {} {}", Self::CONNECTION_PEDESTRIAN, x, y),
             Self::ConnectionRoad((x, y))           => write!(f, "{} {} {}", Self::CONNECTION_ROAD, x, y),
             Self::ConnectionRoadDead(x)            => write!(f, "{} {}", Self::CONNECTION_ROAD_DEAD, x),
-            Self::ConnectionsRoadDeadSquare((x,y)) => write!(f, "{} {:?} {:?}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, x, y),
+            Self::ConnectionsRoadDeadSquare(rect)  => write!(f, "{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, rect),
 
             Self::Particle((t, x, a, s))           => write!(f, "{} {} {} {} {}", Self::PARTICLE, t, x, a, s),
             Self::TextCaption((x, y))              => write!(f, "{} {} {}", Self::TEXT_CAPTION, x, y),
@@ -272,7 +273,13 @@ impl Display for ParticleType {
 
 impl Display for Point3f {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{} {} {}", self.x, self.y, self.z)
+        write!(f, "({}, {}, {})", self.x, self.y, self.z)
+    }
+}
+
+impl Display for Rect {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "({}, {}, {}, {})", self.x1, self.z1, self.x2, self.z2)
     }
 }
 
