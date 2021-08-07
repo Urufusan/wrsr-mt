@@ -5,6 +5,7 @@ use const_format::concatcp;
 use regex::Regex;
 
 use super::{BuildingType,
+            BuildingSubtype,
             StorageCargoType,
             ParticleType,
             ConstructionPhase,
@@ -19,6 +20,85 @@ use super::{BuildingType,
            };
 
 use super::super::{ParseResult, ParseError};
+
+
+
+impl<'a> Token<'a> {
+
+    fn parse(src: &'a str) -> ParseResult<Token<'a>> {
+        let (t_type, rest) = chop_token_type(src)?;
+        match t_type {
+            Self::NAME_STR => 
+                QuotedStringParam::parse(rest).map(|(p, rest)| (Self::NameStr(p), rest)),
+
+            Self::NAME => 
+                u32::parse(rest).map(|(p, rest)| (Self::Name(p), rest)),
+
+            Self::BUILDING_TYPE =>
+                BuildingType::parse(rest).map(|(p, rest)| (Self::BuildingType(p), rest)),
+
+            Self::BUILDING_SUBTYPE =>
+                BuildingSubtype::parse(rest).map(|(p, rest)| (Self::BuildingSubtype(p), rest)),
+
+            Self::CIVIL_BUILDING =>
+                Ok((Self::CivilBuilding, rest)),
+
+            Self::QUALITY_OF_LIVING =>
+                f32::parse(rest).map(|(p, rest)| (Self::QualityOfLiving(p), rest)),
+
+            Self::WORKERS_NEEDED =>
+                u32::parse(rest).map(|(p, rest)| (Self::WorkersNeeded(p), rest)),
+
+            Self::PROFESSORS_NEEDED =>
+                u32::parse(rest).map(|(p, rest)| (Self::ProfessorsNeeded(p), rest)),
+
+            Self::CITIZEN_ABLE_SERVE =>
+                u32::parse(rest).map(|(p, rest)| (Self::CitizenAbleServe(p), rest)),
+
+            Self::STORAGE =>
+                <(StorageCargoType, f32)>::parse(rest).map(|(p, rest)| (Self::Storage(p), rest)),
+
+            Self::CONNECTION_PEDESTRIAN =>
+                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::ConnectionPedestrian(p), rest)),
+
+            Self::CONNECTION_ROAD =>
+                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::ConnectionRoad(p), rest)),
+
+            Self::CONNECTION_ROAD_DEAD =>
+                Point3f::parse(rest).map(|(p, rest)| (Self::ConnectionRoadDead(p), rest)),
+
+            Self::CONNECTIONS_ROAD_DEAD_SQUARE =>
+                <Rect>::parse(rest).map(|(p, rest)| (Self::ConnectionsRoadDeadSquare(p), rest)),
+
+            Self::PARTICLE =>
+                <(ParticleType, Point3f, f32, f32)>::parse(rest).map(|(p, rest)| (Self::Particle(p), rest)),
+
+            Self::TEXT_CAPTION =>
+                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::TextCaption(p), rest)),
+
+            Self::COST_WORK =>
+                <(ConstructionPhase, f32)>::parse(rest).map(|(p, rest)| (Self::CostWork(p), rest)),
+
+            Self::COST_WORK_BUILDING_NODE =>
+                IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkBuildingNode(p), rest)),
+
+            Self::COST_RESOURCE =>
+                <(ResourceType, f32)>::parse(rest).map(|(p, rest)| (Self::CostResource(p), rest)),
+
+            Self::COST_RESOURCE_AUTO =>
+                <(ConstructionAutoCost, f32)>::parse(rest).map(|(p, rest)| (Self::CostResourceAuto(p), rest)),
+
+            Self::COST_WORK_VEHICLE_STATION =>
+                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStation(p), rest)),
+
+            Self::COST_WORK_VEHICLE_STATION_NODE =>
+                IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStationNode(p), rest)),
+
+            _ => Err(format!("Unknown token type: \"${}\"", t_type))
+        }
+    }
+}
+
 
 
 const RX_REMAINDER: &str = r"($|\s*(.*))";
@@ -147,63 +227,66 @@ impl<'a> ParseSlice<'a> for IdStringParam<'a> {
 impl BuildingType {
     fn from_str(src: &str) -> Option<Self> {
         match src {
-            Self::AIRPLANE_GATE            => Some(Self::AirplaneGate),
-            Self::AIRPLANE_PARKING         => Some(Self::AirplaneParking),
-            Self::AIRPLANE_TOWER           => Some(Self::AirplaneTower),
-            Self::ATTRACTION               => Some(Self::Attraction),
-            Self::BROADCAST                => Some(Self::Broadcast),
-            Self::CAR_DEALER               => Some(Self::CarDealer),
-            Self::CARGO_STATION            => Some(Self::CargoStation),
-            Self::CHURCH                   => Some(Self::Church),
-            Self::CITYHALL                 => Some(Self::Cityhall),
-            Self::CONSTRUCTION_OFFICE      => Some(Self::ConstructionOffice),
-            Self::CONSTRUCTION_OFFICE_RAIL => Some(Self::ConstructionOfficeRail),
-            Self::CONTAINER_FACILITY       => Some(Self::ContainerFacility),
-            Self::COOLING_TOWER            => Some(Self::CoolingTower),
-            Self::CUSTOMHOUSE              => Some(Self::Customhouse),
-            Self::DISTRIBUTION_OFFICE      => Some(Self::DistributionOffice),
-            Self::ELETRIC_EXPORT           => Some(Self::ElectricExport),
-            Self::ELETRIC_IMPORT           => Some(Self::ElectricImport),
-            Self::ENGINE                   => Some(Self::Engine),
-            Self::FACTORY                  => Some(Self::Factory),
-            Self::FARM                     => Some(Self::Farm),
-            Self::FIELD                    => Some(Self::Field),
-            Self::FIRESTATION              => Some(Self::Firestation),
-            Self::FORKLIFT_GARAGE          => Some(Self::ForkliftGarage),
-            Self::GAS_STATION              => Some(Self::GasStation),
-            Self::HEATING_ENDSTATION       => Some(Self::HeatingEndstation),
-            Self::HEATING_PLANT            => Some(Self::HeatingPlant),
-            Self::HEATING_SWITCH           => Some(Self::HeatingSwitch),
-            Self::HOSPITAL                 => Some(Self::Hospital),
-            Self::HOTEL                    => Some(Self::Hotel),
-            Self::KINDERGARTEN             => Some(Self::Kindergarten),
-            Self::KINO                     => Some(Self::Kino),
-            Self::LIVING                   => Some(Self::Living),
-            Self::MINE_BAUXITE             => Some(Self::MineBauxite),
-            Self::MINE_COAL                => Some(Self::MineCoal),
-            Self::MINE_GRAVEL              => Some(Self::MineGravel),
-            Self::MINE_IRON                => Some(Self::MineIron),
-            Self::MINE_OIL                 => Some(Self::MineOil),
-            Self::MINE_URANIUM             => Some(Self::MineUranium),
-            Self::MINE_WOOD                => Some(Self::MineWood),
-            Self::MONUMENT                 => Some(Self::Monument),
-            Self::PARKING                  => Some(Self::Parking),
-            Self::PASSANGER_STATION        => Some(Self::PassangerStation),
-            Self::POLLUTION_METER          => Some(Self::PollutionMeter),
-            Self::POWERPLANT               => Some(Self::Powerplant),
-            Self::PRODUCTION_LINE          => Some(Self::ProductionLine),
-            Self::PUB                      => Some(Self::Pub),
-            Self::RAIL_TRAFO               => Some(Self::RailTrafo),
-            Self::RAILDEPO                 => Some(Self::Raildepo),
-            Self::ROADDEPO                 => Some(Self::Roaddepo),
-            Self::SCHOOL                   => Some(Self::School),
-            Self::SHIP_DOCK                => Some(Self::ShipDock),
-            Self::SHOP                     => Some(Self::Shop),
-            Self::SPORT                    => Some(Self::Sport),
-            Self::STORAGE                  => Some(Self::Storage),
-            Self::SUBSTATION               => Some(Self::Substation),
-            Self::TRANSFORMATOR            => Some(Self::Transformator),
-            Self::UNIVERSITY               => Some(Self::University),
+            Self::TYPE_AIRPLANE_GATE            => Some(Self::AirplaneGate),
+            Self::TYPE_AIRPLANE_PARKING         => Some(Self::AirplaneParking),
+            Self::TYPE_AIRPLANE_TOWER           => Some(Self::AirplaneTower),
+            Self::TYPE_ATTRACTION               => Some(Self::Attraction),
+            Self::TYPE_BROADCAST                => Some(Self::Broadcast),
+            Self::TYPE_CAR_DEALER               => Some(Self::CarDealer),
+            Self::TYPE_CARGO_STATION            => Some(Self::CargoStation),
+            Self::TYPE_CHURCH                   => Some(Self::Church),
+            Self::TYPE_CITYHALL                 => Some(Self::Cityhall),
+            Self::TYPE_CONSTRUCTION_OFFICE      => Some(Self::ConstructionOffice),
+            Self::TYPE_CONSTRUCTION_OFFICE_RAIL => Some(Self::ConstructionOfficeRail),
+            Self::TYPE_CONTAINER_FACILITY       => Some(Self::ContainerFacility),
+            Self::TYPE_COOLING_TOWER            => Some(Self::CoolingTower),
+            Self::TYPE_CUSTOMHOUSE              => Some(Self::Customhouse),
+            Self::TYPE_DISTRIBUTION_OFFICE      => Some(Self::DistributionOffice),
+            Self::TYPE_ELETRIC_EXPORT           => Some(Self::ElectricExport),
+            Self::TYPE_ELETRIC_IMPORT           => Some(Self::ElectricImport),
+            Self::TYPE_ENGINE                   => Some(Self::Engine),
+            Self::TYPE_FACTORY                  => Some(Self::Factory),
+            Self::TYPE_FARM                     => Some(Self::Farm),
+            Self::TYPE_FIELD                    => Some(Self::Field),
+            Self::TYPE_FIRESTATION              => Some(Self::Firestation),
+            Self::TYPE_FORKLIFT_GARAGE          => Some(Self::ForkliftGarage),
+            Self::TYPE_GARBAGE_OFFICE           => Some(Self::GarbageOffice),
+            Self::TYPE_GAS_STATION              => Some(Self::GasStation),
+            Self::TYPE_HEATING_ENDSTATION       => Some(Self::HeatingEndstation),
+            Self::TYPE_HEATING_PLANT            => Some(Self::HeatingPlant),
+            Self::TYPE_HEATING_SWITCH           => Some(Self::HeatingSwitch),
+            Self::TYPE_HOSPITAL                 => Some(Self::Hospital),
+            Self::TYPE_HOTEL                    => Some(Self::Hotel),
+            Self::TYPE_KINDERGARTEN             => Some(Self::Kindergarten),
+            Self::TYPE_KINO                     => Some(Self::Kino),
+            Self::TYPE_LIVING                   => Some(Self::Living),
+            Self::TYPE_MINE_BAUXITE             => Some(Self::MineBauxite),
+            Self::TYPE_MINE_COAL                => Some(Self::MineCoal),
+            Self::TYPE_MINE_GRAVEL              => Some(Self::MineGravel),
+            Self::TYPE_MINE_IRON                => Some(Self::MineIron),
+            Self::TYPE_MINE_OIL                 => Some(Self::MineOil),
+            Self::TYPE_MINE_URANIUM             => Some(Self::MineUranium),
+            Self::TYPE_MINE_WOOD                => Some(Self::MineWood),
+            Self::TYPE_MONUMENT                 => Some(Self::Monument),
+            Self::TYPE_PARKING                  => Some(Self::Parking),
+            Self::TYPE_PEDESTRIAN_BRIDGE        => Some(Self::PedestrianBridge),
+            Self::TYPE_POLICE_STATION           => Some(Self::PoliceStation),
+            Self::TYPE_PASSANGER_STATION        => Some(Self::PassangerStation),
+            Self::TYPE_POLLUTION_METER          => Some(Self::PollutionMeter),
+            Self::TYPE_POWERPLANT               => Some(Self::Powerplant),
+            Self::TYPE_PRODUCTION_LINE          => Some(Self::ProductionLine),
+            Self::TYPE_PUB                      => Some(Self::Pub),
+            Self::TYPE_RAIL_TRAFO               => Some(Self::RailTrafo),
+            Self::TYPE_RAILDEPO                 => Some(Self::Raildepo),
+            Self::TYPE_ROADDEPO                 => Some(Self::Roaddepo),
+            Self::TYPE_SCHOOL                   => Some(Self::School),
+            Self::TYPE_SHIP_DOCK                => Some(Self::ShipDock),
+            Self::TYPE_SHOP                     => Some(Self::Shop),
+            Self::TYPE_SPORT                    => Some(Self::Sport),
+            Self::TYPE_STORAGE                  => Some(Self::Storage),
+            Self::TYPE_SUBSTATION               => Some(Self::Substation),
+            Self::TYPE_TRANSFORMATOR            => Some(Self::Transformator),
+            Self::TYPE_UNIVERSITY               => Some(Self::University),
             _ => None
         }
     }
@@ -219,6 +302,40 @@ impl ParseSlice<'_> for BuildingType {
     }
 }
 
+
+impl BuildingSubtype {
+    fn from_str(src: &str) -> Option<Self> {
+        match src {
+            Self::SUBTYPE_AIRCUSTOM          => Some(Self::Aircustom),
+            Self::SUBTYPE_AIRPLANE           => Some(Self::Airplane),
+            Self::SUBTYPE_CABLEWAY           => Some(Self::Cableway),
+            Self::SUBTYPE_HOSTEL             => Some(Self::Hostel),
+            Self::SUBTYPE_MEDICAL            => Some(Self::Medical),
+            Self::SUBTYPE_RADIO              => Some(Self::Radio),
+            Self::SUBTYPE_RAIL               => Some(Self::Rail),
+            Self::SUBTYPE_RESTAURANT         => Some(Self::Restaurant),
+            Self::SUBTYPE_ROAD               => Some(Self::Road),
+            Self::SUBTYPE_SHIP               => Some(Self::Ship),
+            Self::SUBTYPE_SOVIET             => Some(Self::Soviet),
+            Self::SUBTYPE_SPACE_FOR_VEHICLES => Some(Self::SpaceForVehicles),
+            Self::SUBTYPE_TECHNICAL          => Some(Self::Technical),
+            Self::SUBTYPE_TELEVISION         => Some(Self::Television),
+            Self::SUBTYPE_TROLLEYBUS         => Some(Self::Trolleybus),
+            _ => None
+        }
+    }
+}
+
+
+impl ParseSlice<'_> for BuildingSubtype {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([A-Z_]+)", RX_REMAINDER)).unwrap();
+        }
+
+        parse_param(src, &RX, |s| Self::from_str(s).ok_or(format!("Unknown building subtype '{}'", s)))
+    }
+}
 
 
 impl StorageCargoType {
@@ -387,77 +504,6 @@ impl ParseSlice<'_> for ResourceType {
 
 
 
-impl<'a> Token<'a> {
-
-    fn parse(src: &'a str) -> ParseResult<Token<'a>> {
-        let (t_type, rest) = chop_token_type(src)?;
-        match t_type {
-            Self::NAME_STR => 
-                QuotedStringParam::parse(rest).map(|(p, rest)| (Self::NameStr(p), rest)),
-
-            Self::NAME => 
-                u32::parse(rest).map(|(p, rest)| (Self::Name(p), rest)),
-
-            Self::BUILDING_TYPE =>
-                BuildingType::parse(rest).map(|(p, rest)| (Self::BuildingType(p), rest)),
-
-            Self::CIVIL_BUILDING =>
-                Ok((Self::CivilBuilding, rest)),
-
-            Self::QUALITY_OF_LIVING =>
-                f32::parse(rest).map(|(p, rest)| (Self::QualityOfLiving(p), rest)),
-
-            Self::WORKERS_NEEDED =>
-                u32::parse(rest).map(|(p, rest)| (Self::WorkersNeeded(p), rest)),
-
-            Self::CITIZEN_ABLE_SERVE =>
-                u32::parse(rest).map(|(p, rest)| (Self::CitizenAbleServe(p), rest)),
-
-            Self::STORAGE =>
-                <(StorageCargoType, f32)>::parse(rest).map(|(p, rest)| (Self::Storage(p), rest)),
-
-            Self::CONNECTION_PEDESTRIAN =>
-                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::ConnectionPedestrian(p), rest)),
-
-            Self::CONNECTION_ROAD =>
-                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::ConnectionRoad(p), rest)),
-
-            Self::CONNECTION_ROAD_DEAD =>
-                Point3f::parse(rest).map(|(p, rest)| (Self::ConnectionRoadDead(p), rest)),
-
-            Self::CONNECTIONS_ROAD_DEAD_SQUARE =>
-                <Rect>::parse(rest).map(|(p, rest)| (Self::ConnectionsRoadDeadSquare(p), rest)),
-
-            Self::PARTICLE =>
-                <(ParticleType, Point3f, f32, f32)>::parse(rest).map(|(p, rest)| (Self::Particle(p), rest)),
-
-            Self::TEXT_CAPTION =>
-                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::TextCaption(p), rest)),
-
-            Self::COST_WORK =>
-                <(ConstructionPhase, f32)>::parse(rest).map(|(p, rest)| (Self::CostWork(p), rest)),
-
-            Self::COST_WORK_BUILDING_NODE =>
-                IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkBuildingNode(p), rest)),
-
-            Self::COST_RESOURCE =>
-                <(ResourceType, f32)>::parse(rest).map(|(p, rest)| (Self::CostResource(p), rest)),
-
-            Self::COST_RESOURCE_AUTO =>
-                <(ConstructionAutoCost, f32)>::parse(rest).map(|(p, rest)| (Self::CostResourceAuto(p), rest)),
-
-            Self::COST_WORK_VEHICLE_STATION =>
-                <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStation(p), rest)),
-
-            Self::COST_WORK_VEHICLE_STATION_NODE =>
-                IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStationNode(p), rest)),
-
-            _ => Err(format!("Unknown token type: \"${}\"", t_type))
-        }
-    }
-}
-
-
 lazy_static! {
     static ref RX_SPLIT: Regex = Regex::new(concatcp!("(^?", r"((\s*\r?)|(--[^\n]*)\n)+", r")(\$|end\s*(\r?\n\s*)*)")).unwrap();
 }
@@ -500,7 +546,7 @@ pub fn parse_tokens_strict<'a>(src: &'a str) -> Result<Vec<(&'a str, Token<'a>)>
 
 fn chop_token_type<'a>(src: &'a str) -> ParseResult<&'a str> {
     lazy_static! {
-        static ref RX_TYPE: Regex = Regex::new(r"(?s)^(TYPE_|[A-Z_]+)($|\s*(.*))").unwrap();
+        static ref RX_TYPE: Regex = Regex::new(r"(?s)^((?:SUB)?TYPE_|[A-Z_]+)($|\s*(.*))").unwrap();
     }
 
     match RX_TYPE.captures(src) {

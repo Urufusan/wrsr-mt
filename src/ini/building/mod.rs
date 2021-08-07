@@ -39,10 +39,12 @@ pub enum Token<'a> {
     Name(u32),
 
     BuildingType(BuildingType),
+    BuildingSubtype(BuildingSubtype),
     CivilBuilding,
     QualityOfLiving(f32),
 
     WorkersNeeded(u32),
+    ProfessorsNeeded(u32),
     CitizenAbleServe(u32),
 
     Storage((StorageCargoType, f32)),
@@ -70,9 +72,11 @@ impl<'a> Token<'a> {
     const NAME_STR:                       &'static str = "NAME_STR";
     const NAME:                           &'static str = "NAME";
     const BUILDING_TYPE:                  &'static str = "TYPE_";
+    const BUILDING_SUBTYPE:               &'static str = "SUBTYPE_";
     const CIVIL_BUILDING:                 &'static str = "CIVIL_BUILDING";
     const QUALITY_OF_LIVING:              &'static str = "QUALITY_OF_LIVING";
     const WORKERS_NEEDED:                 &'static str = "WORKERS_NEEDED";
+    const PROFESSORS_NEEDED:              &'static str = "PROFESORS_NEEDED";
     const CITIZEN_ABLE_SERVE:             &'static str = "CITIZEN_ABLE_SERVE";
     const STORAGE:                        &'static str = "STORAGE";
     const CONNECTION_PEDESTRIAN:          &'static str = "CONNECTION_PEDESTRIAN";
@@ -138,6 +142,7 @@ pub enum BuildingType {
     Field,
     Firestation,
     ForkliftGarage,
+    GarbageOffice,
     GasStation,
     HeatingEndstation,
     HeatingPlant,
@@ -157,6 +162,8 @@ pub enum BuildingType {
     Monument,
     Parking,
     PassangerStation,
+    PedestrianBridge,
+    PoliceStation,
     PollutionMeter,
     Powerplant,
     ProductionLine,
@@ -176,63 +183,106 @@ pub enum BuildingType {
 
 
 impl BuildingType {
-    const AIRPLANE_GATE:            &'static str = "AIRPLANE_GATE";
-    const AIRPLANE_PARKING:         &'static str = "AIRPLANE_PARKING";
-    const AIRPLANE_TOWER:           &'static str = "AIRPLANE_TOWER";
-    const ATTRACTION:               &'static str = "ATTRACTION";
-    const BROADCAST:                &'static str = "BROADCAST";
-    const CAR_DEALER:               &'static str = "CAR_DEALER";
-    const CARGO_STATION:            &'static str = "CARGO_STATION";
-    const CHURCH:                   &'static str = "CHURCH";
-    const CITYHALL:                 &'static str = "CITYHALL";
-    const CONSTRUCTION_OFFICE:      &'static str = "CONSTRUCTION_OFFICE";
-    const CONSTRUCTION_OFFICE_RAIL: &'static str = "CONSTRUCTION_OFFICE_RAIL";
-    const CONTAINER_FACILITY:       &'static str = "CONTAINER_FACILITY";
-    const COOLING_TOWER:            &'static str = "COOLING_TOWER";
-    const CUSTOMHOUSE:              &'static str = "CUSTOMHOUSE";
-    const DISTRIBUTION_OFFICE:      &'static str = "DISTRIBUTION_OFFICE";
-    const ELETRIC_EXPORT:           &'static str = "ELETRIC_EXPORT";
-    const ELETRIC_IMPORT:           &'static str = "ELETRIC_IMPORT";
-    const ENGINE:                   &'static str = "ENGINE";
-    const FACTORY:                  &'static str = "FACTORY";
-    const FARM:                     &'static str = "FARM";
-    const FIELD:                    &'static str = "FIELD";
-    const FIRESTATION:              &'static str = "FIRESTATION";
-    const FORKLIFT_GARAGE:          &'static str = "FORKLIFT_GARAGE";
-    const GAS_STATION:              &'static str = "GAS_STATION";
-    const HEATING_ENDSTATION:       &'static str = "HEATING_ENDSTATION";
-    const HEATING_PLANT:            &'static str = "HEATING_PLANT";
-    const HEATING_SWITCH:           &'static str = "HEATING_SWITCH";
-    const HOSPITAL:                 &'static str = "HOSPITAL";
-    const HOTEL:                    &'static str = "HOTEL";
-    const KINDERGARTEN:             &'static str = "KINDERGARTEN";
-    const KINO:                     &'static str = "KINO";
-    const LIVING:                   &'static str = "LIVING";
-    const MINE_BAUXITE:             &'static str = "MINE_BAUXITE";
-    const MINE_COAL:                &'static str = "MINE_COAL";
-    const MINE_GRAVEL:              &'static str = "MINE_GRAVEL";
-    const MINE_IRON:                &'static str = "MINE_IRON";
-    const MINE_OIL:                 &'static str = "MINE_OIL";
-    const MINE_URANIUM:             &'static str = "MINE_URANIUM";
-    const MINE_WOOD:                &'static str = "MINE_WOOD";
-    const MONUMENT:                 &'static str = "MONUMENT";
-    const PARKING:                  &'static str = "PARKING";
-    const PASSANGER_STATION:        &'static str = "PASSANGER_STATION";
-    const POLLUTION_METER:          &'static str = "POLLUTION_METER";
-    const POWERPLANT:               &'static str = "POWERPLANT";
-    const PRODUCTION_LINE:          &'static str = "PRODUCTION_LINE";
-    const PUB:                      &'static str = "PUB";
-    const RAIL_TRAFO:               &'static str = "RAIL_TRAFO";
-    const RAILDEPO:                 &'static str = "RAILDEPO";
-    const ROADDEPO:                 &'static str = "ROADDEPO";
-    const SCHOOL:                   &'static str = "SCHOOL";
-    const SHIP_DOCK:                &'static str = "SHIP_DOCK";
-    const SHOP:                     &'static str = "SHOP";
-    const SPORT:                    &'static str = "SPORT";
-    const STORAGE:                  &'static str = "STORAGE";
-    const SUBSTATION:               &'static str = "SUBSTATION";
-    const TRANSFORMATOR:            &'static str = "TRANSFORMATOR";
-    const UNIVERSITY:               &'static str = "UNIVERSITY";
+    const TYPE_AIRPLANE_GATE:            &'static str = "AIRPLANE_GATE";
+    const TYPE_AIRPLANE_PARKING:         &'static str = "AIRPLANE_PARKING";
+    const TYPE_AIRPLANE_TOWER:           &'static str = "AIRPLANE_TOWER";
+    const TYPE_ATTRACTION:               &'static str = "ATTRACTION";
+    const TYPE_BROADCAST:                &'static str = "BROADCAST";
+    const TYPE_CAR_DEALER:               &'static str = "CAR_DEALER";
+    const TYPE_CARGO_STATION:            &'static str = "CARGO_STATION";
+    const TYPE_CHURCH:                   &'static str = "CHURCH";
+    const TYPE_CITYHALL:                 &'static str = "CITYHALL";
+    const TYPE_CONSTRUCTION_OFFICE:      &'static str = "CONSTRUCTION_OFFICE";
+    const TYPE_CONSTRUCTION_OFFICE_RAIL: &'static str = "CONSTRUCTION_OFFICE_RAIL";
+    const TYPE_CONTAINER_FACILITY:       &'static str = "CONTAINER_FACILITY";
+    const TYPE_COOLING_TOWER:            &'static str = "COOLING_TOWER";
+    const TYPE_CUSTOMHOUSE:              &'static str = "CUSTOMHOUSE";
+    const TYPE_DISTRIBUTION_OFFICE:      &'static str = "DISTRIBUTION_OFFICE";
+    const TYPE_ELETRIC_EXPORT:           &'static str = "ELETRIC_EXPORT";
+    const TYPE_ELETRIC_IMPORT:           &'static str = "ELETRIC_IMPORT";
+    const TYPE_ENGINE:                   &'static str = "ENGINE";
+    const TYPE_FACTORY:                  &'static str = "FACTORY";
+    const TYPE_FARM:                     &'static str = "FARM";
+    const TYPE_FIELD:                    &'static str = "FIELD";
+    const TYPE_FIRESTATION:              &'static str = "FIRESTATION";
+    const TYPE_FORKLIFT_GARAGE:          &'static str = "FORKLIFT_GARAGE"; 
+    const TYPE_GARBAGE_OFFICE:           &'static str = "GARBAGE_OFFICE"; 
+    const TYPE_GAS_STATION:              &'static str = "GAS_STATION";
+    const TYPE_HEATING_ENDSTATION:       &'static str = "HEATING_ENDSTATION";
+    const TYPE_HEATING_PLANT:            &'static str = "HEATING_PLANT";
+    const TYPE_HEATING_SWITCH:           &'static str = "HEATING_SWITCH";
+    const TYPE_HOSPITAL:                 &'static str = "HOSPITAL";
+    const TYPE_HOTEL:                    &'static str = "HOTEL";
+    const TYPE_KINDERGARTEN:             &'static str = "KINDERGARTEN";
+    const TYPE_KINO:                     &'static str = "KINO";
+    const TYPE_LIVING:                   &'static str = "LIVING";
+    const TYPE_MINE_BAUXITE:             &'static str = "MINE_BAUXITE";
+    const TYPE_MINE_COAL:                &'static str = "MINE_COAL";
+    const TYPE_MINE_GRAVEL:              &'static str = "MINE_GRAVEL";
+    const TYPE_MINE_IRON:                &'static str = "MINE_IRON";
+    const TYPE_MINE_OIL:                 &'static str = "MINE_OIL";
+    const TYPE_MINE_URANIUM:             &'static str = "MINE_URANIUM";
+    const TYPE_MINE_WOOD:                &'static str = "MINE_WOOD";
+    const TYPE_MONUMENT:                 &'static str = "MONUMENT";
+    const TYPE_PARKING:                  &'static str = "PARKING";
+    const TYPE_PASSANGER_STATION:        &'static str = "PASSANGER_STATION";
+    const TYPE_PEDESTRIAN_BRIDGE:        &'static str = "PEDESTRIAN_BRIDGE";
+    const TYPE_POLICE_STATION:           &'static str = "POLICE_STATION";
+    const TYPE_POLLUTION_METER:          &'static str = "POLLUTION_METER";
+    const TYPE_POWERPLANT:               &'static str = "POWERPLANT";
+    const TYPE_PRODUCTION_LINE:          &'static str = "PRODUCTION_LINE";
+    const TYPE_PUB:                      &'static str = "PUB";
+    const TYPE_RAIL_TRAFO:               &'static str = "RAIL_TRAFO";
+    const TYPE_RAILDEPO:                 &'static str = "RAILDEPO";
+    const TYPE_ROADDEPO:                 &'static str = "ROADDEPO";
+    const TYPE_SCHOOL:                   &'static str = "SCHOOL";
+    const TYPE_SHIP_DOCK:                &'static str = "SHIP_DOCK";
+    const TYPE_SHOP:                     &'static str = "SHOP";
+    const TYPE_SPORT:                    &'static str = "SPORT";
+    const TYPE_STORAGE:                  &'static str = "STORAGE";
+    const TYPE_SUBSTATION:               &'static str = "SUBSTATION";
+    const TYPE_TRANSFORMATOR:            &'static str = "TRANSFORMATOR";
+    const TYPE_UNIVERSITY:               &'static str = "UNIVERSITY";
+}
+
+
+#[derive(Clone)]
+pub enum BuildingSubtype {
+    Aircustom,
+    Airplane,
+    Cableway,
+    Hostel,
+    Medical,
+    Radio,
+    Rail,
+    Restaurant,
+    Road,
+    Ship,
+    Soviet,
+    SpaceForVehicles,
+    Technical,
+    Television,
+    Trolleybus,
+}
+
+
+impl BuildingSubtype {
+    const SUBTYPE_AIRCUSTOM:          &'static str = "AIRCUSTOM";
+    const SUBTYPE_AIRPLANE:           &'static str = "AIRPLANE";
+    const SUBTYPE_CABLEWAY:           &'static str = "CABLEWAY";
+    const SUBTYPE_HOSTEL:             &'static str = "HOSTEL";
+    const SUBTYPE_MEDICAL:            &'static str = "MEDICAL";
+    const SUBTYPE_RADIO:              &'static str = "RADIO";
+    const SUBTYPE_RAIL:               &'static str = "RAIL";
+//  const SUBTYPE_RAL:                &'static str = "RAL";
+    const SUBTYPE_RESTAURANT:         &'static str = "RESTAURANT";
+    const SUBTYPE_ROAD:               &'static str = "ROAD";
+    const SUBTYPE_SHIP:               &'static str = "SHIP";
+    const SUBTYPE_SOVIET:             &'static str = "SOVIET";
+    const SUBTYPE_SPACE_FOR_VEHICLES: &'static str = "SPACE_FOR_VEHICLES";
+    const SUBTYPE_TECHNICAL:          &'static str = "TECHNICAL";
+    const SUBTYPE_TELEVISION:         &'static str = "TELEVISION";
+    const SUBTYPE_TROLLEYBUS:         &'static str = "TROLLEYBUS";
 }
 
 
