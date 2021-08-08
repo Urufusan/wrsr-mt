@@ -244,7 +244,7 @@ fn main() {
             match cmd {
                 cfg::IniCommand::Parse(cfg::IniParseCommand { path }) => {
                     if path.exists() {
-                        if path.file_name().unwrap() == "building.ini" {
+//                        if path.file_name().unwrap() == "building.ini" {
                             println!("Parsing building.ini...");
                             let ini_buf = fs::read_to_string(path).unwrap();
 
@@ -262,7 +262,7 @@ fn main() {
                                     Err(e) => println!("Error: {}, chunk: [{}]", e, t_str),
                                 }
                             }
-                        }
+ //                       }
                     } else {
                         panic!("File not found: {:?}", path);
                     }

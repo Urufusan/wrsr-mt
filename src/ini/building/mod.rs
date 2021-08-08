@@ -31,6 +31,8 @@ pub struct QuotedStringParam<'a>(StrValue<'a>);
 #[derive(Clone)]
 pub struct IdStringParam<'a>(StrValue<'a>);
 
+pub type Connection2P = (Connection2PType, Point3f, Point3f);
+
 
 #[derive(Clone)]
 pub enum Token<'a> {
@@ -49,16 +51,26 @@ pub enum Token<'a> {
 
     Storage((StorageCargoType, f32)),
 
-    ConnectionPedestrian((Point3f, Point3f)),
-    ConnectionRoad((Point3f, Point3f)),
+    RoadNotFlip,
+    RoadElectric,
+    VehicleStation((Point3f, Point3f)),
+    WorkingVehiclesNeeded(u32),
+
+    Connection2Points(Connection2P),
     ConnectionRoadDead(Point3f),
+    ConnectionAirportDead(Point3f),
+
     ConnectionsRoadDeadSquare(Rect),
+    ConnectionsAirportDeadSquare(Rect),
 
     Particle((ParticleType, Point3f, f32, f32)),
     TextCaption((Point3f, Point3f)),
+    WorkerRenderingArea((Point3f, Point3f)),
 
     CostWork((ConstructionPhase, f32)),
     CostWorkBuildingNode(IdStringParam<'a>),
+    CostWorkBuildingKeyword(IdStringParam<'a>),
+    CostWorkBuildingAll,
 
     CostResource((ResourceType, f32)),
     CostResourceAuto((ConstructionAutoCost, f32)),
@@ -79,14 +91,30 @@ impl<'a> Token<'a> {
     const PROFESSORS_NEEDED:              &'static str = "PROFESORS_NEEDED";
     const CITIZEN_ABLE_SERVE:             &'static str = "CITIZEN_ABLE_SERVE";
     const STORAGE:                        &'static str = "STORAGE";
-    const CONNECTION_PEDESTRIAN:          &'static str = "CONNECTION_PEDESTRIAN";
-    const CONNECTION_ROAD:                &'static str = "CONNECTION_ROAD";
-    const CONNECTION_ROAD_DEAD:           &'static str = "CONNECTION_ROAD_DEAD";
-    const CONNECTIONS_ROAD_DEAD_SQUARE:   &'static str = "CONNECTIONS_ROAD_DEAD_SQUARE";
+
+    const ROAD_VEHICLE_NOT_FLIP:          &'static str = "ROADVEHICLE_NOTFLIP";
+    const ROAD_VEHICLE_ELECTRIC:          &'static str = "ROADVEHICLE_ELETRIC";
+    const VEHICLE_STATION:                &'static str = "VEHICLE_STATION";
+    const WORKING_VEHICLES_NEEDED:        &'static str = "WORKING_VEHICLES_NEEDED";
+
+
+    const CONNECTION:                     &'static str = "CONNECTION_";
+    const CONNECTION_ROAD_DEAD:           &'static str = "ROAD_DEAD";
+    const CONNECTION_AIRPORT_DEAD:        &'static str = "AIRPORT_DEAD";
+
+    const CONNECTIONS_ROAD_DEAD_SQUARE:    &'static str = "CONNECTIONS_ROAD_DEAD_SQUARE";
+    const CONNECTIONS_AIRPORT_DEAD_SQUARE: &'static str = "CONNECTIONS_AIRPORT_DEAD_SQUARE";
+
     const PARTICLE:                       &'static str = "PARTICLE";
     const TEXT_CAPTION:                   &'static str = "TEXT_CAPTION";
+    const WORKER_RENDERING_AREA:          &'static str = "WORKER_RENDERING_AREA";
+
+
     const COST_WORK:                      &'static str = "COST_WORK";
     const COST_WORK_BUILDING_NODE:        &'static str = "COST_WORK_BUILDING_NODE";
+    const COST_WORK_BUILDING_ALL:         &'static str = "COST_WORK_BUILDING_ALL";
+    const COST_WORK_BUILDING_KEYWORD:     &'static str = "COST_WORK_BUILDING_KEYWORD";
+
     const COST_RESOURCE:                  &'static str = "COST_RESOURCE";
     const COST_RESOURCE_AUTO:             &'static str = "COST_RESOURCE_AUTO";
     const COST_WORK_VEHICLE_STATION     : &'static str = "COST_WORK_VEHICLE_STATION";
@@ -94,8 +122,8 @@ impl<'a> Token<'a> {
 
     pub fn maybe_scale(&self, factor: f64) -> Option<Self> {
         match self {
-            Self::ConnectionPedestrian(p) => Some(Self::ConnectionPedestrian(scale_2_points(factor, *p))),
-            Self::ConnectionRoad(p)       => Some(Self::ConnectionRoad(scale_2_points(factor, *p))),
+            // TODO: process all geometry variants
+            Self::Connection2Points((t, p1, p2)) => Some(Self::Connection2Points((*t, scale_point(factor, *p1), scale_point(factor, *p2)))),
             _ => None
         }
     }
@@ -466,15 +494,70 @@ impl ResourceType {
 }
 
 
+#[derive(Clone, Copy)]
+pub enum Connection2PType {
+    AirRoad,
+    Pedestrian,
+    Road,
+    RoadAllowpass,
+    RoadBorder,
+    RoadIn,
+    RoadOut,
+    Rail,
+    RailAllowpass,
+    RailBorder,
+    HeatingBig,
+    HeatingSmall,
+    SteamIn,
+    SteamOut,
+    PipeIn,
+    PipeOut,
+    BulkIn,
+    BulkOut,
+    Cableway,
+    Factory,
+    ConveyorIn,
+    ConveyorOut,
+    ElectricHighIn,
+    ElectricHighOut,
+    ElectricLowIn,
+    ElectricLowOut,
+}
+
+impl Connection2PType {
+    const CONN_AIRROAD:        &'static str = "AIRROAD";
+    const CONN_PEDESTRIAN:     &'static str = "PEDESTRIAN";
+    const CONN_ROAD:           &'static str = "ROAD";
+    const CONN_ROAD_ALLOWPASS: &'static str = "ROAD_ALLOWPASS";
+    const CONN_ROAD_BORDER:    &'static str = "ROAD_BORDER";
+    const CONN_ROAD_IN:        &'static str = "ROAD_INPUT";
+    const CONN_ROAD_OUT:       &'static str = "ROAD_OUTPUT";
+    const CONN_RAIL:           &'static str = "RAIL";
+    const CONN_RAIL_ALLOWPASS: &'static str = "RAIL_ALLOWPASS";
+    const CONN_RAIL_BORDER:    &'static str = "RAIL_BORDER";
+    const CONN_HEATING_BIG:    &'static str = "HEATING_BIG";
+    const CONN_HEATING_SMALL:  &'static str = "HEATING_SMALL";
+    const CONN_STEAM_IN:       &'static str = "STEAM_INPUT";
+    const CONN_STEAM_OUT:      &'static str = "STEAM_OUTPUT";
+    const CONN_PIPE_IN:        &'static str = "PIPE_INPUT";
+    const CONN_PIPE_OUT:       &'static str = "PIPE_OUTPUT";
+    const CONN_BULK_IN:        &'static str = "BULK_INPUT";
+    const CONN_BULK_OUT:       &'static str = "BULK_OUTPUT";
+    const CONN_CABLEWAY:       &'static str = "CABLEWAY";
+    const CONN_FACTORY:        &'static str = "CONNECTION";
+    const CONN_CONVEYOR_IN:    &'static str = "CONVEYOR_INPUT";
+    const CONN_CONVEYOR_OUT:   &'static str = "CONVEYOR_OUTPUT";
+    const CONN_ELECTRIC_H_IN:  &'static str = "ELETRIC_HIGH_INPUT";
+    const CONN_ELECTRIC_H_OUT: &'static str = "ELETRIC_HIGH_OUTPUT";
+    const CONN_ELECTRIC_L_IN:  &'static str = "ELETRIC_LOW_INPUT";
+    const CONN_ELECTRIC_L_OUT: &'static str = "ELETRIC_LOW_OUTPUT";
+}
+
+
 #[inline]
 fn scale_point(factor: f64, mut p: Point3f) -> Point3f {
     p.x = ((p.x as f64) * factor) as f32;
     p.y = ((p.y as f64) * factor) as f32;
     p.z = ((p.z as f64) * factor) as f32;
     p
-}
-
-#[inline]
-fn scale_2_points(factor: f64, (p1, p2): (Point3f, Point3f)) -> (Point3f, Point3f) {
-    (scale_point(factor, p1), scale_point(factor, p2))
 }

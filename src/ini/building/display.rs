@@ -14,6 +14,7 @@ use super::{BuildingType,
             IdStringParam,
             Point3f,
             Rect,
+            Connection2PType,
            };
 
 
@@ -22,47 +23,40 @@ type IOResult = Result<(), std::io::Error>;
 
 impl Token<'_> {
     pub fn serialize_token<W: Write>(&self, mut wr: W) -> IOResult {
-        match self {
-            Self::NameStr(p)                       => write!(wr, "{} {}", Self::NAME_STR, p),
-            Self::Name(p)                          => write!(wr, "{} {}", Self::NAME, p),
-            Self::BuildingType(p)                  => write!(wr, "TYPE_{}", p),
-            Self::BuildingSubtype(p)               => write!(wr, "SUBTYPE_{}", p),
-            Self::CivilBuilding                    => write!(wr, "{}", Self::CIVIL_BUILDING),
-            Self::QualityOfLiving(x)               => write!(wr, "{} {}", Self::QUALITY_OF_LIVING, x),
-
-            Self::WorkersNeeded(x)                 => write!(wr, "{} {}", Self::WORKERS_NEEDED, x),
-            Self::ProfessorsNeeded(x)              => write!(wr, "{} {}", Self::PROFESSORS_NEEDED, x),
-            Self::CitizenAbleServe(x)              => write!(wr, "{} {}", Self::CITIZEN_ABLE_SERVE, x),
-
-            Self::Storage((t, x))                  => write!(wr, "{} {} {}", Self::STORAGE, t, x),
-
-            Self::ConnectionPedestrian((x, y))     => write!(wr, "{}\r\n{}\r\n{}", Self::CONNECTION_PEDESTRIAN, x, y),
-            Self::ConnectionRoad((x, y))           => write!(wr, "{}\r\n{}\r\n{}", Self::CONNECTION_ROAD, x, y),
-            Self::ConnectionRoadDead(x)            => write!(wr, "{}\r\n{}", Self::CONNECTION_ROAD_DEAD, x),
-            Self::ConnectionsRoadDeadSquare(
-                Rect { x1, z1, x2, z2 })           => write!(wr, "{}\r\n{} {}\r\n{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, x1, z1, x2, z2),
-
-            Self::Particle((t, x, a, s))           => write!(wr, "{} {} {} {} {}", Self::PARTICLE, t, x, a, s),
-            Self::TextCaption((x, y))              => write!(wr, "{}\r\n{}\r\n{}", Self::TEXT_CAPTION, x, y),
-
-            Self::CostWork((t, x))                 => write!(wr, "{} {} {}", Self::COST_WORK, t, x),
-            Self::CostWorkBuildingNode(n)          => write!(wr, "{} {}", Self::COST_WORK_BUILDING_NODE, n),
-            Self::CostResource((t, x))             => write!(wr, "{} {} {}", Self::COST_RESOURCE, t, x),
-            Self::CostResourceAuto((t, x))         => write!(wr, "{} {} {}", Self::COST_RESOURCE_AUTO, t, x),
-            Self::CostWorkVehicleStation((x, y))   => write!(wr, "{}\r\n{}\r\n{}", Self::COST_WORK_VEHICLE_STATION, x, y),
-            Self::CostWorkVehicleStationNode(p)    => write!(wr, "{} {}", Self::COST_WORK_VEHICLE_STATION_NODE, p),
+        #[inline]
+        fn write_2points<W: Write>(mut wr: W, tag: &str, a: &Point3f, b: &Point3f) -> IOResult {
+            write!(wr, "{}\r\n{} {} {}\r\n{} {} {}", tag, a.x, a.y, a.z, b.x, b.y, b.z)
         }
+
+        match self {
+            Self::VehicleStation((a, b))           => write_2points(wr, Self::VEHICLE_STATION, a, b),
+
+            Self::Connection2Points((t, a, b))     => write!(wr, "{}{}\r\n{} {} {}\r\n{} {} {}", Self::CONNECTION, t, a.x, a.y, a.z, b.x, b.y, b.z),
+            Self::ConnectionRoadDead(x)            => write!(wr, "{}{}\r\n{}", Self::CONNECTION, Self::CONNECTION_ROAD_DEAD, x),
+            Self::ConnectionAirportDead(x)         => write!(wr, "{}{}\r\n{}", Self::CONNECTION, Self::CONNECTION_AIRPORT_DEAD, x),
+
+            Self::ConnectionsRoadDeadSquare(r)     => write!(wr, "{}\r\n{} {}\r\n{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, r.x1, r.z1, r.x2, r.z2),
+            Self::ConnectionsAirportDeadSquare(r)  => write!(wr, "{}\r\n{} {}\r\n{} {}", Self::CONNECTIONS_AIRPORT_DEAD_SQUARE, r.x1, r.z1, r.x2, r.z2),
+
+            Self::Particle((t, p, a, s))           => write!(wr, "{} {} {} {} {} {} {}", Self::PARTICLE, t, p.x, p.y, p.z, a, s),
+            Self::TextCaption((a, b))              => write_2points(wr, Self::TEXT_CAPTION, a, b),
+            Self::WorkerRenderingArea((a, b))      => write_2points(wr, Self::WORKER_RENDERING_AREA, a, b),
+
+            Self::CostWorkVehicleStation((a, b))   => write_2points(wr, Self::COST_WORK_VEHICLE_STATION, a, b),
+
+            t => write!(wr, "{}", t)
+        }
+
     }
 }
 
 impl Display for Token<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "$")?;
         match self {
             Self::NameStr(p)                       => write!(f, "{} {}", Self::NAME_STR, p),
             Self::Name(p)                          => write!(f, "{} {}", Self::NAME, p),
-            Self::BuildingType(p)                  => write!(f, "TYPE_{}", p),
-            Self::BuildingSubtype(p)               => write!(f, "SUBTYPE_{}", p),
+            Self::BuildingType(p)                  => write!(f, "{}{}", Self::BUILDING_TYPE, p),
+            Self::BuildingSubtype(p)               => write!(f, "{}{}", Self::BUILDING_SUBTYPE, p),
             Self::CivilBuilding                    => write!(f, "{}", Self::CIVIL_BUILDING),
             Self::QualityOfLiving(x)               => write!(f, "{} {}", Self::QUALITY_OF_LIVING, x),
 
@@ -72,19 +66,30 @@ impl Display for Token<'_> {
 
             Self::Storage((t, x))                  => write!(f, "{} {} {}", Self::STORAGE, t, x),
 
-            Self::ConnectionPedestrian((x, y))     => write!(f, "{} {} {}", Self::CONNECTION_PEDESTRIAN, x, y),
-            Self::ConnectionRoad((x, y))           => write!(f, "{} {} {}", Self::CONNECTION_ROAD, x, y),
-            Self::ConnectionRoadDead(x)            => write!(f, "{} {}", Self::CONNECTION_ROAD_DEAD, x),
-            Self::ConnectionsRoadDeadSquare(rect)  => write!(f, "{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, rect),
+            Self::RoadNotFlip                      => write!(f, "{}", Self::ROAD_VEHICLE_NOT_FLIP),
+            Self::RoadElectric                     => write!(f, "{}", Self::ROAD_VEHICLE_ELECTRIC),
+            Self::VehicleStation((a, b))           => write!(f, "{} {} {}", Self::VEHICLE_STATION, a, b),
+            Self::WorkingVehiclesNeeded(x)         => write!(f, "{} {}", Self::WORKING_VEHICLES_NEEDED, x),
+
+            Self::Connection2Points((t, a, b))     => write!(f, "{}{} {} {}", Self::CONNECTION, t, a, b),
+            Self::ConnectionRoadDead(x)            => write!(f, "{}{} {}", Self::CONNECTION, Self::CONNECTION_ROAD_DEAD, x),
+            Self::ConnectionAirportDead(x)         => write!(f, "{}{} {}", Self::CONNECTION, Self::CONNECTION_AIRPORT_DEAD, x),
+
+            Self::ConnectionsRoadDeadSquare(r)     => write!(f, "{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, r),
+            Self::ConnectionsAirportDeadSquare(r)  => write!(f, "{} {}", Self::CONNECTIONS_AIRPORT_DEAD_SQUARE, r),
 
             Self::Particle((t, x, a, s))           => write!(f, "{} {} {} {} {}", Self::PARTICLE, t, x, a, s),
-            Self::TextCaption((x, y))              => write!(f, "{} {} {}", Self::TEXT_CAPTION, x, y),
+            Self::TextCaption((a, b))              => write!(f, "{} {} {}", Self::TEXT_CAPTION, a, b),
+            Self::WorkerRenderingArea((a, b))      => write!(f, "{} {} {}", Self::WORKER_RENDERING_AREA, a, b),
 
             Self::CostWork((t, x))                 => write!(f, "{} {} {}", Self::COST_WORK, t, x),
             Self::CostWorkBuildingNode(n)          => write!(f, "{} {}", Self::COST_WORK_BUILDING_NODE, n),
+            Self::CostWorkBuildingKeyword(n)       => write!(f, "{} {}", Self::COST_WORK_BUILDING_KEYWORD, n),
+            Self::CostWorkBuildingAll              => write!(f, "{}", Self::COST_WORK_BUILDING_ALL),
+
             Self::CostResource((t, x))             => write!(f, "{} {} {}", Self::COST_RESOURCE, t, x),
             Self::CostResourceAuto((t, x))         => write!(f, "{} {} {}", Self::COST_RESOURCE_AUTO, t, x),
-            Self::CostWorkVehicleStation((x, y))   => write!(f, "{} {} {}", Self::COST_WORK_VEHICLE_STATION, x, y),
+            Self::CostWorkVehicleStation((a, b))   => write!(f, "{} {} {}", Self::COST_WORK_VEHICLE_STATION, a, b),
             Self::CostWorkVehicleStationNode(p)    => write!(f, "{} {}", Self::COST_WORK_VEHICLE_STATION_NODE, p),
         }
     }
@@ -179,6 +184,42 @@ impl Display for BuildingSubtype {
             Self::Technical        => Self::SUBTYPE_TECHNICAL,
             Self::Television       => Self::SUBTYPE_TELEVISION,
             Self::Trolleybus       => Self::SUBTYPE_TROLLEYBUS,
+        };
+
+        write!(f, "{}", s)
+    }
+}
+
+
+impl Display for Connection2PType {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let s = match self {
+            Self::AirRoad         => Self::CONN_AIRROAD,
+            Self::Pedestrian      => Self::CONN_PEDESTRIAN,
+            Self::Road            => Self::CONN_ROAD,
+            Self::RoadAllowpass   => Self::CONN_ROAD_ALLOWPASS,
+            Self::RoadBorder      => Self::CONN_ROAD_BORDER,
+            Self::RoadIn          => Self::CONN_ROAD_IN,
+            Self::RoadOut         => Self::CONN_ROAD_OUT,
+            Self::Rail            => Self::CONN_RAIL,
+            Self::RailAllowpass   => Self::CONN_RAIL_ALLOWPASS,
+            Self::RailBorder      => Self::CONN_RAIL_BORDER,
+            Self::HeatingBig      => Self::CONN_HEATING_BIG,
+            Self::HeatingSmall    => Self::CONN_HEATING_SMALL,
+            Self::SteamIn         => Self::CONN_STEAM_IN,
+            Self::SteamOut        => Self::CONN_STEAM_OUT,
+            Self::PipeIn          => Self::CONN_PIPE_IN,
+            Self::PipeOut         => Self::CONN_PIPE_OUT,
+            Self::BulkIn          => Self::CONN_BULK_IN,
+            Self::BulkOut         => Self::CONN_BULK_OUT,
+            Self::Cableway        => Self::CONN_CABLEWAY,
+            Self::Factory         => Self::CONN_FACTORY,
+            Self::ConveyorIn      => Self::CONN_CONVEYOR_IN,
+            Self::ConveyorOut     => Self::CONN_CONVEYOR_OUT,
+            Self::ElectricHighIn  => Self::CONN_ELECTRIC_H_IN,
+            Self::ElectricHighOut => Self::CONN_ELECTRIC_H_OUT,
+            Self::ElectricLowIn   => Self::CONN_ELECTRIC_L_IN,
+            Self::ElectricLowOut  => Self::CONN_ELECTRIC_L_OUT,
         };
 
         write!(f, "{}", s)
