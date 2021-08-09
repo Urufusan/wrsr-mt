@@ -11,7 +11,9 @@ use super::{BuildingType,
             ConstructionPhase,
             ConstructionAutoCost,
             ResourceType,
+            ResourceVisualization,
             Token,
+
             StrValue,
             QuotedStringParam,
             IdStringParam,
@@ -45,7 +47,7 @@ impl<'a> Token<'a> {
                 r"[A-Z_]+)($|\s*(.*))")).unwrap();
         }
     
-        let (t_type, rest) = rx_chop1_rest3(src, &RX_TYPE).map_err(|e| format!("Cannot parse token type: {}", e))?;
+        let (t_type, rest) = chop_param(Some(src), &RX_TYPE).map_err(|e| format!("Cannot parse token type: {}", e))?;
         match t_type {
             Self::NAME_STR           => parse_from!(rest, QuotedStringParam, NameStr),
             Self::NAME               => parse_from!(rest, u32, Name),
@@ -58,13 +60,21 @@ impl<'a> Token<'a> {
             Self::CIVIL_BUILDING     => Ok((Self::CivilBuilding, rest)),
             Self::QUALITY_OF_LIVING  => parse_from!(rest, f32, QualityOfLiving),
 
-            Self::WORKERS_NEEDED     => parse_from!(rest, u32, WorkersNeeded),
-            Self::PROFESSORS_NEEDED  => parse_from!(rest, u32, ProfessorsNeeded),
-            Self::CITIZEN_ABLE_SERVE => parse_from!(rest, u32, CitizenAbleServe),
+            Self::WORKERS_NEEDED         => parse_from!(rest, u32, WorkersNeeded),
+            Self::PROFESSORS_NEEDED      => parse_from!(rest, u32, ProfessorsNeeded),
+            Self::CITIZEN_ABLE_SERVE     => parse_from!(rest, u32, CitizenAbleServe),
+            Self::CONSUMPTION            => parse_from!(rest, (ResourceType, f32), Consumption),
+            Self::CONSUMPTION_PER_SECOND => parse_from!(rest, (ResourceType, f32), ConsumptionPerSecond),
+            Self::PRODUCTION             => parse_from!(rest, (ResourceType, f32), Production),
 
+            Self::ELE_CONSUM_LIGHTING_WORKER_FACTOR => parse_from!(rest, f32, EleConsumLightingWorkerFactor),
 
-            Self::STORAGE            => parse_from!(rest, (StorageCargoType, f32), Storage),
-            Self::STORAGE_FUEL       => parse_from!(rest, (StorageCargoType, f32), StorageFuel),
+            Self::STORAGE                => parse_from!(rest, (StorageCargoType, f32), Storage),
+            Self::STORAGE_FUEL           => parse_from!(rest, (StorageCargoType, f32), StorageFuel),
+            Self::STORAGE_EXPORT         => parse_from!(rest, (StorageCargoType, f32), StorageExport),
+            Self::STORAGE_IMPORT         => parse_from!(rest, (StorageCargoType, f32), StorageImport),
+            Self::STORAGE_EXPORT_SPECIAL => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageExportSpecial),
+            Self::STORAGE_IMPORT_SPECIAL => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageImportSpecial),
 
             
             Self::ROAD_VEHICLE_NOT_FLIP     => Ok((Self::RoadNotFlip, rest)),
@@ -74,11 +84,14 @@ impl<'a> Token<'a> {
             Self::VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT_PID => parse_from!(rest, (u32, Point3f), VehicleStationNotBlockDetourPointPid),
             Self::VEHICLE_STATION                            => parse_from!(rest, (Point3f, Point3f), VehicleStation),
             Self::WORKING_VEHICLES_NEEDED                    => parse_from!(rest, u32, WorkingVehiclesNeeded),
+            Self::VEHICLE_PARKING                            => parse_from!(rest, (Point3f, Point3f), VehicleParking),
 
             Self::AIRPLANE_STATION                => parse_from!(rest, Tagged2Points::<AirplaneStationType>, AirplaneStation),
+            Self::HELIPORT_AREA                   => parse_from!(rest, f32, HeliportArea),
 
-            Self::CONNECTION => rest.ok_or(format!("Cannot parse connection: no data")).and_then(|s| Self::parse_connection(s)),
+            Self::CONNECTION => Self::parse_connection(rest),
 
+            Self::CONNECTIONS_SPACE               => parse_from!(rest, Rect, ConnectionsSpace),
             Self::CONNECTIONS_ROAD_DEAD_SQUARE    => parse_from!(rest, Rect, ConnectionsRoadDeadSquare),
             Self::CONNECTIONS_AIRPORT_DEAD_SQUARE => parse_from!(rest, Rect, ConnectionsAirportDeadSquare),
 
@@ -88,6 +101,7 @@ impl<'a> Token<'a> {
 
             Self::TEXT_CAPTION                   => parse_from!(rest, (Point3f, Point3f), TextCaption),
             Self::WORKER_RENDERING_AREA          => parse_from!(rest, (Point3f, Point3f), WorkerRenderingArea),
+            Self::RESOURCE_VISUALIZATION         => parse_from!(rest, ResourceVisualization, ResourceVisualization),
 
 
             Self::COST_WORK                      => parse_from!(rest, (ConstructionPhase, f32), CostWork),
@@ -106,19 +120,20 @@ impl<'a> Token<'a> {
     }
 
 
-    fn parse_connection(src: &'a str) -> ParseResult<Token<'a>> {
+    fn parse_connection(src: Option<&'a str>) -> ParseResult<Token<'a>> {
         lazy_static! {
             static ref RX_TYPE: Regex = Regex::new(r"(?s)^([A-Z_]+)(\s*(.*))").unwrap();
         }
 
-        let (con_type, rest) = rx_chop1_rest3(src, &RX_TYPE).map_err(|e| format!("Cannot parse connection type: {}", e))?;
+        let (con_type, rest) = chop_param(src, &RX_TYPE).map_err(|e| format!("Cannot parse connection type: {}", e))?;
 
         if let Some(tag) = Connection2PType::from_str(con_type) {
             <(Point3f, Point3f)>::parse(rest).map(|((p1, p2), rest)| (Self::Connection2Points(Tagged2Points { tag, p1, p2 }), rest))
         } else { 
             match con_type {
-                Self::CONNECTION_ROAD_DEAD    => parse_from!(rest, Point3f, ConnectionRoadDead),
-                Self::CONNECTION_AIRPORT_DEAD => parse_from!(rest, Point3f, ConnectionAirportDead),
+                Self::CONNECTION_ROAD_DEAD      => parse_from!(rest, Point3f, ConnectionRoadDead),
+                Self::CONNECTION_AIRPORT_DEAD   => parse_from!(rest, Point3f, ConnectionAirportDead),
+                Self::CONNECTION_ADVANCED_POINT => parse_from!(rest, Point3f, ConnectionAdvancedPoint),
                 _ => Err(format!("Unknown connection type: {}", con_type))
             }
         }
@@ -136,20 +151,26 @@ trait ParseSlice<'a> {
 
 
 
-fn parse_param<'a, T, F: Fn(&'a str) -> Result<T, ParseError>>(src: Option<&'a str>, rx: &Regex, f: F) -> ParseResult<'a, T> {
-    let src = src.ok_or(String::from("Parse param failed: no data"))?;
+
+
+fn chop_param<'a, 'b>(src: Option<&'a str>, rx: &'b Regex) -> ParseResult<'a, &'a str> {
+    let src = src.ok_or(String::from("Chop param failed: not enough data"))?;
 
     match rx.captures(src) {
         Some(caps) => {
             // allow panic here: this should not happen with valid regex:
             let t = caps.get(1).expect("Regex is broken").as_str();
             let rest = caps.get(3).map(|x| x.as_str());
-
-            let v = f(t)?;
-            Ok((v, rest))
+            Ok((t, rest))
         },
-        None => Err(String::from("Parse param failed (no regex match)"))
+        None => Err(format!("No match in this chunk: [{}]", src))
     }
+}
+
+fn parse_param<'a, T, F: Fn(&'a str) -> Result<T, ParseError>>(src: Option<&'a str>, rx: &Regex, f: F) -> ParseResult<'a, T> {
+    let (src, rest) = chop_param(src, rx)?;
+    let v = f(src).map_err(|e| format!("parse_param failed: {}", e))?;
+    Ok((v, rest))
 }
 
 
@@ -544,25 +565,38 @@ impl ResourceType {
             Self::ALUMINIUM    => Some(Self::Aluminium),
             Self::ASPHALT      => Some(Self::Asphalt),
             Self::BAUXITE      => Some(Self::Bauxite),
+            Self::BITUMEN      => Some(Self::Bitumen),
             Self::BOARDS       => Some(Self::Boards),
             Self::BRICKS       => Some(Self::Bricks),
+            Self::CEMENT       => Some(Self::Cement),
             Self::CHEMICALS    => Some(Self::Chemicals),
             Self::CLOTHES      => Some(Self::Clothes),
+            Self::COAL         => Some(Self::Coal),
             Self::CONCRETE     => Some(Self::Concrete),
+            Self::CROPS        => Some(Self::Crops),
             Self::ELECTRO_COMP => Some(Self::ElectroComponents),
             Self::ELECTRICITY  => Some(Self::Electricity),
             Self::ELECTRONICS  => Some(Self::Electronics),
+            Self::FABRIC       => Some(Self::Fabric),
             Self::FOOD         => Some(Self::Food),
+            Self::FUEL         => Some(Self::Fuel),
             Self::GRAVEL       => Some(Self::Gravel),
+            Self::IRON         => Some(Self::Iron),
+            Self::LIVESTOCK    => Some(Self::Livestock),
             Self::MECH_COMP    => Some(Self::MechComponents),
             Self::MEAT         => Some(Self::Meat),
             Self::NUCLEAR_FUEL => Some(Self::NuclearFuel),
+            Self::NUCLEAR_WASTE => Some(Self::NuclearWaste),
             Self::OIL          => Some(Self::Oil),
-            Self::CROPS        => Some(Self::Crops),
+            Self::PLASTIC      => Some(Self::Plastic),
             Self::PREFABS      => Some(Self::PrefabPanels),
+            Self::RAW_BAUXITE  => Some(Self::RawBauxite),
+            Self::RAW_COAL     => Some(Self::RawCoal),
+            Self::RAW_IRON     => Some(Self::RawIron),
             Self::STEEL        => Some(Self::Steel),
             Self::UF_6         => Some(Self::UF6),
             Self::URANIUM      => Some(Self::Uranium),
+            Self::VEHICLES     => Some(Self::Vehicles),
             Self::WOOD         => Some(Self::Wood),
             Self::WORKERS      => Some(Self::Workers),
             Self::YELLOWCAKE   => Some(Self::Yellowcake),
@@ -605,10 +639,39 @@ impl ParseSlice<'_> for AirplaneStationType {
 }
 
 
+impl ParseSlice<'_> for ResourceVisualization {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX_ALL: Regex = Regex::new(concatcp!(r"(?s)^([a-z]+)", RX_REMAINDER)).unwrap();
+            // these seem to be just for information. Only correct number-order matters
+            //static ref RX_1: Regex = Regex::new(concatcp!(r"(?s)^(position)", RX_REMAINDER)).unwrap();
+            //static ref RX_2: Regex = Regex::new(concatcp!(r"(?s)^(rotation)", RX_REMAINDER)).unwrap();
+            //static ref RX_3: Regex = Regex::new(concatcp!(r"(?s)^(scale)",    RX_REMAINDER)).unwrap();
+            //static ref RX_4: Regex = Regex::new(concatcp!(r"(?s)^(numstepx)", RX_REMAINDER)).unwrap();
+            //static ref RX_5: Regex = Regex::new(concatcp!(r"(?s)^(numstept)", RX_REMAINDER)).unwrap();
+        }
+        
+        let (storage_id, src) = u32::parse(src)?;
+        let (_, src)         = chop_param(src, &RX_ALL)?;
+        let (position, src)  = Point3f::parse(src)?;
+        let (_, src)         = chop_param(src, &RX_ALL)?;
+        let (rotation, src)  = f32::parse(src)?;
+        let (_, src)         = chop_param(src, &RX_ALL)?;
+        let (scale, src)     = Point3f::parse(src)?;
+        let (_, src)         = chop_param(src, &RX_ALL)?;
+        let (numstep_x, src) = <(f32, u32)>::parse(src)?;
+        let (_, src)        = chop_param(src, &RX_ALL)?;
+        let (numstep_z, src) = <(f32, u32)>::parse(src)?;
+
+        Ok((ResourceVisualization { storage_id, position, rotation, scale, numstep_x, numstep_z }, src))
+    }
+}
+
+
 
 
 lazy_static! {
-    static ref RX_SPLIT: Regex = Regex::new(concatcp!("(^|", r"(((\s*\r?)|(--[^\n]*))\n)+", r")(\$|end\s*(\r?\n\s*)*)")).unwrap();
+    static ref RX_SPLIT: Regex = Regex::new(concatcp!("(^|", r"(((\s*\r?)|((--|//)[^\n]*))\n)+", r")(\$|end\s*(\r?\n\s*)*)")).unwrap();
 }
 
 
@@ -644,18 +707,5 @@ pub fn parse_tokens_strict<'a>(src: &'a str) -> Result<Vec<(&'a str, Token<'a>)>
         Ok(res)
     } else {
         Err(errors)
-    }
-}
-
-
-fn rx_chop1_rest3<'a, 'b>(src: &'a str, rx: &'b Regex) -> ParseResult<'a, &'a str> {
-    match rx.captures(src) {
-        Some(caps) => {
-            // allow panic here: this should not happen with valid regex:
-            let t = caps.get(1).expect("Regex is broken").as_str();
-            let rest = caps.get(3).map(|x| x.as_str());
-            Ok((t, rest))
-        },
-        None => Err(format!("No match in this chunk: [{}]", src))
     }
 }

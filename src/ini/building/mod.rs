@@ -51,9 +51,18 @@ pub enum Token<'a> {
     WorkersNeeded(u32),
     ProfessorsNeeded(u32),
     CitizenAbleServe(u32),
+    Consumption((ResourceType, f32)),
+    ConsumptionPerSecond((ResourceType, f32)),
+    Production((ResourceType, f32)),
+
+    EleConsumLightingWorkerFactor(f32),
 
     Storage((StorageCargoType, f32)),
     StorageFuel((StorageCargoType, f32)),
+    StorageExport((StorageCargoType, f32)),
+    StorageImport((StorageCargoType, f32)),
+    StorageExportSpecial((StorageCargoType, f32, ResourceType)),
+    StorageImportSpecial((StorageCargoType, f32, ResourceType)),
 
     RoadNotFlip,
     RoadElectric,
@@ -62,19 +71,24 @@ pub enum Token<'a> {
     VehicleStationNotBlockDetourPointPid((u32, Point3f)),
     VehicleStation((Point3f, Point3f)),
     WorkingVehiclesNeeded(u32),
+    VehicleParking((Point3f, Point3f)),
 
     AirplaneStation(Tagged2Points<AirplaneStationType>),
+    HeliportArea(f32),
 
     Connection2Points(Tagged2Points<Connection2PType>),
     ConnectionRoadDead(Point3f),
     ConnectionAirportDead(Point3f),
+    ConnectionAdvancedPoint(Point3f),
 
+    ConnectionsSpace(Rect),
     ConnectionsRoadDeadSquare(Rect),
     ConnectionsAirportDeadSquare(Rect),
 
     Particle((ParticleType, Point3f, f32, f32)),
     TextCaption((Point3f, Point3f)),
     WorkerRenderingArea((Point3f, Point3f)),
+    ResourceVisualization(ResourceVisualization),
 
     CostWork((ConstructionPhase, f32)),
     CostWorkBuildingNode(IdStringParam<'a>),
@@ -103,9 +117,19 @@ impl<'a> Token<'a> {
     const WORKERS_NEEDED:                 &'static str = "WORKERS_NEEDED";
     const PROFESSORS_NEEDED:              &'static str = "PROFESORS_NEEDED";
     const CITIZEN_ABLE_SERVE:             &'static str = "CITIZEN_ABLE_SERVE";
+    const CONSUMPTION:                    &'static str = "CONSUMPTION";
+    const CONSUMPTION_PER_SECOND:         &'static str = "CONSUMPTION_PER_SECOND";
+    const PRODUCTION:                     &'static str = "PRODUCTION";
+
+    const ELE_CONSUM_LIGHTING_WORKER_FACTOR: &'static str = "ELETRIC_CONSUMPTION_LIGHTING_WORKER_FACTOR";
 
     const STORAGE:                        &'static str = "STORAGE";
     const STORAGE_FUEL:                   &'static str = "STORAGE_FUEL";
+    const STORAGE_EXPORT:                 &'static str = "STORAGE_EXPORT";
+    const STORAGE_IMPORT:                 &'static str = "STORAGE_IMPORT";
+    const STORAGE_EXPORT_SPECIAL:         &'static str = "STORAGE_EXPORT_SPECIAL";
+    const STORAGE_IMPORT_SPECIAL:         &'static str = "STORAGE_IMPORT_SPECIAL";
+
 
     const ROAD_VEHICLE_NOT_FLIP:          &'static str = "ROADVEHICLE_NOTFLIP";
     const ROAD_VEHICLE_ELECTRIC:          &'static str = "ROADVEHICLE_ELETRIC";
@@ -116,19 +140,24 @@ impl<'a> Token<'a> {
 
     const VEHICLE_STATION:                &'static str = "VEHICLE_STATION";
     const WORKING_VEHICLES_NEEDED:        &'static str = "WORKING_VEHICLES_NEEDED";
+    const VEHICLE_PARKING:                &'static str = "VEHICLE_PARKING";
 
     const AIRPLANE_STATION:               &'static str = "AIRPLANE_STATION_";
+    const HELIPORT_AREA:                  &'static str = "HELIPORT_AREA";
 
     const CONNECTION:                     &'static str = "CONNECTION_";
     const CONNECTION_ROAD_DEAD:           &'static str = "ROAD_DEAD";
     const CONNECTION_AIRPORT_DEAD:        &'static str = "AIRPORT_DEAD";
+    const CONNECTION_ADVANCED_POINT:      &'static str = "ADVANCED_POINT";
 
+    const CONNECTIONS_SPACE:               &'static str = "CONNECTIONS_SPACE";
     const CONNECTIONS_ROAD_DEAD_SQUARE:    &'static str = "CONNECTIONS_ROAD_DEAD_SQUARE";
     const CONNECTIONS_AIRPORT_DEAD_SQUARE: &'static str = "CONNECTIONS_AIRPORT_DEAD_SQUARE";
 
     const PARTICLE:                       &'static str = "PARTICLE";
     const TEXT_CAPTION:                   &'static str = "TEXT_CAPTION";
     const WORKER_RENDERING_AREA:          &'static str = "WORKER_RENDERING_AREA";
+    const RESOURCE_VISUALIZATION:         &'static str = "RESOURCE_VISUALIZATION";
 
 
     const COST_WORK:                      &'static str = "COST_WORK";
@@ -459,25 +488,38 @@ pub enum ResourceType {
     Aluminium,
     Asphalt,
     Bauxite,
+    Bitumen,
     Boards,
     Bricks,
+    Cement,
     Chemicals,
     Clothes,
+    Coal,
     Concrete,
+    Crops,
     ElectroComponents,
     Electricity,
     Electronics,
+    Fabric,
     Food,
+    Fuel,
     Gravel,
+    Iron,
+    Livestock,
     MechComponents,
     Meat,
     NuclearFuel,
+    NuclearWaste,
     Oil,
-    Crops,
+    Plastic,
     PrefabPanels,
+    RawBauxite,
+    RawCoal,
+    RawIron,
     Steel,
     UF6,
     Uranium,
+    Vehicles,
     Wood,
     Workers,
     Yellowcake,
@@ -485,33 +527,46 @@ pub enum ResourceType {
 
 
 impl ResourceType {
-    const ALCOHOL:      &'static str = "alcohol";
-    const ALUMINA:      &'static str = "alumina";
-    const ALUMINIUM:    &'static str = "aluminium";
-    const ASPHALT:      &'static str = "asphalt";
-    const BAUXITE:      &'static str = "bauxite";
-    const BOARDS:       &'static str = "boards";
-    const BRICKS:       &'static str = "bricks";
-    const CHEMICALS:    &'static str = "chemicals";
-    const CLOTHES:      &'static str = "clothes";
-    const CONCRETE:     &'static str = "concrete";
-    const ELECTRO_COMP: &'static str = "ecomponents";
-    const ELECTRICITY:  &'static str = "eletric";
-    const ELECTRONICS:  &'static str = "eletronics";
-    const FOOD:         &'static str = "food";
-    const GRAVEL:       &'static str = "gravel";
-    const MECH_COMP:    &'static str = "mcomponents";
-    const MEAT:         &'static str = "meat";
-    const NUCLEAR_FUEL: &'static str = "nuclearfuel";
-    const OIL:          &'static str = "oil";
-    const CROPS:        &'static str = "plants";
-    const PREFABS:      &'static str = "prefabpanels";
-    const STEEL:        &'static str = "steel";
-    const UF_6:         &'static str = "uf6";
-    const URANIUM:      &'static str = "uranium";
-    const WOOD:         &'static str = "wood";
-    const WORKERS:      &'static str = "workers";
-    const YELLOWCAKE:   &'static str = "yellowcake";
+    const ALCOHOL:       &'static str = "alcohol";
+    const ALUMINA:       &'static str = "alumina";
+    const ALUMINIUM:     &'static str = "aluminium";
+    const ASPHALT:       &'static str = "asphalt";
+    const BAUXITE:       &'static str = "bauxite";
+    const BITUMEN:       &'static str = "bitumen";
+    const BOARDS:        &'static str = "boards";
+    const BRICKS:        &'static str = "bricks";
+    const CEMENT:        &'static str = "cement";
+    const CHEMICALS:     &'static str = "chemicals";
+    const CLOTHES:       &'static str = "clothes";
+    const COAL:          &'static str = "coal";
+    const CONCRETE:      &'static str = "concrete";
+    const CROPS:         &'static str = "plants";
+    const ELECTRO_COMP:  &'static str = "ecomponents";
+    const ELECTRICITY:   &'static str = "eletric";
+    const ELECTRONICS:   &'static str = "eletronics";
+    const FABRIC:        &'static str = "fabric";
+    const FOOD:          &'static str = "food";
+    const FUEL:          &'static str = "fuel";
+    const GRAVEL:        &'static str = "gravel";
+    const IRON:          &'static str = "iron";
+    const LIVESTOCK:     &'static str = "livestock";
+    const MECH_COMP:     &'static str = "mcomponents";
+    const MEAT:          &'static str = "meat";
+    const NUCLEAR_FUEL:  &'static str = "nuclearfuel";
+    const NUCLEAR_WASTE: &'static str = "nuclearfuelburned";
+    const OIL:           &'static str = "oil";
+    const PLASTIC:       &'static str = "plastics";
+    const PREFABS:       &'static str = "prefabpanels";
+    const RAW_BAUXITE:   &'static str = "rawbauxite";
+    const RAW_COAL:      &'static str = "rawcoal";
+    const RAW_IRON:      &'static str = "rawiron";
+    const STEEL:         &'static str = "steel";
+    const UF_6:          &'static str = "uf6";
+    const URANIUM:       &'static str = "uranium";
+    const VEHICLES:      &'static str = "vehicles";
+    const WOOD:          &'static str = "wood";
+    const WORKERS:       &'static str = "workers";
+    const YELLOWCAKE:    &'static str = "yellowcake";
 }
 
 
@@ -588,6 +643,16 @@ impl AirplaneStationType {
     const AIRPLANE_STATION_40M: &'static str = "40M";
     const AIRPLANE_STATION_50M: &'static str = "50M";
     const AIRPLANE_STATION_75M: &'static str = "75M";
+}
+
+
+pub struct ResourceVisualization {
+    storage_id: u32,
+    position: Point3f,
+    rotation: f32,
+    scale: Point3f,
+    numstep_x: (f32, u32),
+    numstep_z: (f32, u32),
 }
 
 
