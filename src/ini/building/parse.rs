@@ -17,11 +17,20 @@ use super::{BuildingType,
             IdStringParam,
             Point3f,
             Rect,
+
+            Tagged2Points,
             Connection2PType,
+            AirplaneStationType,
            };
 
 use super::super::{ParseResult, ParseError};
 
+
+macro_rules! parse_from {
+    ($src:ident, $t:ty, $id:ident) => {
+        <$t>::parse($src).map(|(p, rest)| (Self::$id(p), rest))
+    };
+}
 
 
 impl<'a> Token<'a> {
@@ -38,52 +47,59 @@ impl<'a> Token<'a> {
     
         let (t_type, rest) = rx_chop1_rest3(src, &RX_TYPE).map_err(|e| format!("Cannot parse token type: {}", e))?;
         match t_type {
-            Self::NAME_STR => QuotedStringParam::parse(rest).map(|(p, rest)| (Self::NameStr(p), rest)),
-            Self::NAME     => u32::parse(rest).map(|(p, rest)| (Self::Name(p), rest)),
+            Self::NAME_STR           => parse_from!(rest, QuotedStringParam, NameStr),
+            Self::NAME               => parse_from!(rest, u32, Name),
 
-            Self::BUILDING_TYPE    => BuildingType::parse(rest).map(|(p, rest)| (Self::BuildingType(p), rest)),
-            Self::BUILDING_SUBTYPE => BuildingSubtype::parse(rest).map(|(p, rest)| (Self::BuildingSubtype(p), rest)),
+            Self::BUILDING_TYPE      => parse_from!(rest, BuildingType, BuildingType),
+            Self::BUILDING_SUBTYPE   => parse_from!(rest, BuildingSubtype, BuildingSubtype),
 
+            Self::HEATING_ENABLE     => Ok((Self::HeatEnable, rest)),
+            Self::HEATING_DISABLE    => Ok((Self::HeatDisable, rest)),
             Self::CIVIL_BUILDING     => Ok((Self::CivilBuilding, rest)),
-            Self::QUALITY_OF_LIVING  => f32::parse(rest).map(|(p, rest)| (Self::QualityOfLiving(p), rest)),
+            Self::QUALITY_OF_LIVING  => parse_from!(rest, f32, QualityOfLiving),
 
-            Self::WORKERS_NEEDED     => u32::parse(rest).map(|(p, rest)| (Self::WorkersNeeded(p), rest)),
-            Self::PROFESSORS_NEEDED  => u32::parse(rest).map(|(p, rest)| (Self::ProfessorsNeeded(p), rest)),
-            Self::CITIZEN_ABLE_SERVE => u32::parse(rest).map(|(p, rest)| (Self::CitizenAbleServe(p), rest)),
+            Self::WORKERS_NEEDED     => parse_from!(rest, u32, WorkersNeeded),
+            Self::PROFESSORS_NEEDED  => parse_from!(rest, u32, ProfessorsNeeded),
+            Self::CITIZEN_ABLE_SERVE => parse_from!(rest, u32, CitizenAbleServe),
 
 
-            Self::STORAGE => <(StorageCargoType, f32)>::parse(rest).map(|(p, rest)| (Self::Storage(p), rest)),
+            Self::STORAGE            => parse_from!(rest, (StorageCargoType, f32), Storage),
+            Self::STORAGE_FUEL       => parse_from!(rest, (StorageCargoType, f32), StorageFuel),
 
             
-            Self::ROAD_VEHICLE_NOT_FLIP => Ok((Self::RoadNotFlip, rest)),
-            Self::ROAD_VEHICLE_ELECTRIC => Ok((Self::RoadElectric, rest)),
-            Self::VEHICLE_STATION         => <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::VehicleStation(p), rest)),
-            Self::WORKING_VEHICLES_NEEDED => u32::parse(rest).map(|(p, rest)| (Self::WorkingVehiclesNeeded(p), rest)),
+            Self::ROAD_VEHICLE_NOT_FLIP     => Ok((Self::RoadNotFlip, rest)),
+            Self::ROAD_VEHICLE_ELECTRIC     => Ok((Self::RoadElectric, rest)),
+            Self::VEHICLE_STATION_NOT_BLOCK => Ok((Self::VehicleStationNotBlock, rest)),
+            Self::VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT     => parse_from!(rest, Point3f, VehicleStationNotBlockDetourPoint),
+            Self::VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT_PID => parse_from!(rest, (u32, Point3f), VehicleStationNotBlockDetourPointPid),
+            Self::VEHICLE_STATION                            => parse_from!(rest, (Point3f, Point3f), VehicleStation),
+            Self::WORKING_VEHICLES_NEEDED                    => parse_from!(rest, u32, WorkingVehiclesNeeded),
 
+            Self::AIRPLANE_STATION                => parse_from!(rest, Tagged2Points::<AirplaneStationType>, AirplaneStation),
 
             Self::CONNECTION => rest.ok_or(format!("Cannot parse connection: no data")).and_then(|s| Self::parse_connection(s)),
 
-            Self::CONNECTIONS_ROAD_DEAD_SQUARE    => <Rect>::parse(rest).map(|(p, rest)| (Self::ConnectionsRoadDeadSquare(p), rest)),
-            Self::CONNECTIONS_AIRPORT_DEAD_SQUARE => <Rect>::parse(rest).map(|(p, rest)| (Self::ConnectionsAirportDeadSquare(p), rest)),
+            Self::CONNECTIONS_ROAD_DEAD_SQUARE    => parse_from!(rest, Rect, ConnectionsRoadDeadSquare),
+            Self::CONNECTIONS_AIRPORT_DEAD_SQUARE => parse_from!(rest, Rect, ConnectionsAirportDeadSquare),
 
 
 
-            Self::PARTICLE => <(ParticleType, Point3f, f32, f32)>::parse(rest).map(|(p, rest)| (Self::Particle(p), rest)),
+            Self::PARTICLE                       => parse_from!(rest, (ParticleType, Point3f, f32, f32), Particle),
 
-            Self::TEXT_CAPTION          => <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::TextCaption(p), rest)),
-            Self::WORKER_RENDERING_AREA => <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::WorkerRenderingArea(p), rest)),
+            Self::TEXT_CAPTION                   => parse_from!(rest, (Point3f, Point3f), TextCaption),
+            Self::WORKER_RENDERING_AREA          => parse_from!(rest, (Point3f, Point3f), WorkerRenderingArea),
 
 
-            Self::COST_WORK                  => <(ConstructionPhase, f32)>::parse(rest).map(|(p, rest)| (Self::CostWork(p), rest)),
-            Self::COST_WORK_BUILDING_NODE    => IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkBuildingNode(p), rest)),
-            Self::COST_WORK_BUILDING_KEYWORD => IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkBuildingKeyword(p), rest)),
-            Self::COST_WORK_BUILDING_ALL     => Ok((Self::CostWorkBuildingAll, rest)),
+            Self::COST_WORK                      => parse_from!(rest, (ConstructionPhase, f32), CostWork),
+            Self::COST_WORK_BUILDING_NODE        => parse_from!(rest, IdStringParam, CostWorkBuildingNode),
+            Self::COST_WORK_BUILDING_KEYWORD     => parse_from!(rest, IdStringParam, CostWorkBuildingKeyword),
+            Self::COST_WORK_BUILDING_ALL         => Ok((Self::CostWorkBuildingAll, rest)),
 
-            Self::COST_RESOURCE      => <(ResourceType, f32)>::parse(rest).map(|(p, rest)| (Self::CostResource(p), rest)),
-            Self::COST_RESOURCE_AUTO => <(ConstructionAutoCost, f32)>::parse(rest).map(|(p, rest)| (Self::CostResourceAuto(p), rest)),
+            Self::COST_RESOURCE                  => parse_from!(rest, (ResourceType, f32), CostResource),
+            Self::COST_RESOURCE_AUTO             => parse_from!(rest, (ConstructionAutoCost, f32), CostResourceAuto),
 
-            Self::COST_WORK_VEHICLE_STATION      => <(Point3f, Point3f)>::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStation(p), rest)),
-            Self::COST_WORK_VEHICLE_STATION_NODE => IdStringParam::parse(rest).map(|(p, rest)| (Self::CostWorkVehicleStationNode(p), rest)),
+            Self::COST_WORK_VEHICLE_STATION      => parse_from!(rest, (Point3f, Point3f), CostWorkVehicleStation),
+            Self::COST_WORK_VEHICLE_STATION_NODE => parse_from!(rest, IdStringParam, CostWorkVehicleStationNode),
 
             _ => Err(format!("Unknown token type: \"${}\"", t_type))
         }
@@ -97,12 +113,12 @@ impl<'a> Token<'a> {
 
         let (con_type, rest) = rx_chop1_rest3(src, &RX_TYPE).map_err(|e| format!("Cannot parse connection type: {}", e))?;
 
-        if let Some(t) = Connection2PType::from_str(con_type) {
-            <(Point3f, Point3f)>::parse(rest).map(|((p1, p2), rest)| (Self::Connection2Points((t, p1, p2)), rest))
+        if let Some(tag) = Connection2PType::from_str(con_type) {
+            <(Point3f, Point3f)>::parse(rest).map(|((p1, p2), rest)| (Self::Connection2Points(Tagged2Points { tag, p1, p2 }), rest))
         } else { 
             match con_type {
-                Self::CONNECTION_ROAD_DEAD    => Point3f::parse(rest).map(|(p, rest)| (Self::ConnectionRoadDead(p), rest)),
-                Self::CONNECTION_AIRPORT_DEAD => Point3f::parse(rest).map(|(p, rest)| (Self::ConnectionAirportDead(p), rest)),
+                Self::CONNECTION_ROAD_DEAD    => parse_from!(rest, Point3f, ConnectionRoadDead),
+                Self::CONNECTION_AIRPORT_DEAD => parse_from!(rest, Point3f, ConnectionAirportDead),
                 _ => Err(format!("Unknown connection type: {}", con_type))
             }
         }
@@ -180,6 +196,13 @@ impl ParseSlice<'_> for Point3f {
     fn parse(src: Option<&str>) -> ParseResult<Self> {
         let((x, y, z), src) = <(f32, f32, f32) as ParseSlice>::parse(src)?;
         Ok((Point3f { x, y, z }, src))
+    }
+}
+
+impl<'a, T> ParseSlice<'a> for Tagged2Points<T> where T: ParseSlice<'a> {
+    fn parse(src: Option<&'a str>) -> ParseResult<Self> {
+        let ((tag, p1, p2), src) = <(T, Point3f, Point3f)>::parse(src)?;
+        Ok((Tagged2Points { tag, p1, p2 }, src))
     }
 }
 
@@ -557,6 +580,30 @@ impl ParseSlice<'_> for ResourceType {
         parse_param(src, &RX, |s| ResourceType::from_str(s).ok_or(format!("Unknown resource type '{}'", s)))
     }
 }
+
+
+impl AirplaneStationType {
+    fn from_str(src: &str) -> Option<Self> {
+        match src {
+            Self::AIRPLANE_STATION_30M => Some(Self::M30),
+            Self::AIRPLANE_STATION_40M => Some(Self::M40),
+            Self::AIRPLANE_STATION_50M => Some(Self::M50),
+            Self::AIRPLANE_STATION_75M => Some(Self::M75),
+            _ => None
+        }
+    }
+}
+
+impl ParseSlice<'_> for AirplaneStationType {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([0-9]+M)", RX_REMAINDER)).unwrap();
+        }
+
+        parse_param(src, &RX, |s| AirplaneStationType::from_str(s).ok_or(format!("Unknown airplane station type '{}'", s)))
+    }
+}
+
 
 
 

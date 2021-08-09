@@ -3,18 +3,9 @@ use std::io::{Write};
 
 use super::{BuildingType,
             BuildingSubtype,
-            StorageCargoType,
-            ConstructionPhase,
-            ConstructionAutoCost,
-            ResourceType,
-            ParticleType,
             Token,
-            StrValue,
-            QuotedStringParam,
-            IdStringParam,
             Point3f,
-            Rect,
-            Connection2PType,
+            Tagged2Points,
            };
 
 
@@ -24,14 +15,29 @@ type IOResult = Result<(), std::io::Error>;
 impl Token<'_> {
     pub fn serialize_token<W: Write>(&self, mut wr: W) -> IOResult {
         #[inline]
-        fn write_2points<W: Write>(mut wr: W, tag: &str, a: &Point3f, b: &Point3f) -> IOResult {
+        fn write_pfx_pt<W: Write>(mut wr: W, pfx: &str, a: &Point3f) -> IOResult {
+            write!(wr, "{}\r\n{} {} {}", pfx, a.x, a.y, a.z)
+        }
+
+        #[inline]
+        fn write_pfx_2pts<W: Write>(mut wr: W, tag: &str, a: &Point3f, b: &Point3f) -> IOResult {
             write!(wr, "{}\r\n{} {} {}\r\n{} {} {}", tag, a.x, a.y, a.z, b.x, b.y, b.z)
         }
 
-        match self {
-            Self::VehicleStation((a, b))           => write_2points(wr, Self::VEHICLE_STATION, a, b),
+        #[inline]
+        fn write_pfx_tag2pts<W: Write, T: Display>(mut wr: W, prefix: &str, tpp: &Tagged2Points<T>) -> IOResult {
+            let Tagged2Points { tag, p1, p2 } = tpp;
+            write!(wr, "{}{}\r\n{} {} {}\r\n{} {} {}", prefix, tag, p1.x, p1.y, p1.z, p2.x, p2.y, p2.z)
+        }
 
-            Self::Connection2Points((t, a, b))     => write!(wr, "{}{}\r\n{} {} {}\r\n{} {} {}", Self::CONNECTION, t, a.x, a.y, a.z, b.x, b.y, b.z),
+        match self {
+            Self::VehicleStationNotBlockDetourPoint(p)         => write_pfx_pt(wr, Self::VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT, p),
+            Self::VehicleStationNotBlockDetourPointPid((i, p)) => write!(wr, "{} {} {} {} {}", Self::VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT_PID, i, p.x, p.y, p.z),
+            Self::VehicleStation((a, b))           => write_pfx_2pts(wr, Self::VEHICLE_STATION, a, b),
+            Self::AirplaneStation(tpp)             => write_pfx_tag2pts(wr, Self::AIRPLANE_STATION, tpp),
+
+            Self::Connection2Points(tpp)           => write_pfx_tag2pts(wr, Self::CONNECTION, tpp),
+
             Self::ConnectionRoadDead(x)            => write!(wr, "{}{}\r\n{}", Self::CONNECTION, Self::CONNECTION_ROAD_DEAD, x),
             Self::ConnectionAirportDead(x)         => write!(wr, "{}{}\r\n{}", Self::CONNECTION, Self::CONNECTION_AIRPORT_DEAD, x),
 
@@ -39,10 +45,10 @@ impl Token<'_> {
             Self::ConnectionsAirportDeadSquare(r)  => write!(wr, "{}\r\n{} {}\r\n{} {}", Self::CONNECTIONS_AIRPORT_DEAD_SQUARE, r.x1, r.z1, r.x2, r.z2),
 
             Self::Particle((t, p, a, s))           => write!(wr, "{} {} {} {} {} {} {}", Self::PARTICLE, t, p.x, p.y, p.z, a, s),
-            Self::TextCaption((a, b))              => write_2points(wr, Self::TEXT_CAPTION, a, b),
-            Self::WorkerRenderingArea((a, b))      => write_2points(wr, Self::WORKER_RENDERING_AREA, a, b),
+            Self::TextCaption((a, b))              => write_pfx_2pts(wr, Self::TEXT_CAPTION, a, b),
+            Self::WorkerRenderingArea((a, b))      => write_pfx_2pts(wr, Self::WORKER_RENDERING_AREA, a, b),
 
-            Self::CostWorkVehicleStation((a, b))   => write_2points(wr, Self::COST_WORK_VEHICLE_STATION, a, b),
+            Self::CostWorkVehicleStation((a, b))   => write_pfx_2pts(wr, Self::COST_WORK_VEHICLE_STATION, a, b),
 
             t => write!(wr, "{}", t)
         }
@@ -55,9 +61,12 @@ impl Display for Token<'_> {
         match self {
             Self::NameStr(p)                       => write!(f, "{} {}", Self::NAME_STR, p),
             Self::Name(p)                          => write!(f, "{} {}", Self::NAME, p),
-            Self::BuildingType(p)                  => write!(f, "{}{}", Self::BUILDING_TYPE, p),
-            Self::BuildingSubtype(p)               => write!(f, "{}{}", Self::BUILDING_SUBTYPE, p),
-            Self::CivilBuilding                    => write!(f, "{}", Self::CIVIL_BUILDING),
+            Self::BuildingType(p)                  => write!(f, "{}{}",  Self::BUILDING_TYPE, p),
+            Self::BuildingSubtype(p)               => write!(f, "{}{}",  Self::BUILDING_SUBTYPE, p),
+
+            Self::HeatEnable                       => write!(f, "{}",    Self::HEATING_ENABLE),
+            Self::HeatDisable                      => write!(f, "{}",    Self::HEATING_DISABLE),
+            Self::CivilBuilding                    => write!(f, "{}",    Self::CIVIL_BUILDING),
             Self::QualityOfLiving(x)               => write!(f, "{} {}", Self::QUALITY_OF_LIVING, x),
 
             Self::WorkersNeeded(x)                 => write!(f, "{} {}", Self::WORKERS_NEEDED, x),
@@ -65,13 +74,19 @@ impl Display for Token<'_> {
             Self::CitizenAbleServe(x)              => write!(f, "{} {}", Self::CITIZEN_ABLE_SERVE, x),
 
             Self::Storage((t, x))                  => write!(f, "{} {} {}", Self::STORAGE, t, x),
+            Self::StorageFuel((t, x))              => write!(f, "{} {} {}", Self::STORAGE_FUEL, t, x),
 
             Self::RoadNotFlip                      => write!(f, "{}", Self::ROAD_VEHICLE_NOT_FLIP),
             Self::RoadElectric                     => write!(f, "{}", Self::ROAD_VEHICLE_ELECTRIC),
+            Self::VehicleStationNotBlock           => write!(f, "{}", Self::VEHICLE_STATION_NOT_BLOCK),
+            Self::VehicleStationNotBlockDetourPoint(p)         => write!(f, "{} {}",    Self::VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT, p),
+            Self::VehicleStationNotBlockDetourPointPid((i, p)) => write!(f, "{} {} {}", Self::VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT_PID, i, p),
             Self::VehicleStation((a, b))           => write!(f, "{} {} {}", Self::VEHICLE_STATION, a, b),
             Self::WorkingVehiclesNeeded(x)         => write!(f, "{} {}", Self::WORKING_VEHICLES_NEEDED, x),
 
-            Self::Connection2Points((t, a, b))     => write!(f, "{}{} {} {}", Self::CONNECTION, t, a, b),
+            Self::AirplaneStation(tpp)             => write!(f, "{}{}", Self::AIRPLANE_STATION, tpp),
+
+            Self::Connection2Points(tpp)           => write!(f, "{}{}", Self::CONNECTION, tpp),
             Self::ConnectionRoadDead(x)            => write!(f, "{}{} {}", Self::CONNECTION, Self::CONNECTION_ROAD_DEAD, x),
             Self::ConnectionAirportDead(x)         => write!(f, "{}{} {}", Self::CONNECTION, Self::CONNECTION_AIRPORT_DEAD, x),
 
@@ -191,7 +206,7 @@ impl Display for BuildingSubtype {
 }
 
 
-impl Display for Connection2PType {
+impl Display for super::Connection2PType {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let s = match self {
             Self::AirRoad         => Self::CONN_AIRROAD,
@@ -227,7 +242,7 @@ impl Display for Connection2PType {
 }
 
 
-impl Display for StorageCargoType {
+impl Display for super::StorageCargoType {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let s = match self {
             Self::Passanger => Self::PASSANGER,
@@ -247,7 +262,7 @@ impl Display for StorageCargoType {
 }
 
 
-impl Display for ConstructionAutoCost {
+impl Display for super::ConstructionAutoCost {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let s = match self {
             Self::Ground        => Self::GROUND,
@@ -269,7 +284,7 @@ impl Display for ConstructionAutoCost {
 }
 
 
-impl Display for ConstructionPhase {
+impl Display for super::ConstructionPhase {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let s = match self {
             Self::Groundworks     => Self::GROUNDWORKS,
@@ -288,7 +303,7 @@ impl Display for ConstructionPhase {
 }
 
 
-impl Display for ResourceType {
+impl Display for super::ResourceType {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let s = match self {
             Self::Alcohol           => Self::ALCOHOL,
@@ -325,7 +340,7 @@ impl Display for ResourceType {
 }
 
 
-impl Display for ParticleType {
+impl Display for super::ParticleType {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let s = match self {
             Self::ResidentialHeating => Self::RESIDENTIAL_HEATING,
@@ -345,33 +360,53 @@ impl Display for ParticleType {
 }
 
 
+impl Display for super::AirplaneStationType {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let s = match self {
+            Self::M30 => Self::AIRPLANE_STATION_30M,
+            Self::M40 => Self::AIRPLANE_STATION_40M,
+            Self::M50 => Self::AIRPLANE_STATION_50M,
+            Self::M75 => Self::AIRPLANE_STATION_75M,
+        };
+
+        write!(f, "{}", s)
+    }
+}
+
+
 impl Display for Point3f {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "({}, {}, {})", self.x, self.y, self.z)
     }
 }
 
-impl Display for Rect {
+impl<T: Display> Display for Tagged2Points<T> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        write!(f, "{} {} {}", self.tag, self.p1, self.p2)
+    }
+}
+
+impl Display for super::Rect {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "({}, {}, {}, {})", self.x1, self.z1, self.x2, self.z2)
     }
 }
 
-impl Display for QuotedStringParam<'_> {
+impl Display for super::QuotedStringParam<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let Self(s) = self;
         write!(f, "\"{}\"", s)
     }
 }
 
-impl Display for IdStringParam<'_> {
+impl Display for super::IdStringParam<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let Self(s) = self;
         write!(f, "{}", s)
     }
 }
 
-impl Display for StrValue<'_> {
+impl Display for super::StrValue<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let s: &str = match self {
             Self::Borrowed(s) => s,

@@ -19,22 +19,22 @@ pub struct Rect {
 }
 
 
-#[derive(Clone)]
 pub enum StrValue<'a> {
     Borrowed(&'a str),
     Owned(String),
 }
 
-#[derive(Clone)]
 pub struct QuotedStringParam<'a>(StrValue<'a>);
 
-#[derive(Clone)]
 pub struct IdStringParam<'a>(StrValue<'a>);
 
-pub type Connection2P = (Connection2PType, Point3f, Point3f);
+pub struct Tagged2Points<T> {
+    tag: T,
+    p1: Point3f,
+    p2: Point3f,
+}
 
-
-#[derive(Clone)]
+//#[derive(Clone)]
 pub enum Token<'a> {
 
     NameStr(QuotedStringParam<'a>),
@@ -42,6 +42,9 @@ pub enum Token<'a> {
 
     BuildingType(BuildingType),
     BuildingSubtype(BuildingSubtype),
+    HeatEnable,
+    HeatDisable,
+
     CivilBuilding,
     QualityOfLiving(f32),
 
@@ -50,13 +53,19 @@ pub enum Token<'a> {
     CitizenAbleServe(u32),
 
     Storage((StorageCargoType, f32)),
+    StorageFuel((StorageCargoType, f32)),
 
     RoadNotFlip,
     RoadElectric,
+    VehicleStationNotBlock,
+    VehicleStationNotBlockDetourPoint(Point3f),
+    VehicleStationNotBlockDetourPointPid((u32, Point3f)),
     VehicleStation((Point3f, Point3f)),
     WorkingVehiclesNeeded(u32),
 
-    Connection2Points(Connection2P),
+    AirplaneStation(Tagged2Points<AirplaneStationType>),
+
+    Connection2Points(Tagged2Points<Connection2PType>),
     ConnectionRoadDead(Point3f),
     ConnectionAirportDead(Point3f),
 
@@ -85,18 +94,30 @@ impl<'a> Token<'a> {
     const NAME:                           &'static str = "NAME";
     const BUILDING_TYPE:                  &'static str = "TYPE_";
     const BUILDING_SUBTYPE:               &'static str = "SUBTYPE_";
+
+    const HEATING_ENABLE:                 &'static str = "HEATING_ENABLE";
+    const HEATING_DISABLE:                &'static str = "HEATING_DISABLE";
     const CIVIL_BUILDING:                 &'static str = "CIVIL_BUILDING";
     const QUALITY_OF_LIVING:              &'static str = "QUALITY_OF_LIVING";
+
     const WORKERS_NEEDED:                 &'static str = "WORKERS_NEEDED";
     const PROFESSORS_NEEDED:              &'static str = "PROFESORS_NEEDED";
     const CITIZEN_ABLE_SERVE:             &'static str = "CITIZEN_ABLE_SERVE";
+
     const STORAGE:                        &'static str = "STORAGE";
+    const STORAGE_FUEL:                   &'static str = "STORAGE_FUEL";
 
     const ROAD_VEHICLE_NOT_FLIP:          &'static str = "ROADVEHICLE_NOTFLIP";
     const ROAD_VEHICLE_ELECTRIC:          &'static str = "ROADVEHICLE_ELETRIC";
+
+    const VEHICLE_STATION_NOT_BLOCK:                  &'static str = "STATION_NOT_BLOCK";
+    const VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT:     &'static str = "STATION_NOT_BLOCK_DETOUR_POINT";
+    const VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT_PID: &'static str = "STATION_NOT_BLOCK_DETOUR_POINT_PID";
+
     const VEHICLE_STATION:                &'static str = "VEHICLE_STATION";
     const WORKING_VEHICLES_NEEDED:        &'static str = "WORKING_VEHICLES_NEEDED";
 
+    const AIRPLANE_STATION:               &'static str = "AIRPLANE_STATION_";
 
     const CONNECTION:                     &'static str = "CONNECTION_";
     const CONNECTION_ROAD_DEAD:           &'static str = "ROAD_DEAD";
@@ -120,10 +141,10 @@ impl<'a> Token<'a> {
     const COST_WORK_VEHICLE_STATION     : &'static str = "COST_WORK_VEHICLE_STATION";
     const COST_WORK_VEHICLE_STATION_NODE: &'static str = "COST_WORK_VEHICLE_STATION_ACCORDING_NODE";
 
-    pub fn maybe_scale(&self, factor: f64) -> Option<Self> {
+    pub fn maybe_scale(&self, _factor: f64) -> Option<Self> {
         match self {
             // TODO: process all geometry variants
-            Self::Connection2Points((t, p1, p2)) => Some(Self::Connection2Points((*t, scale_point(factor, *p1), scale_point(factor, *p2)))),
+            //Self::Connection2Points((t, p1, p2)) => Some(Self::Connection2Points((*t, scale_point(factor, *p1), scale_point(factor, *p2)))),
             _ => None
         }
     }
@@ -551,6 +572,22 @@ impl Connection2PType {
     const CONN_ELECTRIC_H_OUT: &'static str = "ELETRIC_HIGH_OUTPUT";
     const CONN_ELECTRIC_L_IN:  &'static str = "ELETRIC_LOW_INPUT";
     const CONN_ELECTRIC_L_OUT: &'static str = "ELETRIC_LOW_OUTPUT";
+}
+
+
+#[derive(Clone, Copy)]
+pub enum AirplaneStationType {
+    M30,
+    M40,
+    M50,
+    M75,
+}
+
+impl AirplaneStationType {
+    const AIRPLANE_STATION_30M: &'static str = "30M";
+    const AIRPLANE_STATION_40M: &'static str = "40M";
+    const AIRPLANE_STATION_50M: &'static str = "50M";
+    const AIRPLANE_STATION_75M: &'static str = "75M";
 }
 
 
