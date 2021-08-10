@@ -23,6 +23,7 @@ use super::{BuildingType,
             Tagged2Points,
             Connection2PType,
             AirplaneStationType,
+            AttractionType,
            };
 
 use super::super::{ParseResult, ParseError};
@@ -41,9 +42,11 @@ impl<'a> Token<'a> {
         lazy_static! {
             static ref RX_TYPE: Regex = Regex::new(concatcp!(
                 r"(?s)^(", 
-                Token::CONNECTION, "|",
-                Token::BUILDING_TYPE, "|",
+                Token::CONNECTION,       "|",
+                Token::BUILDING_TYPE,    "|",
                 Token::BUILDING_SUBTYPE, "|",
+                Token::AIRPLANE_STATION, "|",
+                Token::ATTRACTION_TYPE,  "|",
                 r"[A-Z_]+)($|\s*(.*))")).unwrap();
         }
     
@@ -66,15 +69,29 @@ impl<'a> Token<'a> {
             Self::CONSUMPTION            => parse_from!(rest, (ResourceType, f32), Consumption),
             Self::CONSUMPTION_PER_SECOND => parse_from!(rest, (ResourceType, f32), ConsumptionPerSecond),
             Self::PRODUCTION             => parse_from!(rest, (ResourceType, f32), Production),
+            Self::SEASONAL_TEMP_MIN      => parse_from!(rest, f32, SeasonalTempMin),
+            Self::SEASONAL_TEMP_MAX      => parse_from!(rest, f32, SeasonalTempMax),
 
             Self::ELE_CONSUM_LIGHTING_WORKER_FACTOR => parse_from!(rest, f32, EleConsumLightingWorkerFactor),
+            Self::ELE_CONSUM_LIVING_WORKER_FACTOR   => parse_from!(rest, f32, EleConsumLivingWorkerFactor),
+            Self::ELE_CONSUM_LOADING_FIXED          => parse_from!(rest, f32, EleConsumLoadingFixed),
+            Self::ELE_CONSUM_UNLOADING_FIXED        => parse_from!(rest, f32, EleConsumUnloadingFixed),
+            Self::NO_ELE_FACTOR                     => parse_from!(rest, f32, NoEleFactor),
+            Self::NO_ELE_FACTOR_NIGHT               => parse_from!(rest, f32, NoEleFactorNight),
 
-            Self::STORAGE                => parse_from!(rest, (StorageCargoType, f32), Storage),
-            Self::STORAGE_FUEL           => parse_from!(rest, (StorageCargoType, f32), StorageFuel),
-            Self::STORAGE_EXPORT         => parse_from!(rest, (StorageCargoType, f32), StorageExport),
-            Self::STORAGE_IMPORT         => parse_from!(rest, (StorageCargoType, f32), StorageImport),
-            Self::STORAGE_EXPORT_SPECIAL => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageExportSpecial),
-            Self::STORAGE_IMPORT_SPECIAL => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageImportSpecial),
+            Self::ENGINE_SPEED           => parse_from!(rest, f32, EngineSpeed),
+            Self::CABLEWAY_HEAVY         => Ok((Self::CablewayHeavy, rest)),
+            Self::CABLEWAY_LIGHT         => Ok((Self::CablewayLight, rest)),
+
+            Self::STORAGE                  => parse_from!(rest, (StorageCargoType, f32), Storage),
+            Self::STORAGE_SPECIAL          => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageSpecial),
+            Self::STORAGE_FUEL             => parse_from!(rest, (StorageCargoType, f32), StorageFuel),
+            Self::STORAGE_EXPORT           => parse_from!(rest, (StorageCargoType, f32), StorageExport),
+            Self::STORAGE_IMPORT           => parse_from!(rest, (StorageCargoType, f32), StorageImport),
+            Self::STORAGE_EXPORT_SPECIAL   => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageExportSpecial),
+            Self::STORAGE_IMPORT_SPECIAL   => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageImportSpecial),
+            Self::VEHICLE_LOADING_FACTOR   => parse_from!(rest, f32, VehicleLoadingFactor),
+            Self::VEHICLE_UNLOADING_FACTOR => parse_from!(rest, f32, VehicleUnloadingFactor),
 
             
             Self::ROAD_VEHICLE_NOT_FLIP     => Ok((Self::RoadNotFlip, rest)),
@@ -85,23 +102,47 @@ impl<'a> Token<'a> {
             Self::VEHICLE_STATION                            => parse_from!(rest, (Point3f, Point3f), VehicleStation),
             Self::WORKING_VEHICLES_NEEDED                    => parse_from!(rest, u32, WorkingVehiclesNeeded),
             Self::VEHICLE_PARKING                            => parse_from!(rest, (Point3f, Point3f), VehicleParking),
+            Self::VEHICLE_PARKING_PERSONAL                   => parse_from!(rest, (Point3f, Point3f), VehicleParkingPersonal),
 
             Self::AIRPLANE_STATION                => parse_from!(rest, Tagged2Points::<AirplaneStationType>, AirplaneStation),
             Self::HELIPORT_AREA                   => parse_from!(rest, f32, HeliportArea),
+            Self::HARBOR_OVER_TERRAIN_FROM        => parse_from!(rest, f32, HarborTerrainFrom),
+            Self::HARBOR_OVER_WATER_FROM          => parse_from!(rest, f32, HarborWaterFrom),
 
             Self::CONNECTION => Self::parse_connection(rest),
 
             Self::CONNECTIONS_SPACE               => parse_from!(rest, Rect, ConnectionsSpace),
             Self::CONNECTIONS_ROAD_DEAD_SQUARE    => parse_from!(rest, Rect, ConnectionsRoadDeadSquare),
             Self::CONNECTIONS_AIRPORT_DEAD_SQUARE => parse_from!(rest, Rect, ConnectionsAirportDeadSquare),
+            Self::OFFSET_CONNECTION_XYZW          => parse_from!(rest, (u32, Point3f), OffsetConnection),
 
+            Self::ATTRACTION_TYPE                  => parse_from!(rest, (AttractionType, u32), AttractionType),
+            Self::ATTRACTION_REMEMBER_USAGE        => Ok((Self::AttractionRememberUsage, rest)),
+            Self::ATTRACTIVE_SCORE                 => parse_from!(rest, f32, AttractiveScoreBase),
+            Self::ATTRACTIVE_SCORE_ALCOHOL         => parse_from!(rest, f32, AttractiveScoreAlcohol),
+            Self::ATTRACTIVE_SCORE_CULTURE         => parse_from!(rest, f32, AttractiveScoreCulture),
+            Self::ATTRACTIVE_SCORE_RELIGION        => parse_from!(rest, f32, AttractiveScoreReligion),
+            Self::ATTRACTIVE_SCORE_SPORT           => parse_from!(rest, f32, AttractiveScoreSport),
+            Self::ATTRACTIVE_FACTOR_NATURE         => parse_from!(rest, f32, AttractiveFactorNature),
+            Self::ATTRACTIVE_FACTOR_NATURE_ADD     => parse_from!(rest, f32, AttractiveFactorNatureAdd),
+            Self::ATTRACTIVE_FACTOR_POLLUTION      => parse_from!(rest, f32, AttractiveFactorPollution),
+            Self::ATTRACTIVE_FACTOR_POLLUTION_ADD  => parse_from!(rest, f32, AttractiveFactorPollutionAdd),
+            Self::ATTRACTIVE_FACTOR_SIGHT          => parse_from!(rest, f32, AttractiveFactorSight),
+            Self::ATTRACTIVE_FACTOR_SIGHT_ADD      => parse_from!(rest, f32, AttractiveFactorSightAdd),
+            Self::ATTRACTIVE_FACTOR_WATER          => parse_from!(rest, f32, AttractiveFactorWater),
+            Self::ATTRACTIVE_FACTOR_WATER_ADD      => parse_from!(rest, f32, AttractiveFactorWaterAdd),
 
+            Self::POLLUTION_HIGH                 => Ok((Self::PollutionHigh,   rest)),
+            Self::POLLUTION_MEDIUM               => Ok((Self::PollutionMedium, rest)),
+            Self::POLLUTION_SMALL                => Ok((Self::PollutionSmall,  rest)),
 
             Self::PARTICLE                       => parse_from!(rest, (ParticleType, Point3f, f32, f32), Particle),
 
             Self::TEXT_CAPTION                   => parse_from!(rest, (Point3f, Point3f), TextCaption),
             Self::WORKER_RENDERING_AREA          => parse_from!(rest, (Point3f, Point3f), WorkerRenderingArea),
             Self::RESOURCE_VISUALIZATION         => parse_from!(rest, ResourceVisualization, ResourceVisualization),
+            Self::RESOURCE_INCREASE_POINT        => parse_from!(rest, (u32, Point3f), ResourceIncreasePoint),
+            Self::WORKING_SFX                    => parse_from!(rest, IdStringParam, WorkingSfx),
 
 
             Self::COST_WORK                      => parse_from!(rest, (ConstructionPhase, f32), CostWork),
@@ -451,6 +492,7 @@ impl StorageCargoType {
             Self::CONCRETE  => Some(Self::Concrete),
             Self::LIVESTOCK => Some(Self::Livestock),
             Self::GENERAL   => Some(Self::General),
+            Self::VEHICLES  => Some(Self::Vehicles),
             _ => None
         }
     }
@@ -635,6 +677,31 @@ impl ParseSlice<'_> for AirplaneStationType {
         }
 
         parse_param(src, &RX, |s| AirplaneStationType::from_str(s).ok_or(format!("Unknown airplane station type '{}'", s)))
+    }
+}
+
+
+impl AttractionType {
+    fn from_str(src: &str) -> Option<Self> {
+        match src {
+            Self::ATTRACTION_TYPE_CARUSEL => Some(Self::Carousel),
+            Self::ATTRACTION_TYPE_GALLERY => Some(Self::Gallery),
+            Self::ATTRACTION_TYPE_MUSEUM  => Some(Self::Museum),
+            Self::ATTRACTION_TYPE_SIGHT   => Some(Self::Sight),
+            Self::ATTRACTION_TYPE_SWIM    => Some(Self::Swim),
+            Self::ATTRACTION_TYPE_ZOO     => Some(Self::Zoo),
+            _ => None
+        }
+    }
+}
+
+impl ParseSlice<'_> for AttractionType {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([A-Z_]+)", RX_REMAINDER)).unwrap();
+        }
+        
+        parse_param(src, &RX, |s| AttractionType::from_str(s).ok_or(format!("Unknown attraction type '{}'", s)))
     }
 }
 

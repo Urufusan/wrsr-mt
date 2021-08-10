@@ -36,13 +36,15 @@ impl Token<'_> {
             Self::VehicleStationNotBlockDetourPointPid((i, p)) => write!(wr, "{} {} {} {} {}", Self::VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT_PID, i, p.x, p.y, p.z),
             Self::VehicleStation((a, b))           => write_pfx_2pts(wr, Self::VEHICLE_STATION, a, b),
             Self::VehicleParking((a, b))           => write_pfx_2pts(wr, Self::VEHICLE_PARKING, a, b),
+            Self::VehicleParkingPersonal((a, b))   => write_pfx_2pts(wr, Self::VEHICLE_PARKING_PERSONAL, a, b),
             Self::AirplaneStation(tpp)             => write_pfx_tag2pts(wr, Self::AIRPLANE_STATION, tpp),
 
             Self::Connection2Points(tpp)           => write_pfx_tag2pts(wr, Self::CONNECTION, tpp),
 
-            Self::ConnectionRoadDead(x)            => write!(wr, "{}{}\r\n{}", Self::CONNECTION, Self::CONNECTION_ROAD_DEAD, x),
-            Self::ConnectionAirportDead(x)         => write!(wr, "{}{}\r\n{}", Self::CONNECTION, Self::CONNECTION_AIRPORT_DEAD, x),
-            Self::ConnectionAdvancedPoint(x)       => write!(wr, "{}{}\r\n{}", Self::CONNECTION, Self::CONNECTION_ADVANCED_POINT, x),
+            Self::ConnectionRoadDead(a)            => write!(wr, "{}{}\r\n{} {} {}", Self::CONNECTION, Self::CONNECTION_ROAD_DEAD,      a.x, a.y, a.z),
+            Self::ConnectionAirportDead(a)         => write!(wr, "{}{}\r\n{} {} {}", Self::CONNECTION, Self::CONNECTION_AIRPORT_DEAD,   a.x, a.y, a.z),
+            Self::ConnectionAdvancedPoint(a)       => write!(wr, "{}{}\r\n{} {} {}", Self::CONNECTION, Self::CONNECTION_ADVANCED_POINT, a.x, a.y, a.z),
+            Self::OffsetConnection((i, a))         => write!(wr, "{} {} {} {} {}",   Self::OFFSET_CONNECTION_XYZW, i,                   a.x, a.y, a.z),
 
             Self::ConnectionsSpace(r)              => write!(wr, "{}\r\n{} {}\r\n{} {}", Self::CONNECTIONS_SPACE,               r.x1, r.z1, r.x2, r.z2),
             Self::ConnectionsRoadDeadSquare(r)     => write!(wr, "{}\r\n{} {}\r\n{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE,    r.x1, r.z1, r.x2, r.z2),
@@ -54,6 +56,7 @@ impl Token<'_> {
             Self::ResourceVisualization(ResourceVisualization { storage_id, position: p, rotation, scale: s, numstep_x: (x1, x2), numstep_z: (z1, z2) }) => 
                 write!(wr, "{} {}\nposition {} {} {}\nrotation {}\nscale {} {} {}\nnumstep_x {} {}\nnumstep_t {} {}", 
                        Self::RESOURCE_VISUALIZATION, storage_id, p.x, p.y, p.z, rotation, s.x, s.y, s.z, x1, x2, z1, z2),
+            Self::ResourceIncreasePoint((i, a))    => write!(wr, "{} {} {} {} {}", Self::RESOURCE_INCREASE_POINT, i, a.x, a.y, a.z),
 
             Self::CostWorkVehicleStation((a, b))   => write_pfx_2pts(wr, Self::COST_WORK_VEHICLE_STATION, a, b),
 
@@ -82,15 +85,29 @@ impl Display for Token<'_> {
             Self::Consumption((t, x))              => write!(f, "{} {} {}", Self::CONSUMPTION, t, x),
             Self::ConsumptionPerSecond((t, x))     => write!(f, "{} {} {}", Self::CONSUMPTION_PER_SECOND, t, x),
             Self::Production((t, x))               => write!(f, "{} {} {}", Self::PRODUCTION, t, x),
+            Self::SeasonalTempMin(x)               => write!(f, "{} {}",    Self::SEASONAL_TEMP_MIN, x),
+            Self::SeasonalTempMax(x)               => write!(f, "{} {}",    Self::SEASONAL_TEMP_MAX, x),
 
             Self::EleConsumLightingWorkerFactor(x) => write!(f, "{} {}", Self::ELE_CONSUM_LIGHTING_WORKER_FACTOR, x),
+            Self::EleConsumLivingWorkerFactor(x)   => write!(f, "{} {}", Self::ELE_CONSUM_LIVING_WORKER_FACTOR, x),
+            Self::EleConsumLoadingFixed(x)         => write!(f, "{} {}", Self::ELE_CONSUM_LOADING_FIXED, x),
+            Self::EleConsumUnloadingFixed(x)       => write!(f, "{} {}", Self::ELE_CONSUM_UNLOADING_FIXED, x),
+            Self::NoEleFactor(x)                   => write!(f, "{} {}", Self::NO_ELE_FACTOR, x),
+            Self::NoEleFactorNight(x)              => write!(f, "{} {}", Self::NO_ELE_FACTOR_NIGHT, x),
+
+            Self::EngineSpeed(x)                   => write!(f, "{} {}", Self::ENGINE_SPEED, x),
+            Self::CablewayHeavy                    => write!(f, "{}", Self::CABLEWAY_HEAVY),
+            Self::CablewayLight                    => write!(f, "{}", Self::CABLEWAY_LIGHT),
 
             Self::Storage((t, x))                  => write!(f, "{} {} {}", Self::STORAGE, t, x),
+            Self::StorageSpecial((t, x, r))        => write!(f, "{} {} {} {}", Self::STORAGE, t, x, r),
             Self::StorageFuel((t, x))              => write!(f, "{} {} {}", Self::STORAGE_FUEL, t, x),
             Self::StorageExport((t, x))            => write!(f, "{} {} {}", Self::STORAGE_EXPORT, t, x),
             Self::StorageImport((t, x))            => write!(f, "{} {} {}", Self::STORAGE_IMPORT, t, x),
             Self::StorageExportSpecial((t, x, r))  => write!(f, "{} {} {} {}", Self::STORAGE_EXPORT, t, x, r),
             Self::StorageImportSpecial((t, x, r))  => write!(f, "{} {} {} {}", Self::STORAGE_IMPORT, t, x, r),
+            Self::VehicleLoadingFactor(x)          => write!(f, "{} {}", Self::VEHICLE_LOADING_FACTOR, x),
+            Self::VehicleUnloadingFactor(x)        => write!(f, "{} {}", Self::VEHICLE_UNLOADING_FACTOR, x),
 
             Self::RoadNotFlip                      => write!(f, "{}", Self::ROAD_VEHICLE_NOT_FLIP),
             Self::RoadElectric                     => write!(f, "{}", Self::ROAD_VEHICLE_ELECTRIC),
@@ -100,25 +117,51 @@ impl Display for Token<'_> {
             Self::VehicleStation((a, b))           => write!(f, "{} {} {}", Self::VEHICLE_STATION, a, b),
             Self::WorkingVehiclesNeeded(x)         => write!(f, "{} {}",    Self::WORKING_VEHICLES_NEEDED, x),
             Self::VehicleParking((a, b))           => write!(f, "{} {} {}", Self::VEHICLE_PARKING, a, b),
+            Self::VehicleParkingPersonal((a, b))   => write!(f, "{} {} {}", Self::VEHICLE_PARKING_PERSONAL, a, b),
 
-            Self::AirplaneStation(tpp)             => write!(f, "{}{}", Self::AIRPLANE_STATION, tpp),
+            Self::AirplaneStation(tpp)             => write!(f, "{}{}",  Self::AIRPLANE_STATION, tpp),
             Self::HeliportArea(x)                  => write!(f, "{} {}", Self::HELIPORT_AREA, x),
+            Self::HarborTerrainFrom(x)             => write!(f, "{} {}", Self::HARBOR_OVER_TERRAIN_FROM, x),
+            Self::HarborWaterFrom(x)               => write!(f, "{} {}", Self::HARBOR_OVER_WATER_FROM, x),
 
             Self::Connection2Points(tpp)           => write!(f, "{}{}", Self::CONNECTION, tpp),
 
             Self::ConnectionRoadDead(x)            => write!(f, "{}{} {}", Self::CONNECTION, Self::CONNECTION_ROAD_DEAD, x),
             Self::ConnectionAirportDead(x)         => write!(f, "{}{} {}", Self::CONNECTION, Self::CONNECTION_AIRPORT_DEAD, x),
             Self::ConnectionAdvancedPoint(x)       => write!(f, "{}{} {}", Self::CONNECTION, Self::CONNECTION_ADVANCED_POINT, x),
+            Self::OffsetConnection((i, a))         => write!(f, "{} {} {}",   Self::OFFSET_CONNECTION_XYZW, i, a),
 
             Self::ConnectionsSpace(r)              => write!(f, "{} {}", Self::CONNECTIONS_SPACE, r),
             Self::ConnectionsRoadDeadSquare(r)     => write!(f, "{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, r),
             Self::ConnectionsAirportDeadSquare(r)  => write!(f, "{} {}", Self::CONNECTIONS_AIRPORT_DEAD_SQUARE, r),
+
+            Self::AttractionType((t, x))           => write!(f, "{}{} {}", Self::ATTRACTION_TYPE, t, x),
+            Self::AttractionRememberUsage          => write!(f, "{}",      Self::ATTRACTION_REMEMBER_USAGE),
+            Self::AttractiveScoreBase(x)           => write!(f, "{} {}",   Self::ATTRACTIVE_SCORE, x),
+            Self::AttractiveScoreAlcohol(x)        => write!(f, "{} {}",   Self::ATTRACTIVE_SCORE_ALCOHOL, x),
+            Self::AttractiveScoreCulture(x)        => write!(f, "{} {}",   Self::ATTRACTIVE_SCORE_CULTURE, x),
+            Self::AttractiveScoreReligion(x)       => write!(f, "{} {}",   Self::ATTRACTIVE_SCORE_RELIGION, x),
+            Self::AttractiveScoreSport(x)          => write!(f, "{} {}",   Self::ATTRACTIVE_SCORE_SPORT, x),
+            Self::AttractiveFactorNature(x)        => write!(f, "{} {}",   Self::ATTRACTIVE_FACTOR_NATURE, x),
+            Self::AttractiveFactorNatureAdd(x)     => write!(f, "{} {}",   Self::ATTRACTIVE_FACTOR_NATURE_ADD, x),
+            Self::AttractiveFactorPollution(x)     => write!(f, "{} {}",   Self::ATTRACTIVE_FACTOR_POLLUTION, x),
+            Self::AttractiveFactorPollutionAdd(x)  => write!(f, "{} {}",   Self::ATTRACTIVE_FACTOR_POLLUTION_ADD, x),
+            Self::AttractiveFactorSight(x)         => write!(f, "{} {}",   Self::ATTRACTIVE_FACTOR_SIGHT, x),
+            Self::AttractiveFactorSightAdd(x)      => write!(f, "{} {}",   Self::ATTRACTIVE_FACTOR_SIGHT_ADD, x),
+            Self::AttractiveFactorWater(x)         => write!(f, "{} {}",   Self::ATTRACTIVE_FACTOR_WATER, x),
+            Self::AttractiveFactorWaterAdd(x)      => write!(f, "{} {}",   Self::ATTRACTIVE_FACTOR_WATER_ADD, x),
+
+            Self::PollutionHigh                    => write!(f, "{}", Self::POLLUTION_HIGH),
+            Self::PollutionMedium                  => write!(f, "{}", Self::POLLUTION_MEDIUM),
+            Self::PollutionSmall                   => write!(f, "{}", Self::POLLUTION_SMALL),
 
             Self::Particle((t, x, a, s))           => write!(f, "{} {} {} {} {}", Self::PARTICLE, t, x, a, s),
             Self::TextCaption((a, b))              => write!(f, "{} {} {}", Self::TEXT_CAPTION, a, b),
             Self::WorkerRenderingArea((a, b))      => write!(f, "{} {} {}", Self::WORKER_RENDERING_AREA, a, b),
             Self::ResourceVisualization(rv)        => write!(f, "{} {}\nposition: {}\nrotation: {}\nscale: {}\nnumstep_x: {:?}\nnumstep_t: {:?}", 
                                                              Self::RESOURCE_VISUALIZATION, rv.storage_id, rv.position, rv.rotation, rv.scale, rv.numstep_x, rv.numstep_z),
+            Self::ResourceIncreasePoint((i, a))    => write!(f, "{} {} {}", Self::RESOURCE_INCREASE_POINT, i, a),
+            Self::WorkingSfx(s)                    => write!(f, "{} {}", Self::WORKING_SFX, s),
 
             Self::CostWork((t, x))                 => write!(f, "{} {} {}", Self::COST_WORK, t, x),
             Self::CostWorkBuildingNode(n)          => write!(f, "{} {}", Self::COST_WORK_BUILDING_NODE, n),
@@ -277,7 +320,8 @@ impl Display for super::StorageCargoType {
             Self::Cooler    => Self::COOLER,
             Self::Concrete  => Self::CONCRETE,
             Self::Livestock => Self::LIVESTOCK,
-            Self::General   => Self::GENERAL
+            Self::General   => Self::GENERAL,
+            Self::Vehicles  => Self::VEHICLES,
         };
 
         write!(f, "{}", s)
@@ -403,6 +447,22 @@ impl Display for super::AirplaneStationType {
             Self::M40 => Self::AIRPLANE_STATION_40M,
             Self::M50 => Self::AIRPLANE_STATION_50M,
             Self::M75 => Self::AIRPLANE_STATION_75M,
+        };
+
+        write!(f, "{}", s)
+    }
+}
+
+
+impl Display for super::AttractionType {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let s = match self {
+            Self::Carousel => Self::ATTRACTION_TYPE_CARUSEL,
+            Self::Gallery  => Self::ATTRACTION_TYPE_GALLERY,
+            Self::Museum   => Self::ATTRACTION_TYPE_MUSEUM,
+            Self::Sight    => Self::ATTRACTION_TYPE_SIGHT,
+            Self::Swim     => Self::ATTRACTION_TYPE_SWIM,
+            Self::Zoo      => Self::ATTRACTION_TYPE_ZOO,
         };
 
         write!(f, "{}", s)
