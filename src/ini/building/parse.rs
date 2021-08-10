@@ -22,8 +22,10 @@ use super::{BuildingType,
 
             Tagged2Points,
             Connection2PType,
+            Connection1PType,
             AirplaneStationType,
             AttractionType,
+            ResourceSourceType,
            };
 
 use super::super::{ParseResult, ParseError};
@@ -47,6 +49,7 @@ impl<'a> Token<'a> {
                 Token::BUILDING_SUBTYPE, "|",
                 Token::AIRPLANE_STATION, "|",
                 Token::ATTRACTION_TYPE,  "|",
+                Token::RESOURCE_SOURCE,  "|",
                 r"[A-Z_]+)($|\s*(.*))")).unwrap();
         }
     
@@ -61,6 +64,7 @@ impl<'a> Token<'a> {
             Self::HEATING_ENABLE     => Ok((Self::HeatEnable, rest)),
             Self::HEATING_DISABLE    => Ok((Self::HeatDisable, rest)),
             Self::CIVIL_BUILDING     => Ok((Self::CivilBuilding, rest)),
+            Self::MONUMENT_ENABLE_TRESPASSING => Ok((Self::MonumentTresspassing, rest)),
             Self::QUALITY_OF_LIVING  => parse_from!(rest, f32, QualityOfLiving),
 
             Self::WORKERS_NEEDED         => parse_from!(rest, u32, WorkersNeeded),
@@ -74,46 +78,61 @@ impl<'a> Token<'a> {
 
             Self::ELE_CONSUM_LIGHTING_WORKER_FACTOR => parse_from!(rest, f32, EleConsumLightingWorkerFactor),
             Self::ELE_CONSUM_LIVING_WORKER_FACTOR   => parse_from!(rest, f32, EleConsumLivingWorkerFactor),
-            Self::ELE_CONSUM_LOADING_FIXED          => parse_from!(rest, f32, EleConsumLoadingFixed),
-            Self::ELE_CONSUM_UNLOADING_FIXED        => parse_from!(rest, f32, EleConsumUnloadingFixed),
+            Self::ELE_CONSUM_LOADING_FIXED          => parse_from!(rest, f32, EleConsumLoadingFixed), Self::ELE_CONSUM_UNLOADING_FIXED        => parse_from!(rest, f32, EleConsumUnloadingFixed),
             Self::NO_ELE_FACTOR                     => parse_from!(rest, f32, NoEleFactor),
             Self::NO_ELE_FACTOR_NIGHT               => parse_from!(rest, f32, NoEleFactorNight),
+            Self::NO_HEAT_FACTOR                    => parse_from!(rest, f32, NoHeatFactor),
 
             Self::ENGINE_SPEED           => parse_from!(rest, f32, EngineSpeed),
             Self::CABLEWAY_HEAVY         => Ok((Self::CablewayHeavy, rest)),
             Self::CABLEWAY_LIGHT         => Ok((Self::CablewayLight, rest)),
+            Self::RESOURCE_SOURCE        => parse_from!(rest, ResourceSourceType, ResourceSource),
 
             Self::STORAGE                  => parse_from!(rest, (StorageCargoType, f32), Storage),
             Self::STORAGE_SPECIAL          => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageSpecial),
             Self::STORAGE_FUEL             => parse_from!(rest, (StorageCargoType, f32), StorageFuel),
             Self::STORAGE_EXPORT           => parse_from!(rest, (StorageCargoType, f32), StorageExport),
             Self::STORAGE_IMPORT           => parse_from!(rest, (StorageCargoType, f32), StorageImport),
+            Self::STORAGE_IMPORT_CARPLANT  => parse_from!(rest, (StorageCargoType, f32), StorageImportCarplant),
             Self::STORAGE_EXPORT_SPECIAL   => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageExportSpecial),
             Self::STORAGE_IMPORT_SPECIAL   => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageImportSpecial),
+            Self::STORAGE_DEMAND_BASIC     => parse_from!(rest, (StorageCargoType, f32), StorageDemandBasic),
+            Self::STORAGE_DEMAND_HOTEL     => parse_from!(rest, (StorageCargoType, f32), StorageDemandHotel),
+            Self::STORAGE_PACK_FROM        => parse_from!(rest, u32, StoragePackFrom),
+            Self::STORAGE_UNPACK_TO        => parse_from!(rest, u32, StorageUnpackTo),
+
             Self::VEHICLE_LOADING_FACTOR   => parse_from!(rest, f32, VehicleLoadingFactor),
             Self::VEHICLE_UNLOADING_FACTOR => parse_from!(rest, f32, VehicleUnloadingFactor),
 
             
             Self::ROAD_VEHICLE_NOT_FLIP     => Ok((Self::RoadNotFlip, rest)),
             Self::ROAD_VEHICLE_ELECTRIC     => Ok((Self::RoadElectric, rest)),
-            Self::VEHICLE_STATION_NOT_BLOCK => Ok((Self::VehicleStationNotBlock, rest)),
+
+            Self::WORKING_VEHICLES_NEEDED                    => parse_from!(rest, u32, WorkingVehiclesNeeded),
+            Self::VEHICLE_STATION                            => parse_from!(rest, (Point3f, Point3f), VehicleStation),
+            Self::VEHICLE_STATION_NOT_BLOCK                  => Ok((Self::VehicleStationNotBlock, rest)),
             Self::VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT     => parse_from!(rest, Point3f, VehicleStationNotBlockDetourPoint),
             Self::VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT_PID => parse_from!(rest, (u32, Point3f), VehicleStationNotBlockDetourPointPid),
-            Self::VEHICLE_STATION                            => parse_from!(rest, (Point3f, Point3f), VehicleStation),
-            Self::WORKING_VEHICLES_NEEDED                    => parse_from!(rest, u32, WorkingVehiclesNeeded),
+
             Self::VEHICLE_PARKING                            => parse_from!(rest, (Point3f, Point3f), VehicleParking),
+            Self::VEHICLE_PARKING_ADVANCED_POINT             => parse_from!(rest, Point3f, VehicleParkingAdvancedPoint),
+            Self::VEHICLE_PARKING_ADVANCED_POINT_PID         => parse_from!(rest, (u32, Point3f), VehicleParkingAdvancedPointPid),
             Self::VEHICLE_PARKING_PERSONAL                   => parse_from!(rest, (Point3f, Point3f), VehicleParkingPersonal),
 
             Self::AIRPLANE_STATION                => parse_from!(rest, Tagged2Points::<AirplaneStationType>, AirplaneStation),
+            Self::HELIPORT_STATION                => parse_from!(rest, (Point3f, Point3f), HeliportStation),
+            Self::SHIP_STATION                    => parse_from!(rest, (Point3f, Point3f), ShipStation),
             Self::HELIPORT_AREA                   => parse_from!(rest, f32, HeliportArea),
             Self::HARBOR_OVER_TERRAIN_FROM        => parse_from!(rest, f32, HarborTerrainFrom),
             Self::HARBOR_OVER_WATER_FROM          => parse_from!(rest, f32, HarborWaterFrom),
+            Self::HARBOR_EXTEND_WHEN_BULDING      => parse_from!(rest, f32, HarborExtendWhenBuilding),
 
             Self::CONNECTION => Self::parse_connection(rest),
 
             Self::CONNECTIONS_SPACE               => parse_from!(rest, Rect, ConnectionsSpace),
             Self::CONNECTIONS_ROAD_DEAD_SQUARE    => parse_from!(rest, Rect, ConnectionsRoadDeadSquare),
             Self::CONNECTIONS_AIRPORT_DEAD_SQUARE => parse_from!(rest, Rect, ConnectionsAirportDeadSquare),
+            Self::CONNECTIONS_WATER_DEAD_SQUARE   => parse_from!(rest, (f32, Rect), ConnectionsWaterDeadSquare),
             Self::OFFSET_CONNECTION_XYZW          => parse_from!(rest, (u32, Point3f), OffsetConnection),
 
             Self::ATTRACTION_TYPE                  => parse_from!(rest, (AttractionType, u32), AttractionType),
@@ -142,7 +161,11 @@ impl<'a> Token<'a> {
             Self::WORKER_RENDERING_AREA          => parse_from!(rest, (Point3f, Point3f), WorkerRenderingArea),
             Self::RESOURCE_VISUALIZATION         => parse_from!(rest, ResourceVisualization, ResourceVisualization),
             Self::RESOURCE_INCREASE_POINT        => parse_from!(rest, (u32, Point3f), ResourceIncreasePoint),
+            Self::RESOURCE_INCREASE_CONV_POINT   => parse_from!(rest, (u32, Point3f, Point3f), ResourceIncreaseConvPoint),
+            Self::RESOURCE_FILLING_POINT         => parse_from!(rest, Point3f, ResourceFillingPoint),
+            Self::RESOURCE_FILLING_CONV_POINT    => parse_from!(rest, (Point3f, Point3f), ResourceFillingConvPoint),
             Self::WORKING_SFX                    => parse_from!(rest, IdStringParam, WorkingSfx),
+            Self::ANIMATION_MESH                 => parse_from!(rest, (IdStringParam, IdStringParam), AnimationMesh),
 
 
             Self::COST_WORK                      => parse_from!(rest, (ConstructionPhase, f32), CostWork),
@@ -170,11 +193,11 @@ impl<'a> Token<'a> {
 
         if let Some(tag) = Connection2PType::from_str(con_type) {
             <(Point3f, Point3f)>::parse(rest).map(|((p1, p2), rest)| (Self::Connection2Points(Tagged2Points { tag, p1, p2 }), rest))
+        } else if let Some(tag) = Connection1PType::from_str(con_type) {
+            Point3f::parse(rest).map(|(p, rest)| (Self::Connection1Point((tag, p)), rest))
         } else { 
             match con_type {
-                Self::CONNECTION_ROAD_DEAD      => parse_from!(rest, Point3f, ConnectionRoadDead),
-                Self::CONNECTION_AIRPORT_DEAD   => parse_from!(rest, Point3f, ConnectionAirportDead),
-                Self::CONNECTION_ADVANCED_POINT => parse_from!(rest, Point3f, ConnectionAdvancedPoint),
+                Self::CONNECTION_RAIL_DEADEND => Ok((Self::ConnectionRailDeadend, rest)),
                 _ => Err(format!("Unknown connection type: {}", con_type))
             }
         }
@@ -462,6 +485,7 @@ impl Connection2PType {
             Self::CONN_ELECTRIC_H_OUT => Some(Self::ElectricHighOut),
             Self::CONN_ELECTRIC_L_IN  => Some(Self::ElectricLowIn),
             Self::CONN_ELECTRIC_L_OUT => Some(Self::ElectricLowOut),
+            Self::CONN_FENCE          => Some(Self::Fence),
             _ => None
         }
     }
@@ -474,7 +498,31 @@ impl ParseSlice<'_> for Connection2PType {
             static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([A-Z_]+)", RX_REMAINDER)).unwrap();
         }
 
-        parse_param(src, &RX, |s| Self::from_str(s).ok_or(format!("Unknown connection type '{}'", s)))
+        parse_param(src, &RX, |s| Self::from_str(s).ok_or(format!("Unknown 2-point connection type '{}'", s)))
+    }
+}
+
+
+impl Connection1PType {
+    fn from_str(src: &str) -> Option<Self> {
+        match src {
+            Self::ROAD_DEAD       => Some(Self::RoadDead),
+            Self::PEDESTRIAN_DEAD => Some(Self::PedestrianDead),
+            Self::WATER_DEAD      => Some(Self::WaterDead),
+            Self::AIRPORT_DEAD    => Some(Self::AirportDead),
+            Self::ADVANCED_POINT  => Some(Self::AdvancedPoint),
+            _ => None
+        }
+    }
+}
+
+impl ParseSlice<'_> for Connection1PType {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([A-Z_]+)", RX_REMAINDER)).unwrap();
+        }
+
+        parse_param(src, &RX, |s| Connection1PType::from_str(s).ok_or(format!("Unknown 1-point connection type '{}'", s)))
     }
 }
 
@@ -522,6 +570,9 @@ impl ParticleType {
             Self::FACTORY_BIG_WHITE    => Some(Self::BigWhite),
             Self::FACTORY_MEDIUM_WHITE => Some(Self::MediumWhite),
             Self::FACTORY_SMALL_WHITE  => Some(Self::SmallWhite),
+            Self::FOUNTAIN_1           => Some(Self::Fountain1),
+            Self::FOUNTAIN_2           => Some(Self::Fountain2),
+            Self::FOUNTAIN_3           => Some(Self::Fountain3),
             _ => None
         }
     }
@@ -530,7 +581,7 @@ impl ParticleType {
 impl ParseSlice<'_> for ParticleType {
     fn parse(src: Option<&str>) -> ParseResult<Self> {
         lazy_static! {
-            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([a-z_]+)", RX_REMAINDER)).unwrap();
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([0-9a-z_]+)", RX_REMAINDER)).unwrap();
         }
 
         parse_param(src, &RX, |s| ParticleType::from_str(s).ok_or(format!("Unknown particle type '{}'", s)))
@@ -602,46 +653,48 @@ impl ParseSlice<'_> for ConstructionAutoCost {
 impl ResourceType {
     fn from_str(src: &str) -> Option<Self> {
         match src {
-            Self::ALCOHOL      => Some(Self::Alcohol),
-            Self::ALUMINA      => Some(Self::Alumina),
-            Self::ALUMINIUM    => Some(Self::Aluminium),
-            Self::ASPHALT      => Some(Self::Asphalt),
-            Self::BAUXITE      => Some(Self::Bauxite),
-            Self::BITUMEN      => Some(Self::Bitumen),
-            Self::BOARDS       => Some(Self::Boards),
-            Self::BRICKS       => Some(Self::Bricks),
-            Self::CEMENT       => Some(Self::Cement),
-            Self::CHEMICALS    => Some(Self::Chemicals),
-            Self::CLOTHES      => Some(Self::Clothes),
-            Self::COAL         => Some(Self::Coal),
-            Self::CONCRETE     => Some(Self::Concrete),
-            Self::CROPS        => Some(Self::Crops),
-            Self::ELECTRO_COMP => Some(Self::ElectroComponents),
-            Self::ELECTRICITY  => Some(Self::Electricity),
-            Self::ELECTRONICS  => Some(Self::Electronics),
-            Self::FABRIC       => Some(Self::Fabric),
-            Self::FOOD         => Some(Self::Food),
-            Self::FUEL         => Some(Self::Fuel),
-            Self::GRAVEL       => Some(Self::Gravel),
-            Self::IRON         => Some(Self::Iron),
-            Self::LIVESTOCK    => Some(Self::Livestock),
-            Self::MECH_COMP    => Some(Self::MechComponents),
-            Self::MEAT         => Some(Self::Meat),
-            Self::NUCLEAR_FUEL => Some(Self::NuclearFuel),
+            Self::ALCOHOL       => Some(Self::Alcohol),
+            Self::ALUMINA       => Some(Self::Alumina),
+            Self::ALUMINIUM     => Some(Self::Aluminium),
+            Self::ASPHALT       => Some(Self::Asphalt),
+            Self::BAUXITE       => Some(Self::Bauxite),
+            Self::BITUMEN       => Some(Self::Bitumen),
+            Self::BOARDS        => Some(Self::Boards),
+            Self::BRICKS        => Some(Self::Bricks),
+            Self::CEMENT        => Some(Self::Cement),
+            Self::CHEMICALS     => Some(Self::Chemicals),
+            Self::CLOTHES       => Some(Self::Clothes),
+            Self::COAL          => Some(Self::Coal),
+            Self::CONCRETE      => Some(Self::Concrete),
+            Self::CROPS         => Some(Self::Crops),
+            Self::ELECTRO_COMP  => Some(Self::ElectroComponents),
+            Self::ELECTRICITY   => Some(Self::Electricity),
+            Self::ELECTRONICS   => Some(Self::Electronics),
+            Self::FABRIC        => Some(Self::Fabric),
+            Self::FOOD          => Some(Self::Food),
+            Self::FUEL          => Some(Self::Fuel),
+            Self::GRAVEL        => Some(Self::Gravel),
+            Self::HEAT          => Some(Self::Heat),
+            Self::IRON          => Some(Self::Iron),
+            Self::LIVESTOCK     => Some(Self::Livestock),
+            Self::MECH_COMP     => Some(Self::MechComponents),
+            Self::MEAT          => Some(Self::Meat),
+            Self::NUCLEAR_FUEL  => Some(Self::NuclearFuel),
             Self::NUCLEAR_WASTE => Some(Self::NuclearWaste),
-            Self::OIL          => Some(Self::Oil),
-            Self::PLASTIC      => Some(Self::Plastic),
-            Self::PREFABS      => Some(Self::PrefabPanels),
-            Self::RAW_BAUXITE  => Some(Self::RawBauxite),
-            Self::RAW_COAL     => Some(Self::RawCoal),
-            Self::RAW_IRON     => Some(Self::RawIron),
-            Self::STEEL        => Some(Self::Steel),
-            Self::UF_6         => Some(Self::UF6),
-            Self::URANIUM      => Some(Self::Uranium),
-            Self::VEHICLES     => Some(Self::Vehicles),
-            Self::WOOD         => Some(Self::Wood),
-            Self::WORKERS      => Some(Self::Workers),
-            Self::YELLOWCAKE   => Some(Self::Yellowcake),
+            Self::OIL           => Some(Self::Oil),
+            Self::PLASTIC       => Some(Self::Plastic),
+            Self::PREFABS       => Some(Self::PrefabPanels),
+            Self::RAW_BAUXITE   => Some(Self::RawBauxite),
+            Self::RAW_COAL      => Some(Self::RawCoal),
+            Self::RAW_GRAVEL    => Some(Self::RawGravel),
+            Self::RAW_IRON      => Some(Self::RawIron),
+            Self::STEEL         => Some(Self::Steel),
+            Self::UF_6          => Some(Self::UF6),
+            Self::URANIUM       => Some(Self::Uranium),
+            Self::VEHICLES      => Some(Self::Vehicles),
+            Self::WOOD          => Some(Self::Wood),
+            Self::WORKERS       => Some(Self::Workers),
+            Self::YELLOWCAKE    => Some(Self::Yellowcake),
             _ => None
         }
     }
@@ -702,6 +755,36 @@ impl ParseSlice<'_> for AttractionType {
         }
         
         parse_param(src, &RX, |s| AttractionType::from_str(s).ok_or(format!("Unknown attraction type '{}'", s)))
+    }
+}
+
+
+impl ResourceSourceType {
+    fn from_str(src: &str) -> Option<Self> {
+        match src {
+            Self::RES_SOURCE_ASPHALT         => Some(Self::Asphalt),
+            Self::RES_SOURCE_CONCRETE        => Some(Self::Concrete),
+            Self::RES_SOURCE_COVERED         => Some(Self::Covered),
+            Self::RES_SOURCE_COVERED_ELECTRO => Some(Self::CoveredElectro),
+            Self::RES_SOURCE_GRAVEL          => Some(Self::Gravel),
+            Self::RES_SOURCE_OPEN            => Some(Self::Open),
+            Self::RES_SOURCE_OPEN_BOARDS     => Some(Self::OpenBoards),
+            Self::RES_SOURCE_OPEN_BRICKS     => Some(Self::OpenBricks),
+            Self::RES_SOURCE_OPEN_PANELS     => Some(Self::OpenPanels),
+            Self::RES_SOURCE_WORKERS         => Some(Self::Workers),
+
+            _ => None
+        }
+    }
+}
+
+impl ParseSlice<'_> for ResourceSourceType {
+    fn parse(src: Option<&str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([A-Z_]+)", RX_REMAINDER)).unwrap();
+        }
+        
+        parse_param(src, &RX, |s| ResourceSourceType::from_str(s).ok_or(format!("Unknown resource-source type '{}'", s)))
     }
 }
 

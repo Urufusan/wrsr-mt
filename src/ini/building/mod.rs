@@ -46,6 +46,7 @@ pub enum Token<'a> {
     HeatDisable,
 
     CivilBuilding,
+    MonumentTresspassing,
     QualityOfLiving(f32),
 
     WorkersNeeded(u32),
@@ -63,45 +64,60 @@ pub enum Token<'a> {
     EleConsumUnloadingFixed(f32),
     NoEleFactor(f32),
     NoEleFactorNight(f32),
+    NoHeatFactor(f32),
 
     EngineSpeed(f32),
     CablewayHeavy,
     CablewayLight,
+    ResourceSource(ResourceSourceType),
 
     Storage((StorageCargoType, f32)),
     StorageSpecial((StorageCargoType, f32, ResourceType)),
     StorageFuel((StorageCargoType, f32)),
     StorageExport((StorageCargoType, f32)),
     StorageImport((StorageCargoType, f32)),
+    StorageImportCarplant((StorageCargoType, f32)),
     StorageExportSpecial((StorageCargoType, f32, ResourceType)),
     StorageImportSpecial((StorageCargoType, f32, ResourceType)),
+    StorageDemandBasic((StorageCargoType, f32)),
+    StorageDemandHotel((StorageCargoType, f32)),
+    StoragePackFrom(u32),
+    StorageUnpackTo(u32),
+
     VehicleLoadingFactor(f32),
     VehicleUnloadingFactor(f32),
 
     RoadNotFlip,
     RoadElectric,
+
+    WorkingVehiclesNeeded(u32),
+    VehicleStation((Point3f, Point3f)),
     VehicleStationNotBlock,
     VehicleStationNotBlockDetourPoint(Point3f),
     VehicleStationNotBlockDetourPointPid((u32, Point3f)),
-    VehicleStation((Point3f, Point3f)),
-    WorkingVehiclesNeeded(u32),
+
     VehicleParking((Point3f, Point3f)),
+    VehicleParkingAdvancedPoint(Point3f),
+    VehicleParkingAdvancedPointPid((u32, Point3f)),
     VehicleParkingPersonal((Point3f, Point3f)),
 
     AirplaneStation(Tagged2Points<AirplaneStationType>),
+    HeliportStation((Point3f, Point3f)),
+    ShipStation((Point3f, Point3f)),
     HeliportArea(f32),
     HarborTerrainFrom(f32),
     HarborWaterFrom(f32),
+    HarborExtendWhenBuilding(f32),
 
     Connection2Points(Tagged2Points<Connection2PType>),
-    ConnectionRoadDead(Point3f),
-    ConnectionAirportDead(Point3f),
-    ConnectionAdvancedPoint(Point3f),
+    Connection1Point((Connection1PType, Point3f)),
     OffsetConnection((u32, Point3f)),
+    ConnectionRailDeadend,
 
     ConnectionsSpace(Rect),
     ConnectionsRoadDeadSquare(Rect),
     ConnectionsAirportDeadSquare(Rect),
+    ConnectionsWaterDeadSquare((f32, Rect)),
 
     AttractionType((AttractionType, u32)),
     AttractionRememberUsage,
@@ -128,7 +144,11 @@ pub enum Token<'a> {
     WorkerRenderingArea((Point3f, Point3f)),
     ResourceVisualization(ResourceVisualization),
     ResourceIncreasePoint((u32, Point3f)),
+    ResourceIncreaseConvPoint((u32, Point3f, Point3f)),
+    ResourceFillingPoint(Point3f),
+    ResourceFillingConvPoint((Point3f, Point3f)),
     WorkingSfx(IdStringParam<'a>),
+    AnimationMesh((IdStringParam<'a>, IdStringParam<'a>)),
 
     CostWork((ConstructionPhase, f32)),
     CostWorkBuildingNode(IdStringParam<'a>),
@@ -152,6 +172,7 @@ impl<'a> Token<'a> {
     const HEATING_ENABLE:                 &'static str = "HEATING_ENABLE";
     const HEATING_DISABLE:                &'static str = "HEATING_DISABLE";
     const CIVIL_BUILDING:                 &'static str = "CIVIL_BUILDING";
+    const MONUMENT_ENABLE_TRESPASSING:    &'static str = "MONUMENT_ENABLE_TRESPASSING";
     const QUALITY_OF_LIVING:              &'static str = "QUALITY_OF_LIVING";
 
     const WORKERS_NEEDED:                 &'static str = "WORKERS_NEEDED";
@@ -169,18 +190,26 @@ impl<'a> Token<'a> {
     const ELE_CONSUM_UNLOADING_FIXED:        &'static str = "ELETRIC_CONSUMPTION_UNLOADING_FIXED";
     const NO_ELE_FACTOR:                     &'static str = "ELETRIC_WITHOUT_WORKING_FACTOR";
     const NO_ELE_FACTOR_NIGHT:               &'static str = "ELETRIC_WITHOUT_LIGHTING_FACTOR";
+    const NO_HEAT_FACTOR:                    &'static str = "HEATING_WITHOUT_WORKING_FACTOR";
 
     const ENGINE_SPEED:                   &'static str = "ENGINE_SPEED";
     const CABLEWAY_HEAVY:                 &'static str = "CABLEWAY_HEAVY";
     const CABLEWAY_LIGHT:                 &'static str = "CABLEWAY_LIGHT";
+    const RESOURCE_SOURCE:                &'static str = "RESOURCE_SOURCE_";
 
     const STORAGE:                        &'static str = "STORAGE";
     const STORAGE_SPECIAL:                &'static str = "STORAGE_SPECIAL";
     const STORAGE_FUEL:                   &'static str = "STORAGE_FUEL";
     const STORAGE_EXPORT:                 &'static str = "STORAGE_EXPORT";
     const STORAGE_IMPORT:                 &'static str = "STORAGE_IMPORT";
+    const STORAGE_IMPORT_CARPLANT:        &'static str = "STORAGE_IMPORT_CARPLANT";
     const STORAGE_EXPORT_SPECIAL:         &'static str = "STORAGE_EXPORT_SPECIAL";
     const STORAGE_IMPORT_SPECIAL:         &'static str = "STORAGE_IMPORT_SPECIAL";
+    const STORAGE_DEMAND_BASIC:           &'static str = "STORAGE_DEMAND_BASIC";
+    const STORAGE_DEMAND_HOTEL:           &'static str = "STORAGE_DEMAND_HOTEL";
+    const STORAGE_PACK_FROM:              &'static str = "STORAGE_PACKCONTAINERS_FROM_STORAGE";
+    const STORAGE_UNPACK_TO:              &'static str = "STORAGE_UNPACKCONTAINERS_TO_STORAGE";
+
     const VEHICLE_LOADING_FACTOR:         &'static str = "VEHICLE_LOADING_FACTOR";
     const VEHICLE_UNLOADING_FACTOR:       &'static str = "VEHICLE_UNLOADING_FACTOR";
 
@@ -188,29 +217,33 @@ impl<'a> Token<'a> {
     const ROAD_VEHICLE_NOT_FLIP:          &'static str = "ROADVEHICLE_NOTFLIP";
     const ROAD_VEHICLE_ELECTRIC:          &'static str = "ROADVEHICLE_ELETRIC";
 
+    const WORKING_VEHICLES_NEEDED:                    &'static str = "WORKING_VEHICLES_NEEDED";
+    const VEHICLE_STATION:                            &'static str = "VEHICLE_STATION";
     const VEHICLE_STATION_NOT_BLOCK:                  &'static str = "STATION_NOT_BLOCK";
     const VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT:     &'static str = "STATION_NOT_BLOCK_DETOUR_POINT";
     const VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT_PID: &'static str = "STATION_NOT_BLOCK_DETOUR_POINT_PID";
 
-    const VEHICLE_STATION:                &'static str = "VEHICLE_STATION";
-    const WORKING_VEHICLES_NEEDED:        &'static str = "WORKING_VEHICLES_NEEDED";
-    const VEHICLE_PARKING:                &'static str = "VEHICLE_PARKING";
-    const VEHICLE_PARKING_PERSONAL:       &'static str = "VEHICLE_PARKING_PERSONAL";
+    const VEHICLE_PARKING:                    &'static str = "VEHICLE_PARKING";
+    const VEHICLE_PARKING_ADVANCED_POINT:     &'static str = "VEHICLE_PARKING_ADVANCED_POINT";
+    const VEHICLE_PARKING_ADVANCED_POINT_PID: &'static str = "VEHICLE_PARKING_ADVANCED_POINT_PID";
+    const VEHICLE_PARKING_PERSONAL:           &'static str = "VEHICLE_PARKING_PERSONAL";
 
     const AIRPLANE_STATION:               &'static str = "AIRPLANE_STATION_";
+    const HELIPORT_STATION:               &'static str = "HELIPORT_STATION";
+    const SHIP_STATION:                   &'static str = "SHIP_STATION";
     const HELIPORT_AREA:                  &'static str = "HELIPORT_AREA";
     const HARBOR_OVER_TERRAIN_FROM:       &'static str = "HARBOR_OVER_TERRAIN_FROM";
     const HARBOR_OVER_WATER_FROM:         &'static str = "HARBOR_OVER_WATER_FROM";
+    const HARBOR_EXTEND_WHEN_BULDING:     &'static str = "HARBOR_EXTEND_AREA_WHEN_BULDING";
 
     const CONNECTION:                     &'static str = "CONNECTION_";
-    const CONNECTION_ROAD_DEAD:           &'static str = "ROAD_DEAD";
-    const CONNECTION_AIRPORT_DEAD:        &'static str = "AIRPORT_DEAD";
-    const CONNECTION_ADVANCED_POINT:      &'static str = "ADVANCED_POINT";
     const OFFSET_CONNECTION_XYZW:         &'static str = "OFFSET_CONNECTION_XYZW";
+    const CONNECTION_RAIL_DEADEND:        &'static str = "RAIL_DEADEND";
 
     const CONNECTIONS_SPACE:               &'static str = "CONNECTIONS_SPACE";
     const CONNECTIONS_ROAD_DEAD_SQUARE:    &'static str = "CONNECTIONS_ROAD_DEAD_SQUARE";
     const CONNECTIONS_AIRPORT_DEAD_SQUARE: &'static str = "CONNECTIONS_AIRPORT_DEAD_SQUARE";
+    const CONNECTIONS_WATER_DEAD_SQUARE:   &'static str = "CONNECTIONS_WATER_DEAD_SQUARE";
 
     const ATTRACTION_TYPE:                 &'static str = "ATTRACTIVE_TYPE_";
     const ATTRACTION_REMEMBER_USAGE:       &'static str = "ATTRACTIVE_USE_FORGOT_EVEN_MATCH";
@@ -237,7 +270,11 @@ impl<'a> Token<'a> {
     const WORKER_RENDERING_AREA:          &'static str = "WORKER_RENDERING_AREA";
     const RESOURCE_VISUALIZATION:         &'static str = "RESOURCE_VISUALIZATION";
     const RESOURCE_INCREASE_POINT:        &'static str = "RESOURCE_INCREASE_POINT";
+    const RESOURCE_INCREASE_CONV_POINT:   &'static str = "RESOURCE_INCREASE_CONVEYOR_POINT";
+    const RESOURCE_FILLING_POINT:         &'static str = "RESOURCE_FILLING_POINT";
+    const RESOURCE_FILLING_CONV_POINT:    &'static str = "RESOURCE_FILLING_CONVEYOR_POINT";
     const WORKING_SFX:                    &'static str = "WORKING_SFX";
+    const ANIMATION_MESH:                 &'static str = "ANIMATION_MESH";
 
 
     const COST_WORK:                      &'static str = "COST_WORK";
@@ -487,6 +524,9 @@ pub enum ParticleType {
     BigWhite,
     MediumWhite,
     SmallWhite,
+    Fountain1,
+    Fountain2,
+    Fountain3,
 }
 
 impl ParticleType {
@@ -500,6 +540,9 @@ impl ParticleType {
     const FACTORY_BIG_WHITE   : &'static str = "factory_big_white";
     const FACTORY_MEDIUM_WHITE: &'static str = "factory_medium_white";
     const FACTORY_SMALL_WHITE : &'static str = "factory_small_white";
+    const FOUNTAIN_1          : &'static str = "fountain1";
+    const FOUNTAIN_2          : &'static str = "fountain2";
+    const FOUNTAIN_3          : &'static str = "fountain3";
 }
 
 
@@ -593,6 +636,7 @@ pub enum ResourceType {
     Food,
     Fuel,
     Gravel,
+    Heat,
     Iron,
     Livestock,
     MechComponents,
@@ -604,6 +648,7 @@ pub enum ResourceType {
     PrefabPanels,
     RawBauxite,
     RawCoal,
+    RawGravel,
     RawIron,
     Steel,
     UF6,
@@ -637,6 +682,7 @@ impl ResourceType {
     const FOOD:          &'static str = "food";
     const FUEL:          &'static str = "fuel";
     const GRAVEL:        &'static str = "gravel";
+    const HEAT:          &'static str = "heat";
     const IRON:          &'static str = "iron";
     const LIVESTOCK:     &'static str = "livestock";
     const MECH_COMP:     &'static str = "mcomponents";
@@ -648,6 +694,7 @@ impl ResourceType {
     const PREFABS:       &'static str = "prefabpanels";
     const RAW_BAUXITE:   &'static str = "rawbauxite";
     const RAW_COAL:      &'static str = "rawcoal";
+    const RAW_GRAVEL:    &'static str = "rawgravel";
     const RAW_IRON:      &'static str = "rawiron";
     const STEEL:         &'static str = "steel";
     const UF_6:          &'static str = "uf6";
@@ -687,6 +734,7 @@ pub enum Connection2PType {
     ElectricHighOut,
     ElectricLowIn,
     ElectricLowOut,
+    Fence,
 }
 
 impl Connection2PType {
@@ -716,6 +764,26 @@ impl Connection2PType {
     const CONN_ELECTRIC_H_OUT: &'static str = "ELETRIC_HIGH_OUTPUT";
     const CONN_ELECTRIC_L_IN:  &'static str = "ELETRIC_LOW_INPUT";
     const CONN_ELECTRIC_L_OUT: &'static str = "ELETRIC_LOW_OUTPUT";
+    const CONN_FENCE:          &'static str = "FENCE";
+}
+
+
+#[derive(Clone, Copy)] 
+pub enum Connection1PType {
+    RoadDead,
+    PedestrianDead,
+    WaterDead,
+    AirportDead,
+    AdvancedPoint,
+}
+
+
+impl Connection1PType {
+    const ROAD_DEAD:       &'static str = "ROAD_DEAD";
+    const PEDESTRIAN_DEAD: &'static str = "PEDESTRIAN_DEAD";
+    const WATER_DEAD:      &'static str = "WATER_DEAD";
+    const AIRPORT_DEAD:    &'static str = "AIRPORT_DEAD";
+    const ADVANCED_POINT:  &'static str = "ADVANCED_POINT";
 }
 
 
@@ -751,6 +819,34 @@ impl AttractionType {
     const ATTRACTION_TYPE_SIGHT:   &'static str = "SIGHT";
     const ATTRACTION_TYPE_SWIM:    &'static str = "SWIM";
     const ATTRACTION_TYPE_ZOO:     &'static str = "ZOO";
+}
+
+
+pub enum ResourceSourceType {
+    Asphalt,
+    Concrete,
+    Covered,
+    CoveredElectro,
+    Gravel,
+    Open,
+    OpenBoards,
+    OpenBricks,
+    OpenPanels,
+    Workers,
+}
+
+
+impl ResourceSourceType {
+    const RES_SOURCE_ASPHALT:         &'static str = "ASPHALT";
+    const RES_SOURCE_CONCRETE:        &'static str = "CONCRETE";
+    const RES_SOURCE_COVERED:         &'static str = "COVERED";
+    const RES_SOURCE_COVERED_ELECTRO: &'static str = "COVERED_ELECTRO";
+    const RES_SOURCE_GRAVEL:          &'static str = "GRAVEL";
+    const RES_SOURCE_OPEN:            &'static str = "OPEN";
+    const RES_SOURCE_OPEN_BOARDS:     &'static str = "OPEN_BOARDS";
+    const RES_SOURCE_OPEN_BRICKS:     &'static str = "OPEN_BRICKS";
+    const RES_SOURCE_OPEN_PANELS:     &'static str = "OPEN_PANELS";
+    const RES_SOURCE_WORKERS:         &'static str = "WORKERS";
 }
 
 
