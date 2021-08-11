@@ -73,6 +73,8 @@ impl<'a> Token<'a> {
             Self::CONSUMPTION            => parse_from!(rest, (ResourceType, f32), Consumption),
             Self::CONSUMPTION_PER_SECOND => parse_from!(rest, (ResourceType, f32), ConsumptionPerSecond),
             Self::PRODUCTION             => parse_from!(rest, (ResourceType, f32), Production),
+            Self::PRODUCTION_SUN         => parse_from!(rest, f32, ProductionSun),
+            Self::PRODUCTION_WIND        => parse_from!(rest, f32, ProductionWind),
             Self::SEASONAL_TEMP_MIN      => parse_from!(rest, f32, SeasonalTempMin),
             Self::SEASONAL_TEMP_MAX      => parse_from!(rest, f32, SeasonalTempMax),
 
@@ -88,18 +90,21 @@ impl<'a> Token<'a> {
             Self::CABLEWAY_LIGHT         => Ok((Self::CablewayLight, rest)),
             Self::RESOURCE_SOURCE        => parse_from!(rest, ResourceSourceType, ResourceSource),
 
-            Self::STORAGE                  => parse_from!(rest, (StorageCargoType, f32), Storage),
-            Self::STORAGE_SPECIAL          => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageSpecial),
-            Self::STORAGE_FUEL             => parse_from!(rest, (StorageCargoType, f32), StorageFuel),
-            Self::STORAGE_EXPORT           => parse_from!(rest, (StorageCargoType, f32), StorageExport),
-            Self::STORAGE_IMPORT           => parse_from!(rest, (StorageCargoType, f32), StorageImport),
-            Self::STORAGE_IMPORT_CARPLANT  => parse_from!(rest, (StorageCargoType, f32), StorageImportCarplant),
-            Self::STORAGE_EXPORT_SPECIAL   => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageExportSpecial),
-            Self::STORAGE_IMPORT_SPECIAL   => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageImportSpecial),
-            Self::STORAGE_DEMAND_BASIC     => parse_from!(rest, (StorageCargoType, f32), StorageDemandBasic),
-            Self::STORAGE_DEMAND_HOTEL     => parse_from!(rest, (StorageCargoType, f32), StorageDemandHotel),
-            Self::STORAGE_PACK_FROM        => parse_from!(rest, u32, StoragePackFrom),
-            Self::STORAGE_UNPACK_TO        => parse_from!(rest, u32, StorageUnpackTo),
+            Self::STORAGE                       => parse_from!(rest, (StorageCargoType, f32), Storage),
+            Self::STORAGE_SPECIAL               => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageSpecial),
+            Self::STORAGE_FUEL                  => parse_from!(rest, (StorageCargoType, f32), StorageFuel),
+            Self::STORAGE_EXPORT                => parse_from!(rest, (StorageCargoType, f32), StorageExport),
+            Self::STORAGE_IMPORT                => parse_from!(rest, (StorageCargoType, f32), StorageImport),
+            Self::STORAGE_IMPORT_CARPLANT       => parse_from!(rest, (StorageCargoType, f32), StorageImportCarplant),
+            Self::STORAGE_EXPORT_SPECIAL        => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageExportSpecial),
+            Self::STORAGE_IMPORT_SPECIAL        => parse_from!(rest, (StorageCargoType, f32, ResourceType), StorageImportSpecial),
+            Self::STORAGE_DEMAND_BASIC          => parse_from!(rest, (StorageCargoType, f32), StorageDemandBasic),
+            Self::STORAGE_DEMAND_MEDIUMADVANCED => parse_from!(rest, (StorageCargoType, f32), StorageDemandMediumAdvanced),
+            Self::STORAGE_DEMAND_ADVANCED       => parse_from!(rest, (StorageCargoType, f32), StorageDemandAdvanced),
+            Self::STORAGE_DEMAND_HOTEL          => parse_from!(rest, (StorageCargoType, f32), StorageDemandHotel),
+            Self::STORAGE_PACK_FROM             => parse_from!(rest, u32, StoragePackFrom),
+            Self::STORAGE_UNPACK_TO             => parse_from!(rest, u32, StorageUnpackTo),
+            Self::STORAGE_LIVING_AUTO           => parse_from!(rest, IdStringParam, StorageLivingAuto),
 
             Self::VEHICLE_LOADING_FACTOR   => parse_from!(rest, f32, VehicleLoadingFactor),
             Self::VEHICLE_UNLOADING_FACTOR => parse_from!(rest, f32, VehicleUnloadingFactor),
@@ -107,6 +112,8 @@ impl<'a> Token<'a> {
             
             Self::ROAD_VEHICLE_NOT_FLIP     => Ok((Self::RoadNotFlip, rest)),
             Self::ROAD_VEHICLE_ELECTRIC     => Ok((Self::RoadElectric, rest)),
+            Self::VEHICLE_CANNOT_SELECT     => Ok((Self::VehicleCannotSelect, rest)),
+            Self::LONG_TRAINS               => Ok((Self::LongTrains, rest)),
 
             Self::WORKING_VEHICLES_NEEDED                    => parse_from!(rest, u32, WorkingVehiclesNeeded),
             Self::VEHICLE_STATION                            => parse_from!(rest, (Point3f, Point3f), VehicleStation),
@@ -156,6 +163,7 @@ impl<'a> Token<'a> {
             Self::POLLUTION_SMALL                => Ok((Self::PollutionSmall,  rest)),
 
             Self::PARTICLE                       => parse_from!(rest, (ParticleType, Point3f, f32, f32), Particle),
+            Self::PARTICLE_REACTOR               => parse_from!(rest, Point3f, ParticleReactor),
 
             Self::TEXT_CAPTION                   => parse_from!(rest, (Point3f, Point3f), TextCaption),
             Self::WORKER_RENDERING_AREA          => parse_from!(rest, (Point3f, Point3f), WorkerRenderingArea),
@@ -165,7 +173,9 @@ impl<'a> Token<'a> {
             Self::RESOURCE_FILLING_POINT         => parse_from!(rest, Point3f, ResourceFillingPoint),
             Self::RESOURCE_FILLING_CONV_POINT    => parse_from!(rest, (Point3f, Point3f), ResourceFillingConvPoint),
             Self::WORKING_SFX                    => parse_from!(rest, IdStringParam, WorkingSfx),
+            Self::ANIMATION_FPS                  => parse_from!(rest, f32, AnimationFps),
             Self::ANIMATION_MESH                 => parse_from!(rest, (IdStringParam, IdStringParam), AnimationMesh),
+            Self::UNDERGROUND_MESH               => parse_from!(rest, (IdStringParam, IdStringParam), UndergroundMesh),
 
 
             Self::COST_WORK                      => parse_from!(rest, (ConstructionPhase, f32), CostWork),
@@ -460,7 +470,8 @@ impl Connection2PType {
     fn from_str(src: &str) -> Option<Self> {
         match src {
             Self::CONN_AIRROAD        => Some(Self::AirRoad),
-            Self::CONN_PEDESTRIAN     => Some(Self::Pedestrian),
+            Self::CONN_PED            => Some(Self::Pedestrian),
+            Self::CONN_PED_NOTPICK    => Some(Self::PedestrianNotPick),
             Self::CONN_ROAD           => Some(Self::Road),
             Self::CONN_ROAD_ALLOWPASS => Some(Self::RoadAllowpass),
             Self::CONN_ROAD_BORDER    => Some(Self::RoadBorder),
@@ -469,6 +480,7 @@ impl Connection2PType {
             Self::CONN_RAIL           => Some(Self::Rail),
             Self::CONN_RAIL_ALLOWPASS => Some(Self::RailAllowpass),
             Self::CONN_RAIL_BORDER    => Some(Self::RailBorder),
+            Self::CONN_RAIL_HEIGHT    => Some(Self::RailHeight),
             Self::CONN_HEATING_BIG    => Some(Self::HeatingBig),
             Self::CONN_HEATING_SMALL  => Some(Self::HeatingSmall),
             Self::CONN_STEAM_IN       => Some(Self::SteamIn),
@@ -541,6 +553,8 @@ impl StorageCargoType {
             Self::LIVESTOCK => Some(Self::Livestock),
             Self::GENERAL   => Some(Self::General),
             Self::VEHICLES  => Some(Self::Vehicles),
+            Self::NUCLEAR1  => Some(Self::Nuclear1),
+            Self::NUCLEAR2  => Some(Self::Nuclear2),
             _ => None
         }
     }
@@ -549,7 +563,7 @@ impl StorageCargoType {
 impl ParseSlice<'_> for StorageCargoType {
     fn parse(src: Option<&str>) -> ParseResult<Self> {
         lazy_static! {
-            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([A-Z_]+)", RX_REMAINDER)).unwrap();
+            static ref RX: Regex = Regex::new(concatcp!(r"(?s)^([0-9A-Z_]+)", RX_REMAINDER)).unwrap();
         }
 
         parse_param(src, &RX, |s| StorageCargoType::from_str(s).ok_or(format!("Unknown storage cargo type '{}'", s)))
@@ -821,7 +835,8 @@ impl ParseSlice<'_> for ResourceVisualization {
 
 
 lazy_static! {
-    static ref RX_SPLIT: Regex = Regex::new(concatcp!("(^|", r"(((\s*\r?)|((--|//)[^\n]*))\n)+", r")(\$|end\s*(\r?\n\s*)*)")).unwrap();
+    //static ref RX_SPLIT: Regex = Regex::new(concatcp!("(^|", r"(((\s*\r?)|((--|//)[^\n]*))\n)+", r")(\$|end\s*(\r?\n\s*)*)")).unwrap();
+    static ref RX_SPLIT: Regex = Regex::new(concatcp!("(^|", r"(\s*((--|//)[^\n]*)?\r?\n)+", r")(\$|end\s*(\r?\n\s*)*)")).unwrap();
 }
 
 

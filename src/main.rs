@@ -259,7 +259,7 @@ fn main() {
                                         }
                                         println!();
                                     },
-                                    Err(e) => println!("Error: {}, chunk: [{}]", e, t_str),
+                                    Err(e) => println!(" > > > Error > > >\n > > > {}\n > > > chunk: [{}]", e, t_str),
                                 }
                             }
  //                       }

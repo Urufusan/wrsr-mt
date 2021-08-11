@@ -55,6 +55,8 @@ pub enum Token<'a> {
     Consumption((ResourceType, f32)),
     ConsumptionPerSecond((ResourceType, f32)),
     Production((ResourceType, f32)),
+    ProductionSun(f32),
+    ProductionWind(f32),
     SeasonalTempMin(f32),
     SeasonalTempMax(f32),
 
@@ -80,15 +82,20 @@ pub enum Token<'a> {
     StorageExportSpecial((StorageCargoType, f32, ResourceType)),
     StorageImportSpecial((StorageCargoType, f32, ResourceType)),
     StorageDemandBasic((StorageCargoType, f32)),
+    StorageDemandMediumAdvanced((StorageCargoType, f32)),
+    StorageDemandAdvanced((StorageCargoType, f32)),
     StorageDemandHotel((StorageCargoType, f32)),
     StoragePackFrom(u32),
     StorageUnpackTo(u32),
+    StorageLivingAuto(IdStringParam<'a>),
 
     VehicleLoadingFactor(f32),
     VehicleUnloadingFactor(f32),
 
     RoadNotFlip,
     RoadElectric,
+    VehicleCannotSelect,
+    LongTrains,
 
     WorkingVehiclesNeeded(u32),
     VehicleStation((Point3f, Point3f)),
@@ -140,6 +147,7 @@ pub enum Token<'a> {
     PollutionSmall,
 
     Particle((ParticleType, Point3f, f32, f32)),
+    ParticleReactor(Point3f),
     TextCaption((Point3f, Point3f)),
     WorkerRenderingArea((Point3f, Point3f)),
     ResourceVisualization(ResourceVisualization),
@@ -148,7 +156,9 @@ pub enum Token<'a> {
     ResourceFillingPoint(Point3f),
     ResourceFillingConvPoint((Point3f, Point3f)),
     WorkingSfx(IdStringParam<'a>),
+    AnimationFps(f32),
     AnimationMesh((IdStringParam<'a>, IdStringParam<'a>)),
+    UndergroundMesh((IdStringParam<'a>, IdStringParam<'a>)),
 
     CostWork((ConstructionPhase, f32)),
     CostWorkBuildingNode(IdStringParam<'a>),
@@ -181,6 +191,8 @@ impl<'a> Token<'a> {
     const CONSUMPTION:                    &'static str = "CONSUMPTION";
     const CONSUMPTION_PER_SECOND:         &'static str = "CONSUMPTION_PER_SECOND";
     const PRODUCTION:                     &'static str = "PRODUCTION";
+    const PRODUCTION_SUN:                 &'static str = "PRODUCTION_CONNECT_TO_SUN";
+    const PRODUCTION_WIND:                &'static str = "PRODUCTION_CONNECT_TO_WIND";
     const SEASONAL_TEMP_MIN:              &'static str = "SEASONAL_CLOSE_IF_TEMP_BELLOW";
     const SEASONAL_TEMP_MAX:              &'static str = "SEASONAL_CLOSE_IF_TEMP_ABOVE";
 
@@ -206,13 +218,17 @@ impl<'a> Token<'a> {
     const STORAGE_EXPORT_SPECIAL:         &'static str = "STORAGE_EXPORT_SPECIAL";
     const STORAGE_IMPORT_SPECIAL:         &'static str = "STORAGE_IMPORT_SPECIAL";
     const STORAGE_DEMAND_BASIC:           &'static str = "STORAGE_DEMAND_BASIC";
+    const STORAGE_DEMAND_MEDIUMADVANCED:  &'static str = "STORAGE_DEMAND_MEDIUMADVANCED";
+    const STORAGE_DEMAND_ADVANCED:        &'static str = "STORAGE_DEMAND_ADVANCED";
     const STORAGE_DEMAND_HOTEL:           &'static str = "STORAGE_DEMAND_HOTEL";
     const STORAGE_PACK_FROM:              &'static str = "STORAGE_PACKCONTAINERS_FROM_STORAGE";
     const STORAGE_UNPACK_TO:              &'static str = "STORAGE_UNPACKCONTAINERS_TO_STORAGE";
+    const STORAGE_LIVING_AUTO:            &'static str = "STORAGE_LIVING_AUTO";
 
     const VEHICLE_LOADING_FACTOR:         &'static str = "VEHICLE_LOADING_FACTOR";
     const VEHICLE_UNLOADING_FACTOR:       &'static str = "VEHICLE_UNLOADING_FACTOR";
-
+    const VEHICLE_CANNOT_SELECT:          &'static str = "VEHICLE_CANNOTSELECT_INSIDE";
+    const LONG_TRAINS:                    &'static str = "LONG_TRAINS";
 
     const ROAD_VEHICLE_NOT_FLIP:          &'static str = "ROADVEHICLE_NOTFLIP";
     const ROAD_VEHICLE_ELECTRIC:          &'static str = "ROADVEHICLE_ELETRIC";
@@ -266,6 +282,7 @@ impl<'a> Token<'a> {
     const POLLUTION_SMALL:                &'static str = "POLLUTION_SMALL";
 
     const PARTICLE:                       &'static str = "PARTICLE";
+    const PARTICLE_REACTOR:               &'static str = "PARTICLE_REACTOR";
     const TEXT_CAPTION:                   &'static str = "TEXT_CAPTION";
     const WORKER_RENDERING_AREA:          &'static str = "WORKER_RENDERING_AREA";
     const RESOURCE_VISUALIZATION:         &'static str = "RESOURCE_VISUALIZATION";
@@ -274,7 +291,9 @@ impl<'a> Token<'a> {
     const RESOURCE_FILLING_POINT:         &'static str = "RESOURCE_FILLING_POINT";
     const RESOURCE_FILLING_CONV_POINT:    &'static str = "RESOURCE_FILLING_CONVEYOR_POINT";
     const WORKING_SFX:                    &'static str = "WORKING_SFX";
+    const ANIMATION_FPS:                  &'static str = "ANIMATION_SPEED_FPS";
     const ANIMATION_MESH:                 &'static str = "ANIMATION_MESH";
+    const UNDERGROUND_MESH:               &'static str = "UNDERGROUND_MESH";
 
 
     const COST_WORK:                      &'static str = "COST_WORK";
@@ -494,6 +513,8 @@ pub enum StorageCargoType {
     Livestock,
     General,
     Vehicles,
+    Nuclear1,
+    Nuclear2,
 }
 
 
@@ -509,6 +530,10 @@ impl StorageCargoType {
     const LIVESTOCK: &'static str = "RESOURCE_TRANSPORT_LIVESTOCK";
     const GENERAL:   &'static str = "RESOURCE_TRANSPORT_GENERAL";
     const VEHICLES:  &'static str = "RESOURCE_TRANSPORT_VEHICLES";
+    //const ELETRIC:   &'static str = "RESOURCE_TRANSPORT_ELETRIC";
+    //const HEATING:   &'static str = "RESOURCE_TRANSPORT_HEATING";
+    const NUCLEAR1:  &'static str = "RESOURCE_TRANSPORT_NUCLEAR1";
+    const NUCLEAR2:  &'static str = "RESOURCE_TRANSPORT_NUCLEAR2";
 }
 
 
@@ -710,6 +735,7 @@ impl ResourceType {
 pub enum Connection2PType {
     AirRoad,
     Pedestrian,
+    PedestrianNotPick,
     Road,
     RoadAllowpass,
     RoadBorder,
@@ -718,6 +744,7 @@ pub enum Connection2PType {
     Rail,
     RailAllowpass,
     RailBorder,
+    RailHeight,
     HeatingBig,
     HeatingSmall,
     SteamIn,
@@ -739,7 +766,8 @@ pub enum Connection2PType {
 
 impl Connection2PType {
     const CONN_AIRROAD:        &'static str = "AIRROAD";
-    const CONN_PEDESTRIAN:     &'static str = "PEDESTRIAN";
+    const CONN_PED:            &'static str = "PEDESTRIAN";
+    const CONN_PED_NOTPICK:    &'static str = "PEDESTRIAN_NOTPICK";
     const CONN_ROAD:           &'static str = "ROAD";
     const CONN_ROAD_ALLOWPASS: &'static str = "ROAD_ALLOWPASS";
     const CONN_ROAD_BORDER:    &'static str = "ROAD_BORDER";
@@ -748,6 +776,7 @@ impl Connection2PType {
     const CONN_RAIL:           &'static str = "RAIL";
     const CONN_RAIL_ALLOWPASS: &'static str = "RAIL_ALLOWPASS";
     const CONN_RAIL_BORDER:    &'static str = "RAIL_BORDER";
+    const CONN_RAIL_HEIGHT:    &'static str = "RAIL_HEIGHT";
     const CONN_HEATING_BIG:    &'static str = "HEATING_BIG";
     const CONN_HEATING_SMALL:  &'static str = "HEATING_SMALL";
     const CONN_STEAM_IN:       &'static str = "STEAM_INPUT";

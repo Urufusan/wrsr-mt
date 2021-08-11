@@ -56,6 +56,7 @@ impl Token<'_> {
             Self::ConnectionsWaterDeadSquare((x, r)) => write!(wr, "{}\r\n{}\r\n{} {}\r\n{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, x, r.x1, r.z1, r.x2, r.z2),
 
             Self::Particle((t, p, a, s))           => write!(wr, "{} {} {} {} {} {} {}", Self::PARTICLE, t, p.x, p.y, p.z, a, s),
+            Self::ParticleReactor(p)               => write!(wr, "{} {} {} {}", Self::PARTICLE_REACTOR, p.x, p.y, p.z),
             Self::TextCaption((a, b))              => write_pfx_2pts(wr, Self::TEXT_CAPTION, a, b),
             Self::WorkerRenderingArea((a, b))      => write_pfx_2pts(wr, Self::WORKER_RENDERING_AREA, a, b),
             Self::ResourceVisualization(ResourceVisualization { storage_id, position: p, rotation, scale: s, numstep_x: (x1, x2), numstep_z: (z1, z2) }) => 
@@ -94,6 +95,8 @@ impl Display for Token<'_> {
             Self::Consumption((t, x))              => write!(f, "{} {} {}", Self::CONSUMPTION, t, x),
             Self::ConsumptionPerSecond((t, x))     => write!(f, "{} {} {}", Self::CONSUMPTION_PER_SECOND, t, x),
             Self::Production((t, x))               => write!(f, "{} {} {}", Self::PRODUCTION, t, x),
+            Self::ProductionSun(x)                 => write!(f, "{} {}",    Self::PRODUCTION_SUN, x),
+            Self::ProductionWind(x)                => write!(f, "{} {}",    Self::PRODUCTION_WIND, x),
             Self::SeasonalTempMin(x)               => write!(f, "{} {}",    Self::SEASONAL_TEMP_MIN, x),
             Self::SeasonalTempMax(x)               => write!(f, "{} {}",    Self::SEASONAL_TEMP_MAX, x),
 
@@ -111,7 +114,7 @@ impl Display for Token<'_> {
             Self::ResourceSource(t)                => write!(f, "{}{}",  Self::RESOURCE_SOURCE, t),
 
             Self::Storage((t, x))                  => write!(f, "{} {} {}",    Self::STORAGE, t, x),
-            Self::StorageSpecial((t, x, r))        => write!(f, "{} {} {} {}", Self::STORAGE, t, x, r),
+            Self::StorageSpecial((t, x, r))        => write!(f, "{} {} {} {}", Self::STORAGE_SPECIAL, t, x, r),
             Self::StorageFuel((t, x))              => write!(f, "{} {} {}",    Self::STORAGE_FUEL, t, x),
             Self::StorageExport((t, x))            => write!(f, "{} {} {}",    Self::STORAGE_EXPORT, t, x),
             Self::StorageImport((t, x))            => write!(f, "{} {} {}",    Self::STORAGE_IMPORT, t, x),
@@ -119,15 +122,21 @@ impl Display for Token<'_> {
             Self::StorageExportSpecial((t, x, r))  => write!(f, "{} {} {} {}", Self::STORAGE_EXPORT, t, x, r),
             Self::StorageImportSpecial((t, x, r))  => write!(f, "{} {} {} {}", Self::STORAGE_IMPORT, t, x, r),
             Self::StorageDemandBasic((t, x))       => write!(f, "{} {} {}",    Self::STORAGE_DEMAND_BASIC, t, x),
+            Self::StorageDemandMediumAdvanced((t, x))
+                                                   => write!(f, "{} {} {}",    Self::STORAGE_DEMAND_MEDIUMADVANCED, t, x),
+            Self::StorageDemandAdvanced((t, x))    => write!(f, "{} {} {}",    Self::STORAGE_DEMAND_ADVANCED, t, x),
             Self::StorageDemandHotel((t, x))       => write!(f, "{} {} {}",    Self::STORAGE_DEMAND_HOTEL, t, x),
             Self::StoragePackFrom(i)               => write!(f, "{} {}",       Self::STORAGE_PACK_FROM, i),
             Self::StorageUnpackTo(i)               => write!(f, "{} {}",       Self::STORAGE_UNPACK_TO, i),
+            Self::StorageLivingAuto(id)            => write!(f, "{} {}",       Self::STORAGE_LIVING_AUTO, id),
 
             Self::VehicleLoadingFactor(x)          => write!(f, "{} {}", Self::VEHICLE_LOADING_FACTOR, x),
             Self::VehicleUnloadingFactor(x)        => write!(f, "{} {}", Self::VEHICLE_UNLOADING_FACTOR, x),
 
             Self::RoadNotFlip                      => write!(f, "{}", Self::ROAD_VEHICLE_NOT_FLIP),
             Self::RoadElectric                     => write!(f, "{}", Self::ROAD_VEHICLE_ELECTRIC),
+            Self::VehicleCannotSelect              => write!(f, "{}", Self::VEHICLE_CANNOT_SELECT),
+            Self::LongTrains                       => write!(f, "{}", Self::LONG_TRAINS),
 
             Self::WorkingVehiclesNeeded(x)         => write!(f, "{} {}",    Self::WORKING_VEHICLES_NEEDED, x),
             Self::VehicleStation((a, b))           => write!(f, "{} {} {}", Self::VEHICLE_STATION, a, b),
@@ -181,6 +190,7 @@ impl Display for Token<'_> {
             Self::PollutionSmall                   => write!(f, "{}", Self::POLLUTION_SMALL),
 
             Self::Particle((t, x, a, s))           => write!(f, "{} {} {} {} {}", Self::PARTICLE, t, x, a, s),
+            Self::ParticleReactor(x)               => write!(f, "{} {}",    Self::PARTICLE_REACTOR, x),
             Self::TextCaption((a, b))              => write!(f, "{} {} {}", Self::TEXT_CAPTION, a, b),
             Self::WorkerRenderingArea((a, b))      => write!(f, "{} {} {}", Self::WORKER_RENDERING_AREA, a, b),
             Self::ResourceVisualization(rv)        => write!(f, "{} {}\nposition: {}\nrotation: {}\nscale: {}\nnumstep_x: {:?}\nnumstep_t: {:?}", 
@@ -192,7 +202,9 @@ impl Display for Token<'_> {
             Self::ResourceFillingConvPoint((a, b)) => write!(f, "{} {} {}",    Self::RESOURCE_FILLING_CONV_POINT, a, b),
 
             Self::WorkingSfx(s)                    => write!(f, "{} {}",       Self::WORKING_SFX, s),
+            Self::AnimationFps(x)                  => write!(f, "{} {}",       Self::ANIMATION_FPS, x),
             Self::AnimationMesh((s, t))            => write!(f, "{} {}\r\n{}", Self::ANIMATION_MESH, s, t),
+            Self::UndergroundMesh((s, t))          => write!(f, "{} {}\r\n{}", Self::UNDERGROUND_MESH, s, t),
 
             Self::CostWork((t, x))                 => write!(f, "{} {} {}", Self::COST_WORK, t, x),
             Self::CostWorkBuildingNode(n)          => write!(f, "{} {}",    Self::COST_WORK_BUILDING_NODE, n),
@@ -306,33 +318,35 @@ impl Display for BuildingSubtype {
 impl Display for super::Connection2PType {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let s = match self {
-            Self::AirRoad         => Self::CONN_AIRROAD,
-            Self::Pedestrian      => Self::CONN_PEDESTRIAN,
-            Self::Road            => Self::CONN_ROAD,
-            Self::RoadAllowpass   => Self::CONN_ROAD_ALLOWPASS,
-            Self::RoadBorder      => Self::CONN_ROAD_BORDER,
-            Self::RoadIn          => Self::CONN_ROAD_IN,
-            Self::RoadOut         => Self::CONN_ROAD_OUT,
-            Self::Rail            => Self::CONN_RAIL,
-            Self::RailAllowpass   => Self::CONN_RAIL_ALLOWPASS,
-            Self::RailBorder      => Self::CONN_RAIL_BORDER,
-            Self::HeatingBig      => Self::CONN_HEATING_BIG,
-            Self::HeatingSmall    => Self::CONN_HEATING_SMALL,
-            Self::SteamIn         => Self::CONN_STEAM_IN,
-            Self::SteamOut        => Self::CONN_STEAM_OUT,
-            Self::PipeIn          => Self::CONN_PIPE_IN,
-            Self::PipeOut         => Self::CONN_PIPE_OUT,
-            Self::BulkIn          => Self::CONN_BULK_IN,
-            Self::BulkOut         => Self::CONN_BULK_OUT,
-            Self::Cableway        => Self::CONN_CABLEWAY,
-            Self::Factory         => Self::CONN_FACTORY,
-            Self::ConveyorIn      => Self::CONN_CONVEYOR_IN,
-            Self::ConveyorOut     => Self::CONN_CONVEYOR_OUT,
-            Self::ElectricHighIn  => Self::CONN_ELECTRIC_H_IN,
-            Self::ElectricHighOut => Self::CONN_ELECTRIC_H_OUT,
-            Self::ElectricLowIn   => Self::CONN_ELECTRIC_L_IN,
-            Self::ElectricLowOut  => Self::CONN_ELECTRIC_L_OUT,
-            Self::Fence           => Self::CONN_FENCE,
+            Self::AirRoad           => Self::CONN_AIRROAD,
+            Self::Pedestrian        => Self::CONN_PED,
+            Self::PedestrianNotPick => Self::CONN_PED_NOTPICK,
+            Self::Road              => Self::CONN_ROAD,
+            Self::RoadAllowpass     => Self::CONN_ROAD_ALLOWPASS,
+            Self::RoadBorder        => Self::CONN_ROAD_BORDER,
+            Self::RoadIn            => Self::CONN_ROAD_IN,
+            Self::RoadOut           => Self::CONN_ROAD_OUT,
+            Self::Rail              => Self::CONN_RAIL,
+            Self::RailAllowpass     => Self::CONN_RAIL_ALLOWPASS,
+            Self::RailBorder        => Self::CONN_RAIL_BORDER,
+            Self::RailHeight        => Self::CONN_RAIL_HEIGHT,
+            Self::HeatingBig        => Self::CONN_HEATING_BIG,
+            Self::HeatingSmall      => Self::CONN_HEATING_SMALL,
+            Self::SteamIn           => Self::CONN_STEAM_IN,
+            Self::SteamOut          => Self::CONN_STEAM_OUT,
+            Self::PipeIn            => Self::CONN_PIPE_IN,
+            Self::PipeOut           => Self::CONN_PIPE_OUT,
+            Self::BulkIn            => Self::CONN_BULK_IN,
+            Self::BulkOut           => Self::CONN_BULK_OUT,
+            Self::Cableway          => Self::CONN_CABLEWAY,
+            Self::Factory           => Self::CONN_FACTORY,
+            Self::ConveyorIn        => Self::CONN_CONVEYOR_IN,
+            Self::ConveyorOut       => Self::CONN_CONVEYOR_OUT,
+            Self::ElectricHighIn    => Self::CONN_ELECTRIC_H_IN,
+            Self::ElectricHighOut   => Self::CONN_ELECTRIC_H_OUT,
+            Self::ElectricLowIn     => Self::CONN_ELECTRIC_L_IN,
+            Self::ElectricLowOut    => Self::CONN_ELECTRIC_L_OUT,
+            Self::Fence             => Self::CONN_FENCE,
         };
 
         write!(f, "{}", s)
@@ -369,6 +383,8 @@ impl Display for super::StorageCargoType {
             Self::Livestock => Self::LIVESTOCK,
             Self::General   => Self::GENERAL,
             Self::Vehicles  => Self::VEHICLES,
+            Self::Nuclear1  => Self::NUCLEAR1,
+            Self::Nuclear2  => Self::NUCLEAR2,
         };
 
         write!(f, "{}", s)
