@@ -21,18 +21,12 @@ pub struct Rect {
 
 pub enum StrValue<'a> {
     Borrowed(&'a str),
-    Owned(String),
+//  Owned(String),
 }
 
 pub struct QuotedStringParam<'a>(StrValue<'a>);
 
 pub struct IdStringParam<'a>(StrValue<'a>);
-
-pub struct Tagged2Points<T> {
-    tag: T,
-    p1: Point3f,
-    p2: Point3f,
-}
 
 //#[derive(Clone)]
 pub enum Token<'a> {
@@ -46,27 +40,30 @@ pub enum Token<'a> {
     HeatDisable,
 
     CivilBuilding,
-    MonumentTresspassing,
+    MonumentTrespass,
     QualityOfLiving(f32),
 
     WorkersNeeded(u32),
     ProfessorsNeeded(u32),
     CitizenAbleServe(u32),
     Consumption((ResourceType, f32)),
-    ConsumptionPerSecond((ResourceType, f32)),
+    ConsumptionPerSec((ResourceType, f32)),
     Production((ResourceType, f32)),
     ProductionSun(f32),
     ProductionWind(f32),
     SeasonalTempMin(f32),
     SeasonalTempMax(f32),
 
-    EleConsumLightingWorkerFactor(f32),
-    EleConsumLivingWorkerFactor(f32),
-    EleConsumLoadingFixed(f32),
-    EleConsumUnloadingFixed(f32),
-    NoEleFactor(f32),
-    NoEleFactorNight(f32),
-    NoHeatFactor(f32),
+    EleConsumWorkerFactorNight(f32),
+    EleConsumWorkerFactorBase(f32),
+    EleConsumServeFactorNight(f32),
+    EleConsumServeFactorBase(f32),
+    EleConsumCargoLoadFactor(f32),
+    EleConsumCargoUnloadFactor(f32),
+
+    NoEleWorkFactorBase(f32),
+    NoEleWorkFactorNight(f32),
+    NoHeatWorkFactor(f32),
 
     EngineSpeed(f32),
     CablewayHeavy,
@@ -100,15 +97,15 @@ pub enum Token<'a> {
     WorkingVehiclesNeeded(u32),
     VehicleStation((Point3f, Point3f)),
     VehicleStationNotBlock,
-    VehicleStationNotBlockDetourPoint(Point3f),
-    VehicleStationNotBlockDetourPointPid((u32, Point3f)),
+    VehicleStationDetourPoint(Point3f),
+    VehicleStationDetourPid((u32, Point3f)),
 
     VehicleParking((Point3f, Point3f)),
-    VehicleParkingAdvancedPoint(Point3f),
-    VehicleParkingAdvancedPointPid((u32, Point3f)),
+    VehicleParkingDetourPoint(Point3f),
+    VehicleParkingDetourPid((u32, Point3f)),
     VehicleParkingPersonal((Point3f, Point3f)),
 
-    AirplaneStation(Tagged2Points<AirplaneStationType>),
+    AirplaneStation((AirplaneStationType, Point3f, Point3f)),
     HeliportStation((Point3f, Point3f)),
     ShipStation((Point3f, Point3f)),
     HeliportArea(f32),
@@ -116,7 +113,7 @@ pub enum Token<'a> {
     HarborWaterFrom(f32),
     HarborExtendWhenBuilding(f32),
 
-    Connection2Points(Tagged2Points<Connection2PType>),
+    Connection2Points((Connection2PType, Point3f, Point3f)),
     Connection1Point((Connection1PType, Point3f)),
     OffsetConnection((u32, Point3f)),
     ConnectionRailDeadend,
@@ -182,27 +179,31 @@ impl<'a> Token<'a> {
     const HEATING_ENABLE:                 &'static str = "HEATING_ENABLE";
     const HEATING_DISABLE:                &'static str = "HEATING_DISABLE";
     const CIVIL_BUILDING:                 &'static str = "CIVIL_BUILDING";
-    const MONUMENT_ENABLE_TRESPASSING:    &'static str = "MONUMENT_ENABLE_TRESPASSING";
+    const MONUMENT_TRESPASS:              &'static str = "MONUMENT_ENABLE_TRESPASSING";
     const QUALITY_OF_LIVING:              &'static str = "QUALITY_OF_LIVING";
 
     const WORKERS_NEEDED:                 &'static str = "WORKERS_NEEDED";
     const PROFESSORS_NEEDED:              &'static str = "PROFESORS_NEEDED";
     const CITIZEN_ABLE_SERVE:             &'static str = "CITIZEN_ABLE_SERVE";
     const CONSUMPTION:                    &'static str = "CONSUMPTION";
-    const CONSUMPTION_PER_SECOND:         &'static str = "CONSUMPTION_PER_SECOND";
+    const CONSUMPTION_PER_SEC:            &'static str = "CONSUMPTION_PER_SECOND";
     const PRODUCTION:                     &'static str = "PRODUCTION";
     const PRODUCTION_SUN:                 &'static str = "PRODUCTION_CONNECT_TO_SUN";
     const PRODUCTION_WIND:                &'static str = "PRODUCTION_CONNECT_TO_WIND";
     const SEASONAL_TEMP_MIN:              &'static str = "SEASONAL_CLOSE_IF_TEMP_BELLOW";
     const SEASONAL_TEMP_MAX:              &'static str = "SEASONAL_CLOSE_IF_TEMP_ABOVE";
 
-    const ELE_CONSUM_LIGHTING_WORKER_FACTOR: &'static str = "ELETRIC_CONSUMPTION_LIGHTING_WORKER_FACTOR";
-    const ELE_CONSUM_LIVING_WORKER_FACTOR:   &'static str = "ELETRIC_CONSUMPTION_LIVING_WORKER_FACTOR";
-    const ELE_CONSUM_LOADING_FIXED:          &'static str = "ELETRIC_CONSUMPTION_LOADING_FIXED";
-    const ELE_CONSUM_UNLOADING_FIXED:        &'static str = "ELETRIC_CONSUMPTION_UNLOADING_FIXED";
-    const NO_ELE_FACTOR:                     &'static str = "ELETRIC_WITHOUT_WORKING_FACTOR";
-    const NO_ELE_FACTOR_NIGHT:               &'static str = "ELETRIC_WITHOUT_LIGHTING_FACTOR";
-    const NO_HEAT_FACTOR:                    &'static str = "HEATING_WITHOUT_WORKING_FACTOR";
+    const ELE_CONSUM_WORKER_FACTOR_BASE:  &'static str = "ELETRIC_CONSUMPTION_LIVING_WORKER_FACTOR";
+    const ELE_CONSUM_WORKER_FACTOR_NIGHT: &'static str = "ELETRIC_CONSUMPTION_LIGHTING_WORKER_FACTOR";
+    const ELE_CONSUM_SERVE_FACTOR_BASE:   &'static str = "ELETRIC_CONSUMPTION_LIVING_WORKER_FACTOR_ABLE_SERVE";
+    const ELE_CONSUM_SERVE_FACTOR_NIGHT:  &'static str = "ELETRIC_CONSUMPTION_LIGHTING_WORKER_FACTOR_ABLE_SERVE";
+
+    const ELE_CONSUM_CARGO_LOAD_FACTOR:   &'static str = "ELETRIC_CONSUMPTION_LOADING_FIXED";
+    const ELE_CONSUM_CARGO_UNLOAD_FACTOR: &'static str = "ELETRIC_CONSUMPTION_UNLOADING_FIXED";
+    const NO_ELE_WORK_FACTOR_BASE:        &'static str = "ELETRIC_WITHOUT_WORKING_FACTOR";
+    const NO_ELE_WORK_FACTOR_NIGHT:       &'static str = "ELETRIC_WITHOUT_LIGHTING_FACTOR";
+    const NO_HEAT_WORK_FACTOR:            &'static str = "HEATING_WITHOUT_WORKING_FACTOR";
+
 
     const ENGINE_SPEED:                   &'static str = "ENGINE_SPEED";
     const CABLEWAY_HEAVY:                 &'static str = "CABLEWAY_HEAVY";
@@ -233,16 +234,16 @@ impl<'a> Token<'a> {
     const ROAD_VEHICLE_NOT_FLIP:          &'static str = "ROADVEHICLE_NOTFLIP";
     const ROAD_VEHICLE_ELECTRIC:          &'static str = "ROADVEHICLE_ELETRIC";
 
-    const WORKING_VEHICLES_NEEDED:                    &'static str = "WORKING_VEHICLES_NEEDED";
-    const VEHICLE_STATION:                            &'static str = "VEHICLE_STATION";
-    const VEHICLE_STATION_NOT_BLOCK:                  &'static str = "STATION_NOT_BLOCK";
-    const VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT:     &'static str = "STATION_NOT_BLOCK_DETOUR_POINT";
-    const VEHICLE_STATION_NOT_BLOCK_DETOUR_POINT_PID: &'static str = "STATION_NOT_BLOCK_DETOUR_POINT_PID";
+    const WORKING_VEHICLES_NEEDED:        &'static str = "WORKING_VEHICLES_NEEDED";
+    const VEHICLE_STATION:                &'static str = "VEHICLE_STATION";
+    const VEHICLE_STATION_NOT_BLOCK:      &'static str = "STATION_NOT_BLOCK";
+    const VEHICLE_STATION_DETOUR_POINT:   &'static str = "STATION_NOT_BLOCK_DETOUR_POINT";
+    const VEHICLE_STATION_DETOUR_PID:     &'static str = "STATION_NOT_BLOCK_DETOUR_POINT_PID";
 
-    const VEHICLE_PARKING:                    &'static str = "VEHICLE_PARKING";
-    const VEHICLE_PARKING_ADVANCED_POINT:     &'static str = "VEHICLE_PARKING_ADVANCED_POINT";
-    const VEHICLE_PARKING_ADVANCED_POINT_PID: &'static str = "VEHICLE_PARKING_ADVANCED_POINT_PID";
-    const VEHICLE_PARKING_PERSONAL:           &'static str = "VEHICLE_PARKING_PERSONAL";
+    const VEHICLE_PARKING:                &'static str = "VEHICLE_PARKING";
+    const VEHICLE_PARKING_DETOUR_POINT:   &'static str = "VEHICLE_PARKING_ADVANCED_POINT";
+    const VEHICLE_PARKING_DETOUR_PID:     &'static str = "VEHICLE_PARKING_ADVANCED_POINT_PID";
+    const VEHICLE_PARKING_PERSONAL:       &'static str = "VEHICLE_PARKING_PERSONAL";
 
     const AIRPLANE_STATION:               &'static str = "AIRPLANE_STATION_";
     const HELIPORT_STATION:               &'static str = "HELIPORT_STATION";
@@ -263,7 +264,7 @@ impl<'a> Token<'a> {
 
     const ATTRACTION_TYPE:                 &'static str = "ATTRACTIVE_TYPE_";
     const ATTRACTION_REMEMBER_USAGE:       &'static str = "ATTRACTIVE_USE_FORGOT_EVEN_MATCH";
-    const ATTRACTIVE_SCORE:                &'static str = "ATTRACTIVE_SCORE";
+    const ATTRACTIVE_SCORE_BASE:           &'static str = "ATTRACTIVE_SCORE";
     const ATTRACTIVE_SCORE_ALCOHOL:        &'static str = "ATTRACTIVE_SCORE_ALCOHOL";
     const ATTRACTIVE_SCORE_CULTURE:        &'static str = "ATTRACTIVE_SCORE_CULTURE";
     const ATTRACTIVE_SCORE_RELIGION:       &'static str = "ATTRACTIVE_SCORE_RELIGION";
@@ -615,6 +616,7 @@ pub enum ConstructionAutoCost {
     WallWood,
     TechSteel,
     ElectroSteel,
+    TechElectroSteel,
     RoofWoodBrick,
     RoofSteel,
     RoofWoodSteel
@@ -631,7 +633,7 @@ impl ConstructionAutoCost {
     const WALL_WOOD:          &'static str = "wall_wood";
     const TECH_STEEL:         &'static str = "tech_steel";
     const ELECTRO_STEEL:      &'static str = "electro_steel";
-    //const TECH_ELECTRO_STEEL: &'static str = "techelectro_steel"; // ???
+    const TECH_ELECTRO_STEEL: &'static str = "techelectro_steel";
     const ROOF_WOOD_BRICK:    &'static str = "roof_woodbrick";
     const ROOF_STEEL:         &'static str = "roof_steel";
     const ROOF_WOOD_STEEL:    &'static str = "roof_woodsteel";

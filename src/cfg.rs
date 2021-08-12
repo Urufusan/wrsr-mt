@@ -119,6 +119,7 @@ lazy_static! {
         use clap::{App, Arg, SubCommand};
 
         let cmd_install = SubCommand::with_name("install")
+            .about("Install modpack from specified source")
             .arg(Arg::with_name("in").required(true))
             .arg(Arg::with_name("out")
                 .default_value(r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet\workshop_wip"))
@@ -126,57 +127,71 @@ lazy_static! {
 
         let cmd_nmf = {
             let cmd_nmf_show = SubCommand::with_name("show")
+                .about("Parse the specified *.nmf and print it's structure")
                 .arg(Arg::with_name("nmf-path").required(true));
 
             let cmd_nmf_toobj = SubCommand::with_name("to-obj")
+                .about("Convert the specified *.nmf to *.obj format")
                 .arg(Arg::with_name("nmf-input").required(true))
                 .arg(Arg::with_name("obj-output").required(true));
 
             let cmd_nmf_scale = SubCommand::with_name("scale")
+                .about("Scale the specified *.nmf by given factor")
                 .arg(Arg::with_name("nmf-input").required(true))
                 .arg(Arg::with_name("factor").required(true))
                 .arg(Arg::with_name("nmf-output").required(true));
 
             let cmd_nmf_mirror_x = SubCommand::with_name("mirror-x")
+                .about("Mirror the specified *.nmf along the X-axis")
                 .arg(Arg::with_name("nmf-input").required(true))
                 .arg(Arg::with_name("nmf-output").required(true));
 
+            /*
             let cmd_nmf_patch = SubCommand::with_name("patch")
                 .arg(Arg::with_name("nmf-input").required(true))
                 .arg(Arg::with_name("nmf-patch").required(true))
-                .arg(Arg::with_name("nmf-output").required(true));
+                .arg(Arg::with_name("nmf-output").required(true));*/
 
-            SubCommand::with_name("nmf").subcommand(cmd_nmf_show)
-                                        .subcommand(cmd_nmf_toobj)
-                                        .subcommand(cmd_nmf_scale)
-                                        .subcommand(cmd_nmf_mirror_x)
-                                        .subcommand(cmd_nmf_patch)
+            SubCommand::with_name("nmf")
+                .about("Operations for *.nmf files")
+                .subcommand(cmd_nmf_show)
+                .subcommand(cmd_nmf_toobj)
+                .subcommand(cmd_nmf_scale)
+                .subcommand(cmd_nmf_mirror_x)
+                //.subcommand(cmd_nmf_patch)
         };
 
         let cmd_mod = {
-            let cmd_mod_validate = SubCommand::with_name("validate")
-                .arg(Arg::with_name("dir-input").required(true));
+            //let cmd_mod_validate = SubCommand::with_name("validate")
+            //    .arg(Arg::with_name("dir-input").required(true));
 
             let cmd_mod_scale = SubCommand::with_name("scale")
                 .arg(Arg::with_name("dir-input").required(true))
                 .arg(Arg::with_name("factor").required(true))
                 .arg(Arg::with_name("dir-output").required(true));
 
-            SubCommand::with_name("mod").subcommand(cmd_mod_validate)
-                                        .subcommand(cmd_mod_scale)
+            SubCommand::with_name("mod")
+                .about("Operations for whole mods")
+            //    .subcommand(cmd_mod_validate)
+                .subcommand(cmd_mod_scale)
         };
 
         let cmd_ini = {
             let cmd_ini_parse = SubCommand::with_name("parse")
+                .about("Try to parse the specified building.ini, check for errors, print results")
                 .arg(Arg::with_name("ini-path").required(true));
 
-            SubCommand::with_name("ini").subcommand(cmd_ini_parse)
+            SubCommand::with_name("ini")
+                .about("Operations for *.ini files")
+                .subcommand(cmd_ini_parse)
         };
 
         let m = App::new("wrsr-mt")
             .author("kromgart@gmail.com")
-            .version("0.1")
+            .version("0.2")
             .about("Modding tools for \"Workers & Resources: Soviet Rebuplic\"")
+            .long_about("Modding tools for \"Workers & Resources: Soviet Rebuplic\"\n\
+                         homepage: https://github.com/Kromgart/wrsr-mt")
             .arg(
                 Arg::with_name("stock")
                     .long("stock")
@@ -189,7 +204,7 @@ lazy_static! {
             )
             .subcommand(cmd_install)
             .subcommand(cmd_nmf)
-            .subcommand(cmd_mod)
+            //.subcommand(cmd_mod)
             .subcommand(cmd_ini)
             .get_matches();
 

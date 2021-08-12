@@ -3,6 +3,8 @@
 Command-line application, providing a variety of modding-related tools for "Workers &amp; Resources: Soviet Republic".
 
 # Features
+ - validation
+   - building.ini files (syntax validation, typos)
  - manipulating *\*.nmf* files
    - displaying model structure (submaterials, objects, geometry)
    - scaling
@@ -14,6 +16,11 @@ Command-line application, providing a variety of modding-related tools for "Work
 
 
 # Examples
+
+Check building ini-file for syntax errors:
+
+    $ wrsr-mt ini parse building.ini
+
 
 Show details of 'model.nmf':
 
