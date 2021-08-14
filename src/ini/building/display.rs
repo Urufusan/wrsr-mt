@@ -5,7 +5,6 @@ use super::{BuildingType,
             BuildingSubtype,
             ResourceVisualization,
             Token,
-            Point3f,
            };
 
 
@@ -559,44 +558,6 @@ impl Display for super::ResourceSourceType {
             Self::OpenBricks     => Self::RES_SOURCE_OPEN_BRICKS,
             Self::OpenPanels     => Self::RES_SOURCE_OPEN_PANELS,
             Self::Workers        => Self::RES_SOURCE_WORKERS,
-        };
-
-        write!(f, "{}", s)
-    }
-}
-
-
-impl Display for Point3f {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "({}, {}, {})", self.x, self.y, self.z)
-    }
-}
-
-impl Display for super::Rect {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "({}, {}, {}, {})", self.x1, self.z1, self.x2, self.z2)
-    }
-}
-
-impl Display for super::QuotedStringParam<'_> {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        let Self(s) = self;
-        write!(f, "\"{}\"", s)
-    }
-}
-
-impl Display for super::IdStringParam<'_> {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        let Self(s) = self;
-        write!(f, "{}", s)
-    }
-}
-
-impl Display for super::StrValue<'_> {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        let s: &str = match self {
-            Self::Borrowed(s) => s,
-            //Self::Owned(s) => s.as_str()
         };
 
         write!(f, "{}", s)

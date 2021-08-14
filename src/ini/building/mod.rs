@@ -1,32 +1,9 @@
 mod display;
 mod parse;
 
+use crate::ini::common::{ParseError, ParseResult, Point3f, Rect, QuotedStringParam, IdStringParam};
 
-#[derive(Clone, Copy)]
-pub struct Point3f {
-    x: f32,
-    y: f32,
-    z: f32
-}
-
-
-#[derive(Clone, Copy)]
-pub struct Rect {
-    x1: f32,
-    z1: f32,
-    x2: f32,
-    z2: f32
-}
-
-
-pub enum StrValue<'a> {
-    Borrowed(&'a str),
-//  Owned(String),
-}
-
-pub struct QuotedStringParam<'a>(StrValue<'a>);
-
-pub struct IdStringParam<'a>(StrValue<'a>);
+pub use parse::{parse_tokens, parse_tokens_strict};
 
 //#[derive(Clone)]
 pub enum Token<'a> {
@@ -317,17 +294,9 @@ impl<'a> Token<'a> {
 }
 
 
-impl<'a> super::IniToken<'a> for Token<'a> {
-    fn serialize<W: std::io::Write>(&self, wr: W) -> Result<(), std::io::Error>{
+impl<'t> super::IniToken for Token<'t> {
+    fn serialize<W: std::io::Write>(&self, wr: W) -> Result<(), std::io::Error> {
         self.serialize_token(wr)
-    }
-
-    fn parse_tokens(src: &'a str) -> Vec<(&'a str, super::ParseResult<'a, Self>)> {
-        parse::parse_tokens_all(src)
-    }
-
-    fn parse_strict(src: &'a str) -> Result<Vec<(&'a str, Self)>, Vec<(&'a str, super::ParseError)>> {
-        parse::parse_tokens_strict(src)
     }
 }
 

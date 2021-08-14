@@ -180,58 +180,50 @@ fn main() {
 
 
         //---------------- mod subcommand --------------------------------
-        cfg::AppCommand::Mod(cmd) => {
+        cfg::AppCommand::ModBuilding(cmd) => {
+            const RENDERCONFIG_INI: &str = "renderconfig.ini";
+            const BUILDING_INI: &str = "building.ini";
+
             match cmd {
                 cfg::ModCommand::Validate(cfg::ModValidateCommand { dir_input }) => {
-                    let ini_path = dir_input.join("building.ini");
-                    if ini_path.exists() {
-                        println!("Found building.ini. Validating the target directory as a building mod...");
-                        let ini_buf = fs::read_to_string(ini_path).unwrap();
 
-                        let ini = ini::BuildingIni::from_slice(&ini_buf);
-                        match ini {
-                            Ok(_) => println!("building.ini: OK"),
-                            Err(errors) => {
-                                println!("building.ini: {} errors", errors.len());
-                                for (chunk, e) in errors {
-                                    println!("{}; chunk: [{}]\n", e, chunk);
-                                }
-                            }
-                        }
-                    } else {
-                        panic!("Unknown mod type at {:?}", dir_input);
-                    }
+                    let render_buf = fs::read_to_string(&dir_input.join(RENDERCONFIG_INI)).unwrap();
+                    let render_ini = ini::parse_renderconfig_ini(&render_buf).unwrap();
+                    println!("{}: OK", RENDERCONFIG_INI);
+
+                    let bld_buf = fs::read_to_string(&dir_input.join(BUILDING_INI)).unwrap();
+                    let bld_ini = ini::parse_building_ini(&bld_buf).unwrap();
+                    println!("{}: OK", BUILDING_INI);
+
                 },
 
                 cfg::ModCommand::Scale(cfg::ModScaleCommand { dir_input, factor, dir_output }) => {
-                    let ini_path = dir_input.join("building.ini");
-                    if ini_path.exists() {
-                        println!("Found building.ini. Scaling the target directory as a building mod...");
-                        let ini_buf = fs::read_to_string(ini_path).unwrap();
 
-                        let ini = ini::BuildingIni::from_slice(&ini_buf);
-                        match ini {
-                            Ok(mut ini) => { 
-                                copy_directory(&dir_input, &dir_output).expect("Cannot copy mod directory");
-                                let out_path = dir_output.join("building.ini");
-                                ini.scale(*factor);
+                    let render_buf = fs::read_to_string(&dir_input.join(RENDERCONFIG_INI)).unwrap();
+                    let mut render_ini = ini::parse_renderconfig_ini(&render_buf).unwrap();
+                    println!("{}: OK", RENDERCONFIG_INI);
 
-                                let mut ini_out = io::BufWriter::new(fs::OpenOptions::new().write(true).truncate(true).open(out_path).unwrap());
-                                ini.write_to(&mut ini_out).expect("Cannot write building.ini");
-                                ini_out.flush().unwrap();
+                    let bld_buf = fs::read_to_string(&dir_input.join(BUILDING_INI)).unwrap();
+                    let mut bld_ini = ini::parse_building_ini(&bld_buf).unwrap();
+                    println!("{}: OK", BUILDING_INI);
 
-                                println!("building.ini: updated");
-                            },
-                            Err(errors) => {
-                                println!("building.ini: {} errors", errors.len());
-                                for (chunk, e) in errors {
-                                    println!("{}; chunk: [{}]\n", e, chunk);
-                                }
-                            }
-                        }
-                    } else {
-                        panic!("Unknown mod type at {:?}", dir_input);
-                    }
+                    // TODO: make clean copy
+                    println!("ini files parsed successfully. Copying directory...");
+                    copy_directory(&dir_input, &dir_output).expect("Cannot copy mod directory");
+
+                    ini::scale::render(&mut render_ini, *factor);
+                    let render_out_path = dir_output.join(RENDERCONFIG_INI);
+                    let mut render_ini_out = io::BufWriter::new(fs::OpenOptions::new().write(true).truncate(true).open(render_out_path).unwrap());
+                    render_ini.write_to(&mut render_ini_out).expect(&format!("Cannot write {}", BUILDING_INI));
+                    render_ini_out.flush().unwrap();
+                    println!("{}: updated", RENDERCONFIG_INI);
+
+                    ini::scale::building(&mut bld_ini, *factor);
+                    let bld_out_path = dir_output.join(BUILDING_INI);
+                    let mut bld_ini_out = io::BufWriter::new(fs::OpenOptions::new().write(true).truncate(true).open(bld_out_path).unwrap());
+                    bld_ini.write_to(&mut bld_ini_out).expect(&format!("Cannot write {}", BUILDING_INI));
+                    bld_ini_out.flush().unwrap();
+                    println!("{}: updated", BUILDING_INI);
                 },
             }
         },
@@ -239,36 +231,34 @@ fn main() {
 
         //---------------- ini subcommand --------------------------------
         cfg::AppCommand::Ini(cmd) => {
-            use ini::IniToken;
+            fn process_tokens<T: std::fmt::Display>(ts: Vec<(&str, ini::common::ParseResult<T>)>) {
+                for (t_str, t_val) in ts.iter() {
+                    match t_val {
+                        Ok((t, rest)) => {
+                            print!("{}", t);
+                            if let Some(rest) = rest {
+                                print!(" [remainder: {:?}]", rest);
+                            }
+                            println!();
+                        },
+                        Err(e) => println!(" > > > Error > > >\n > > > {}\n > > > chunk: [{}]", e, t_str),
+                    }
+                }
+            }
 
             match cmd {
-                cfg::IniCommand::Parse(cfg::IniParseCommand { path }) => {
-                    if path.exists() {
-//                        if path.file_name().unwrap() == "building.ini" {
-                            println!("Parsing building.ini...");
-                            let ini_buf = fs::read_to_string(path).unwrap();
-
-                            let tokens = ini::building::Token::parse_tokens(&ini_buf);
-
-                            for (t_str, t_val) in tokens.iter() {
-                                match t_val {
-                                    Ok((t, rest)) => {
-                                        print!("{}", t);
-                                        if let Some(rest) = rest {
-                                            print!(" [remainder: {:?}]", rest);
-                                        }
-                                        println!();
-                                    },
-                                    Err(e) => println!(" > > > Error > > >\n > > > {}\n > > > chunk: [{}]", e, t_str),
-                                }
-                            }
- //                       }
-                    } else {
-                        panic!("File not found: {:?}", path);
-                    }
-
+                cfg::IniCommand::ParseBuilding(path) => {
+                    let buf = fs::read_to_string(path).expect("Cannot read the specified file");
+                    let tokens = ini::parse_building_tokens(&buf);
+                    process_tokens(tokens);
+                },
+                cfg::IniCommand::ParseRender(path) => {
+                    let buf = fs::read_to_string(path).expect("Cannot read the specified file");
+                    let tokens = ini::parse_render_tokens(&buf);
+                    process_tokens(tokens);
                 },
             }
+
         },
 
         //---------------- subcommands end --------------------------------
@@ -292,14 +282,33 @@ fn copy_directory(src: &Path, dest: &Path) -> io::Result<()> {
 
     for d_res in fs::read_dir(src)? {
         let e = d_res?;
+        let fname = e.file_name();
         let ftyp = e.file_type()?;
-        if ftyp.is_file() {
-            fs::copy(&e.path(), &dest.join(e.file_name()))?;
+        if ftyp.is_file() && fname != "building.bbox" && fname != "building.fire" {
+            fs::copy(&e.path(), &dest.join(fname))?;
 
         } else if ftyp.is_dir() {
-            copy_directory(&e.path(), &dest.join(e.file_name()))?;
+            copy_directory(&e.path(), &dest.join(fname))?;
         } 
     }
 
     Ok(())
 }
+
+/*
+fn parse_ini_or_abort<'a, T: ini::IniToken>(name: &str, ini_buf: &'a str) -> ini::IniFile<'a, T> {
+    let ini = ini::IniFile::<T>::from_slice(&ini_buf);
+    match ini {
+        Ok(ini) => { 
+            println!("{}: OK", name);
+            ini
+        },
+        Err(errors) => {
+            eprintln!("Invalid {}: {} errors", name, errors.len());
+            for (chunk, e) in errors {
+                eprintln!("{}; chunk: [{}]\n", e, chunk);
+            }
+            std::process::exit(1);
+        }
+    }
+}*/

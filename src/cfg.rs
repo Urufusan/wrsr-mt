@@ -8,7 +8,7 @@ use std::str::FromStr;
 pub enum AppCommand {
     Install(InstallCommand),
     Nmf(NmfCommand),
-    Mod(ModCommand),
+    ModBuilding(ModCommand),
     Ini(IniCommand),
 }
 
@@ -76,11 +76,8 @@ pub struct ModScaleCommand {
 //-------------------------------
 
 pub enum IniCommand {
-    Parse(IniParseCommand),
-}
-
-pub struct IniParseCommand {
-    pub path: PathBuf
+    ParseBuilding(PathBuf),
+    ParseRender(PathBuf),
 }
 
 //-------------------------------
@@ -161,29 +158,34 @@ lazy_static! {
                 //.subcommand(cmd_nmf_patch)
         };
 
-        let cmd_mod = {
-            //let cmd_mod_validate = SubCommand::with_name("validate")
-            //    .arg(Arg::with_name("dir-input").required(true));
+        let cmd_modbuilding = {
+            let cmd_mod_validate = SubCommand::with_name("validate")
+                .arg(Arg::with_name("dir-input").required(true));
 
-            let cmd_mod_scale = SubCommand::with_name("scale")
+            let cmd_modbuilding_scale = SubCommand::with_name("scale")
                 .arg(Arg::with_name("dir-input").required(true))
                 .arg(Arg::with_name("factor").required(true))
                 .arg(Arg::with_name("dir-output").required(true));
 
-            SubCommand::with_name("mod")
+            SubCommand::with_name("mod-building")
                 .about("Operations for whole mods")
-            //    .subcommand(cmd_mod_validate)
-                .subcommand(cmd_mod_scale)
+                .subcommand(cmd_mod_validate)
+                .subcommand(cmd_modbuilding_scale)
         };
 
         let cmd_ini = {
-            let cmd_ini_parse = SubCommand::with_name("parse")
+            let cmd_ini_parsebuilding = SubCommand::with_name("parse-building")
                 .about("Try to parse the specified building.ini, check for errors, print results")
+                .arg(Arg::with_name("ini-path").required(true));
+
+            let cmd_ini_parserender = SubCommand::with_name("parse-render")
+                .about("Try to parse the specified renderconfig.ini, check for errors, print results")
                 .arg(Arg::with_name("ini-path").required(true));
 
             SubCommand::with_name("ini")
                 .about("Operations for *.ini files")
-                .subcommand(cmd_ini_parse)
+                .subcommand(cmd_ini_parsebuilding)
+                .subcommand(cmd_ini_parserender)
         };
 
         let m = App::new("wrsr-mt")
@@ -204,7 +206,7 @@ lazy_static! {
             )
             .subcommand(cmd_install)
             .subcommand(cmd_nmf)
-            //.subcommand(cmd_mod)
+            .subcommand(cmd_modbuilding)
             .subcommand(cmd_ini)
             .get_matches();
 
@@ -227,9 +229,13 @@ lazy_static! {
 
                 ("ini", Some(m)) => {
                     let command = match m.subcommand() {
-                        ("parse", Some(m)) => {
+                        ("parse-building", Some(m)) => {
                             let path = mk_path(m, "ini-path");
-                            IniCommand::Parse(IniParseCommand { path })
+                            IniCommand::ParseBuilding(path)
+                        },
+                        ("parse-render", Some(m)) => {
+                            let path = mk_path(m, "ini-path");
+                            IniCommand::ParseRender(path)
                         },
                         (cname, _) => panic!("Unknown ini subcommand '{}'" , cname)
                     };
@@ -237,7 +243,7 @@ lazy_static! {
                     AppCommand::Ini(command)
                 },
 
-                ("mod", Some(m)) => {
+                ("mod-building", Some(m)) => {
                     let command = match m.subcommand() {
                         ("validate", Some(m)) => {
                             let dir_input = mk_path(m, "dir-input");
@@ -252,7 +258,7 @@ lazy_static! {
                         (cname, _) => panic!("Unknown mod subcommand '{}'" , cname)
                     };
 
-                    AppCommand::Mod(command)
+                    AppCommand::ModBuilding(command)
                 },
 
                 ("nmf", Some(m)) => {
