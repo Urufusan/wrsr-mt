@@ -231,6 +231,7 @@ fn main() {
 
         //---------------- ini subcommand --------------------------------
         cfg::AppCommand::Ini(cmd) => {
+
             fn process_tokens<T: std::fmt::Display>(ts: Vec<(&str, ini::common::ParseResult<T>)>) {
                 for (t_str, t_val) in ts.iter() {
                     match t_val {
@@ -255,6 +256,11 @@ fn main() {
                 cfg::IniCommand::ParseRender(path) => {
                     let buf = fs::read_to_string(path).expect("Cannot read the specified file");
                     let tokens = ini::parse_render_tokens(&buf);
+                    process_tokens(tokens);
+                },
+                cfg::IniCommand::ParseMaterial(path) => {
+                    let buf = fs::read_to_string(path).expect("Cannot read the specified file");
+                    let tokens = ini::parse_material_tokens(&buf);
                     process_tokens(tokens);
                 },
             }

@@ -704,8 +704,6 @@ impl ParseSlice<'_> for ResourceVisualization {
 }
 
 
-
-
 lazy_static! {
     static ref RX_SPLIT: Regex = Regex::new(concatcp!("(^|", r"(\s*((--|//)[^\n]*)?\r?\n)+", r")(\$|end\s*(\r?\n\s*)*)")).unwrap();
 }

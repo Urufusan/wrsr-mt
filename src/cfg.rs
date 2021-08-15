@@ -78,6 +78,7 @@ pub struct ModScaleCommand {
 pub enum IniCommand {
     ParseBuilding(PathBuf),
     ParseRender(PathBuf),
+    ParseMaterial(PathBuf),
 }
 
 //-------------------------------
@@ -175,17 +176,22 @@ lazy_static! {
 
         let cmd_ini = {
             let cmd_ini_parsebuilding = SubCommand::with_name("parse-building")
-                .about("Try to parse the specified building.ini, check for errors, print results")
-                .arg(Arg::with_name("ini-path").required(true));
+                .about("Parse the specified building.ini, check for errors, print results")
+                .arg(Arg::with_name("path").required(true));
 
-            let cmd_ini_parserender = SubCommand::with_name("parse-render")
-                .about("Try to parse the specified renderconfig.ini, check for errors, print results")
-                .arg(Arg::with_name("ini-path").required(true));
+            let cmd_ini_parserender = SubCommand::with_name("parse-renderconfig")
+                .about("Parse the specified renderconfig.ini, check for errors, print results")
+                .arg(Arg::with_name("path").required(true));
+
+            let cmd_ini_parsemtl = SubCommand::with_name("parse-mtl")
+                .about("Parse the specified *.mtl, check for errors, print results")
+                .arg(Arg::with_name("path").required(true));
 
             SubCommand::with_name("ini")
-                .about("Operations for *.ini files")
+                .about("Operations for individual configuration files")
                 .subcommand(cmd_ini_parsebuilding)
                 .subcommand(cmd_ini_parserender)
+                .subcommand(cmd_ini_parsemtl)
         };
 
         let m = App::new("wrsr-mt")
@@ -230,12 +236,16 @@ lazy_static! {
                 ("ini", Some(m)) => {
                     let command = match m.subcommand() {
                         ("parse-building", Some(m)) => {
-                            let path = mk_path(m, "ini-path");
+                            let path = mk_path(m, "path");
                             IniCommand::ParseBuilding(path)
                         },
-                        ("parse-render", Some(m)) => {
-                            let path = mk_path(m, "ini-path");
+                        ("parse-renderconfig", Some(m)) => {
+                            let path = mk_path(m, "path");
                             IniCommand::ParseRender(path)
+                        },
+                        ("parse-mtl", Some(m)) => {
+                            let path = mk_path(m, "path");
+                            IniCommand::ParseMaterial(path)
                         },
                         (cname, _) => panic!("Unknown ini subcommand '{}'" , cname)
                     };
