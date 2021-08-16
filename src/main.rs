@@ -190,12 +190,20 @@ fn main() {
                 cfg::ModCommand::Validate(cfg::ModValidateCommand { dir_input }) => {
                     let bld_ini = &dir_input.join(BUILDING_INI);
                     let render_ini = &dir_input.join(RENDERCONFIG_INI);
-                    let bld = building_def::BuildingDef::from_config(&bld_ini, &render_ini).unwrap();
-                    println!("{}", bld);
-
-                    match bld.parse_and_validate() {
-                        Ok(()) => println!("OK"),
-                        Err(e) => println!("Building has errors:\n{}", e),
+                    match building_def::BuildingDef::from_config(&bld_ini, &render_ini) {
+                        Ok(bld) => {
+                            match bld.parse_and_validate() {
+                                Ok(()) => println!("OK"),
+                                Err(e) => {
+                                    eprintln!("Building has errors:\n{}", e);
+                                    std::process::exit(1);
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!("Building has errors:\n{}", e);
+                            std::process::exit(1);
+                        }
                     }
                 },
 

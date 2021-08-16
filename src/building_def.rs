@@ -4,8 +4,7 @@ use std::fmt::{Display, Formatter, Write};
 use std::io::Error as IOErr;
 
 use crate::ini::{self, BuildingIni, MaterialMtl};
-use crate::ini::common::{IdStringParam, StrValue};
-use crate::nmf;
+use crate::nmf::NmfInfo;
 
 
 #[derive(Debug)]
@@ -27,9 +26,8 @@ pub struct BuildingDef {
 
 #[derive(Debug)]
 pub enum BuildingError {
-    FileIO(IOErr),
+    FileIO(PathBuf, IOErr),
     Parse(PathBuf, String),
-    Other(String),
     ModelMissing,
     MaterialMissing,
 }
@@ -38,38 +36,38 @@ pub enum BuildingError {
 use crate::ini::RenderToken as RT;
 use crate::ini::MaterialToken as MT;
 
-macro_rules! get_ini_value {
-    ($ini:ident, $p:pat, $s:ident, $root:ident) => {{
-        let mut res = None;
-        for t in $ini.tokens() {
-            match t {
-                $p => {
-                    res = Some($root.join($s.as_str()));
-                    break;
-                }, 
-                _ => ()
-            }
-        }
-
-        res
-    }};
-}
-
 
 impl BuildingDef {
     pub fn from_config(building_ini: &Path, renderconfig: &Path) -> Result<Self, BuildingError> {
-        let render_root = renderconfig.parent().ok_or_else(|| BuildingError::Other(format!("Cannot get render root from {:?}", renderconfig)))?;
+        let render_root = renderconfig.parent().expect(&format!("Cannot get render root from {}", renderconfig.display()));
 
-        let render_buf = fs::read_to_string(renderconfig).map_err(BuildingError::FileIO)?;
+        let render_buf = fs::read_to_string(renderconfig).map_err(|e| BuildingError::FileIO(renderconfig.to_path_buf(), e))?;
         let render_ini = ini::parse_renderconfig_ini(&render_buf).map_err(|e| BuildingError::Parse(renderconfig.to_path_buf(), concat_parse_errors(e)))?;
 
-        let model      = get_ini_value!(render_ini, RT::Model(s), s, render_root).ok_or(BuildingError::ModelMissing)?;
-        let model_lod  = get_ini_value!(render_ini, RT::ModelLod((s, _)),  s, render_root);
-        let model_lod2 = get_ini_value!(render_ini, RT::ModelLod2((s, _)), s, render_root);
-        let model_e    = get_ini_value!(render_ini, RT::ModelEmissive(s),  s, render_root);
+        macro_rules! get_render_value {
+            ($p:pat, $s:ident) => {{
+                let mut res = None;
+                for t in render_ini.tokens() {
+                    match t {
+                        $p => {
+                            res = Some(render_root.join($s.as_str()));
+                            break;
+                        }, 
+                        _ => ()
+                    }
+                }
 
-        let material   = get_ini_value!(render_ini, RT::Material(s), s, render_root).ok_or(BuildingError::MaterialMissing)?;
-        let material_e = get_ini_value!(render_ini, RT::MaterialEmissive(s), s, render_root);
+                res
+            }};
+        }
+
+        let model      = get_render_value!(RT::Model(s),            s).ok_or(BuildingError::ModelMissing)?;
+        let model_lod  = get_render_value!(RT::ModelLod((s, _)),    s);
+        let model_lod2 = get_render_value!(RT::ModelLod2((s, _)),   s);
+        let model_e    = get_render_value!(RT::ModelEmissive(s),    s);
+
+        let material   = get_render_value!(RT::Material(s),         s).ok_or(BuildingError::MaterialMissing)?;
+        let material_e = get_render_value!(RT::MaterialEmissive(s), s);
 
         let mut textures = Vec::with_capacity(10);
 
@@ -95,29 +93,27 @@ impl BuildingDef {
     pub fn parse_and_validate(&self) -> Result<(), String> {
         let mut errors = String::with_capacity(0);
 
-        fn check_path(name: &'static str, path: &PathBuf, errors: &mut String) {
-            if !path.exists() { 
-                writeln!(errors, "{} does not exist: {:?}", name, path).unwrap() 
-            }
+        macro_rules! check_path {
+            ($name:expr, $path:expr) => { if !$path.exists() { writeln!(errors, "{} does not exist: {}", $name, $path.display()).unwrap(); }};
         }
 
-        fn check_path_opt(name: &'static str, path: &Option<PathBuf>, errors: &mut String) {
-            path.as_ref().map(|path| check_path(name, path, errors));
+        macro_rules! check_popt {
+            ($name:expr, $path:expr) => { $path.as_ref().map(|p| check_path!($name, p)); };
         }
 
-        check_path("building.ini",     &self.building_ini, &mut errors);
-        check_path("renderconfig.ini", &self.renderconfig, &mut errors);
-        check_path("model",            &self.model,        &mut errors);
-        check_path_opt("model_lod",    &self.model_lod,    &mut errors);
-        check_path_opt("model_lod_2",  &self.model_lod2,   &mut errors);
-        check_path_opt("model_e",      &self.model_e,      &mut errors);
-        check_path("material",         &self.material,     &mut errors);
-        check_path_opt("material_e",   &self.material_e,   &mut errors);
+        check_path!("building.ini", &self.building_ini);
+        check_path!("renderconfig.ini", &self.renderconfig);
+        check_path!("MODEL", &self.model);
+        check_popt!("MODEL_LOD", &self.model_lod);
+        check_popt!("MODEL_LOD2", &self.model_lod2);
+        check_popt!("MODELEMISSIVE", &self.model_e);
+        check_path!("MATERIAL", &self.material);
+        check_popt!("MATERIALEMISSIVE", &self.material_e);
         for tx in self.textures.iter() {
-            check_path("texture", tx, &mut errors);
+            check_path!("texture", tx);
         }
 
-        let model = match nmf::NmfInfo::from_path(&self.model) {
+        let model = match NmfInfo::from_path(&self.model) {
             Ok(model) => Some(model),
             Err(e) => { 
                 writeln!(errors, "Cannot load model nmf: {:?}", e).unwrap();
@@ -125,48 +121,29 @@ impl BuildingDef {
             }
         };
 
-        let mut str_buf = fs::read_to_string(&self.building_ini);
-        match str_buf {
-            Ok(ref building_ini_buf) => match ini::parse_building_ini(building_ini_buf) {
-                Ok(building_ini) => {
-                    // TODO: pure building_ini checks
-                    if let Some(model) = &model {
-                        check_model_buildingini_errors(&model, &building_ini, &mut errors)
-                    }
-                },
-                Err(e) => writeln!(errors, "Cannot parse building.ini: {:#?}", e).unwrap()
-            },
-            Err(e) => writeln!(errors, "Cannot load building.ini: {:?}", e).unwrap()
-        };
+        let mut str_buf = String::with_capacity(0);
 
-        str_buf = fs::read_to_string(&self.material);
-        match str_buf {
-            Ok(ref mtl_buf) => match ini::parse_mtl(&mtl_buf) {
-                Ok(mtl) => {
-                    // TODO: pure material checks?? Secondary models sumbaterials??
-                    if let Some(model) = &model {
-                        check_model_mtl_errors(&model, &mtl, &mut errors)
-                    }
-                },
-                Err(e) => writeln!(errors, "Cannot parse material: {:#?}", e).unwrap()
-            },
-            Err(e) => writeln!(errors, "Cannot load material: {:?}", e).unwrap()
-        };
+        if let Some(model) = &model {
+            macro_rules! push_errors {
+                ($path:expr, $parser:expr, $pusher: ident) => {
+                    let read_res = read_to_string_buf(&$path, &mut str_buf);
+                    match read_res {
+                        Ok(()) => match $parser(&str_buf) {
+                            Ok(ini) => {
+                                $pusher(&ini, model, &mut errors)
+                            },
+                            Err(e) => writeln!(errors, "Cannot parse file {}: {:#?}", $path.display(), e).unwrap()
+                        },
+                        Err(e) => writeln!(errors, "Cannot read file {}: {:?}", $path.display(), e).unwrap()
+                    };
+                };
+            }
 
-        if let Some(material_e) = &self.material_e {
-            str_buf = fs::read_to_string(material_e);
-            match str_buf {
-                Ok(ref mtl_buf) => match ini::parse_mtl(&mtl_buf) {
-                    Ok(mtl) => {
-                        // TODO: pure material checks?? Secondary models sumbaterials??
-                        if let Some(model) = &model {
-                            check_model_mtl_errors(&model, &mtl, &mut errors)
-                        }
-                    },
-                    Err(e) => writeln!(errors, "Cannot parse material_e: {:#?}", e).unwrap()
-                },
-                Err(e) => writeln!(errors, "Cannot load material_e: {:?}", e).unwrap()
-            };
+            push_errors!(self.building_ini, ini::parse_building_ini, push_buildingini_errors);
+            push_errors!(self.material, ini::parse_mtl, push_mtl_errors);
+            if let Some(material_e) = &self.material_e {
+                push_errors!(material_e, ini::parse_mtl, push_mtl_errors);
+            }
         }
 
         if errors.is_empty() {
@@ -178,32 +155,33 @@ impl BuildingDef {
 
 }
 
-fn check_model_buildingini_errors(model: &nmf::NmfInfo, building_ini: &ini::BuildingIni, errors: &mut String) {
+
+fn push_buildingini_errors(building_ini: &BuildingIni, model: &NmfInfo, errors: &mut String) {
     //TODO
-    todo!()
+    //todo!()
 }
 
-fn check_model_mtl_errors(model: &nmf::NmfInfo, mtl: &ini::MaterialMtl, errors: &mut String) {
+fn push_mtl_errors(mtl: &MaterialMtl, model: &NmfInfo, errors: &mut String) {
     //TODO
-    todo!()
+    //todo!()
 }
 
 
 fn concat_parse_errors(errors: Vec<(&str, String)>) -> String {
     let mut result = String::with_capacity(4 * 1024);
     for (chunk, err) in errors.iter() {
-        write!(result, "Error: {}\nChunk: [{}]\n", err, chunk).unwrap();
+        writeln!(result, "Error: {}\nChunk: [{}]", err, chunk).unwrap();
     }
 
     result
 }
 
 
-fn push_textures (mtl_path: &Path, textures: &mut Vec<PathBuf>) -> Result<(), BuildingError> {
+fn push_textures(mtl_path: &Path, textures: &mut Vec<PathBuf>) -> Result<(), BuildingError> {
     use crate::cfg::APP_SETTINGS;
 
-    let mtl_root = mtl_path.parent().ok_or_else(|| BuildingError::Other(format!("Cannot get mtl root from {:?}", mtl_path)))?;
-    let mtl_buf = fs::read_to_string(mtl_path).map_err(BuildingError::FileIO)?;
+    let mtl_root = mtl_path.parent().expect(&format!("Cannot get mtl root from {}", mtl_path.display()));
+    let mtl_buf = fs::read_to_string(mtl_path).map_err(|e| BuildingError::FileIO(mtl_path.to_path_buf(), e))?;
     let mtl = ini::parse_mtl(&mtl_buf).map_err(|e| BuildingError::Parse(mtl_path.to_path_buf(), concat_parse_errors(e)))?;
     for t in mtl.tokens() {
         let tx_path = match t {
@@ -225,33 +203,59 @@ fn push_textures (mtl_path: &Path, textures: &mut Vec<PathBuf>) -> Result<(), Bu
 }
 
 
-macro_rules! w_opt {
-    ($f:ident, $fstr:expr, $v:expr) => {
-        if let Some(ref v) = $v {
-            write!($f, $fstr, v)
-        } else {    
-            write!($f, $fstr, "<NONE>")
-        }
-    };
+pub fn read_to_string_buf(path: &Path, buf: &mut String) -> Result<(), IOErr> {
+    use std::io::Read;
+    use std::convert::TryInto;
+    buf.truncate(0);
+
+    let mut file = fs::File::open(path)?;
+    let meta = file.metadata()?;
+    let sz: usize = meta.len().try_into().expect("Cannot get file length");
+    buf.reserve(sz);
+    file.read_to_string(buf)?;
+    Ok(())
 }
+
 
 impl Display for BuildingDef {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        write!(f, "Building {{\n")?;
-        write!(f, "    building.ini:     {:?}\n", self.building_ini)?;
-        write!(f, "    renderconfig.ini: {:?}\n", self.renderconfig)?;
-        write!(f, "    model:            {:?}\n", self.model)?;
-        w_opt!(f, "    model_lod:        {:?}\n", self.model_lod)?;
-        w_opt!(f, "    model_lod2:       {:?}\n", self.model_lod2)?;
-        w_opt!(f, "    model_e:          {:?}\n", self.model_e)?;
-        write!(f, "    material:         {:?}\n", self.material)?;
-        w_opt!(f, "    material_e:       {:?}\n", self.material_e)?;
-
-        write!(f, "    textures: [\n")?;
-        for tx in self.textures.iter() {
-            write!(f, "        {:?}\n", tx)?;
+        macro_rules! w_optln {
+            ($f:ident, $fstr:expr, $v:expr) => {
+                if let Some(ref v) = $v {
+                    write!($f, $fstr, v)
+                } else {    
+                    write!($f, $fstr, "<NONE>")
+                }
+            };
         }
 
-        write!(f, "    ]\n}}\n")
+        writeln!(f, "Building {{")?;
+        writeln!(f, "    building.ini:     {:?}", self.building_ini)?;
+        writeln!(f, "    renderconfig.ini: {:?}", self.renderconfig)?;
+        writeln!(f, "    model:            {:?}", self.model)?;
+        w_optln!(f, "    model_lod:        {:?}", self.model_lod)?;
+        w_optln!(f, "    model_lod2:       {:?}", self.model_lod2)?;
+        w_optln!(f, "    model_e:          {:?}", self.model_e)?;
+        writeln!(f, "    material:         {:?}", self.material)?;
+        w_optln!(f, "    material_e:       {:?}", self.material_e)?;
+
+        writeln!(f, "    textures: [")?;
+        for tx in self.textures.iter() {
+            writeln!(f, "        {:?}", tx)?;
+        }
+
+        writeln!(f, "    ]\n}}")
+    }
+}
+
+
+impl Display for BuildingError {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            BuildingError::FileIO(path, e) => write!(f, "File error ({}): {:?}", path.display(), e),
+            BuildingError::Parse(path, e)  => write!(f, "Parse error ({}): {}", path.display(), e),
+            BuildingError::ModelMissing    => write!(f, "Model is missing"),
+            BuildingError::MaterialMissing => write!(f, "Model is missing"),
+        }
     }
 }

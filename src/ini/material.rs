@@ -26,14 +26,6 @@ pub enum Token<'a> {
     End,
 }
 
-macro_rules! parse {
-    ($src:ident, $id:ident, $t:ty) => {
-        <$t>::parse($src).map(|(p, rest)| (Self::$id(p), rest))
-    };
-    ($src:ident, $id:ident) => {
-        Ok((Self::$id, $src))
-    };
-}
 
 impl<'a> Token<'a> {
     const SUBMATERIAL:       &'static str = "$SUBMATERIAL";
@@ -53,17 +45,26 @@ impl<'a> Token<'a> {
         }
 
         let (t_type, rest) = chop_param(Some(src), &RX_TYPE).map_err(|e| format!("Cannot parse token type: {}", e))?;
+        macro_rules! parse {
+            ($id:ident, $t:ty) => {
+                <$t>::parse(rest).map(|(p, rest)| (Self::$id(p), rest))
+            };
+            ($id:ident) => {
+                Ok((Self::$id, rest))
+            };
+        }
+
         match t_type {
-            Self::SUBMATERIAL       => parse!(rest, Submaterial,     IdStringParam),
-            Self::TEXTURE           => parse!(rest, Texture,         (u8, IdStringParam)),
-            Self::TEXTURE_NOMIP     => parse!(rest, TextureNoMip,    (u8, IdStringParam)),
-            Self::TEXTURE_MTL       => parse!(rest, TextureMtl,      (u8, IdStringParam)),
-            Self::TEXTURE_NOMIP_MTL => parse!(rest, TextureNoMipMtl, (u8, IdStringParam)),
-            Self::DIFFUSE_COLOR     => parse!(rest, DiffuseColor,    Color),
-            Self::SPECULAR_COLOR    => parse!(rest, SpecularColor,   Color),
-            Self::AMBIENT_COLOR     => parse!(rest, AmbientColor,    Color),
-            Self::SPECULAR_POWER    => parse!(rest, SpecularPower,   f32),
-            Self::END               => parse!(rest, End),
+            Self::SUBMATERIAL       => parse!(Submaterial,     IdStringParam),
+            Self::TEXTURE           => parse!(Texture,         (u8, IdStringParam)),
+            Self::TEXTURE_NOMIP     => parse!(TextureNoMip,    (u8, IdStringParam)),
+            Self::TEXTURE_MTL       => parse!(TextureMtl,      (u8, IdStringParam)),
+            Self::TEXTURE_NOMIP_MTL => parse!(TextureNoMipMtl, (u8, IdStringParam)),
+            Self::DIFFUSE_COLOR     => parse!(DiffuseColor,    Color),
+            Self::SPECULAR_COLOR    => parse!(SpecularColor,   Color),
+            Self::AMBIENT_COLOR     => parse!(AmbientColor,    Color),
+            Self::SPECULAR_POWER    => parse!(SpecularPower,   f32),
+            Self::END               => parse!(End),
             _ => Err(format!("Unknown token type: \"{}\"", t_type))
         }
     }

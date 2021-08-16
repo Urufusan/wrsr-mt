@@ -9,7 +9,7 @@ pub mod material;
 
 pub mod scale;
 
-use common::{ParseError, ParseResult};
+use common::ParseError;
 
 
 //---------------------------------------------

@@ -44,15 +44,6 @@ pub enum Token<'a> {
     LightRgbBlink((Point3f, f32, LightColor)),
 }
 
-macro_rules! parse {
-    ($src:ident, $id:ident, $t:ty) => {
-        <$t>::parse($src).map(|(p, rest)| (Self::$id(p), rest))
-    };
-    ($src:ident, $id:ident) => {
-        Ok((Self::$id, $src))
-    };
-}
-
 impl<'a> Token<'a> {
     const END:                       &'static str = "END";
     const TYPE_STOCK:                &'static str = "$TYPE";
@@ -88,34 +79,43 @@ impl<'a> Token<'a> {
         }
 
         let (t_type, rest) = chop_param(Some(src), &RX_TYPE).map_err(|e| format!("Cannot parse token type: {}", e))?;
+        macro_rules! parse {
+            ($id:ident, $t:ty) => {
+                <$t>::parse(rest).map(|(p, rest)| (Self::$id(p), rest))
+            };
+            ($id:ident) => {
+                Ok((Self::$id, rest))
+            };
+        }
+
         match t_type {
-            Self::END                       => parse!(rest, End),
-            Self::TYPE_STOCK                => parse!(rest, ObjectTypeStock,    IdStringParam),
-            Self::TYPE_WORKSHOP             => parse!(rest, ObjectTypeWorkshop),
-            Self::MODEL                     => parse!(rest, Model,              IdStringParam),
-            Self::MODEL_LOD                 => parse!(rest, ModelLod,           (IdStringParam, f32)),
-            Self::MODEL_LOD2                => parse!(rest, ModelLod2,          (IdStringParam, f32)),
-            Self::MODEL_EMISSIVE            => parse!(rest, ModelEmissive,      IdStringParam),
-            Self::MATERIAL                  => parse!(rest, Material,           IdStringParam),
-            Self::MATERIAL_EMISSIVE         => parse!(rest, MaterialEmissive,   IdStringParam),
-            Self::PLANE_SHADOW              => parse!(rest, PlaneShadow),
-            Self::REFLECTION                => parse!(rest, Reflection),
-            Self::EXACT_SPECULAR            => parse!(rest, ExactSpecular),
-            Self::FIELD_COLLISION           => parse!(rest, FieldCollision),
-            Self::VARIABLE_MATERIAL_PARAMS  => parse!(rest, VariableMaterialParams),
-            Self::SMOKEPOINT_CHANCE         => parse!(rest, SmokePointChance,   f32),
-            Self::LIFE                      => parse!(rest, Life,               f32),
-            Self::EXPLOSION_GROUP           => parse!(rest, ExplosionGroup,     u32),
-            Self::LIGHT                     => parse!(rest, Light,              (Point3f, f32)),
-            Self::LIGHT_RGB                 => parse!(rest, LightRgb,           (Point3f, f32, LightColor)),
-            Self::LIGHT_RGB_BLINK           => parse!(rest, LightRgbBlink,      (Point3f, f32, LightColor)),
-            Self::DERBIS_FALLING_FX         => parse!(rest, DerbisFallingFx,    (IdStringParam, f32)),
-            Self::DERBIS_FALLED_FX          => parse!(rest, DerbisFalledFx,     (IdStringParam, f32)),
-            Self::DERBIS_FALLED_SFX         => parse!(rest, DerbisFalledSfx,    IdStringParam),
-            Self::DERBIS_NUM                => parse!(rest, DerbisNum,          u32),
-            Self::DERBIS_SCALE              => parse!(rest, DerbisScale,        f32),
-            Self::DERBIS_MESH               => parse!(rest, DerbisMesh,         (IdStringParam, IdStringParam)),
-            Self::DERBIS_FALLING_FX_MAXTIME => parse!(rest, DerbisFallingFxMaxTime, f32),
+            Self::END                       => parse!(End),
+            Self::TYPE_STOCK                => parse!(ObjectTypeStock,    IdStringParam),
+            Self::TYPE_WORKSHOP             => parse!(ObjectTypeWorkshop),
+            Self::MODEL                     => parse!(Model,              IdStringParam),
+            Self::MODEL_LOD                 => parse!(ModelLod,           (IdStringParam, f32)),
+            Self::MODEL_LOD2                => parse!(ModelLod2,          (IdStringParam, f32)),
+            Self::MODEL_EMISSIVE            => parse!(ModelEmissive,      IdStringParam),
+            Self::MATERIAL                  => parse!(Material,           IdStringParam),
+            Self::MATERIAL_EMISSIVE         => parse!(MaterialEmissive,   IdStringParam),
+            Self::PLANE_SHADOW              => parse!(PlaneShadow),
+            Self::REFLECTION                => parse!(Reflection),
+            Self::EXACT_SPECULAR            => parse!(ExactSpecular),
+            Self::FIELD_COLLISION           => parse!(FieldCollision),
+            Self::VARIABLE_MATERIAL_PARAMS  => parse!(VariableMaterialParams),
+            Self::SMOKEPOINT_CHANCE         => parse!(SmokePointChance,   f32),
+            Self::LIFE                      => parse!(Life,               f32),
+            Self::EXPLOSION_GROUP           => parse!(ExplosionGroup,     u32),
+            Self::LIGHT                     => parse!(Light,              (Point3f, f32)),
+            Self::LIGHT_RGB                 => parse!(LightRgb,           (Point3f, f32, LightColor)),
+            Self::LIGHT_RGB_BLINK           => parse!(LightRgbBlink,      (Point3f, f32, LightColor)),
+            Self::DERBIS_FALLING_FX         => parse!(DerbisFallingFx,    (IdStringParam, f32)),
+            Self::DERBIS_FALLED_FX          => parse!(DerbisFalledFx,     (IdStringParam, f32)),
+            Self::DERBIS_FALLED_SFX         => parse!(DerbisFalledSfx,    IdStringParam),
+            Self::DERBIS_NUM                => parse!(DerbisNum,          u32),
+            Self::DERBIS_SCALE              => parse!(DerbisScale,        f32),
+            Self::DERBIS_MESH               => parse!(DerbisMesh,         (IdStringParam, IdStringParam)),
+            Self::DERBIS_FALLING_FX_MAXTIME => parse!(DerbisFallingFxMaxTime, f32),
             _ => Err(format!("Unknown token type: \"{}\"", t_type))
         }
     }
