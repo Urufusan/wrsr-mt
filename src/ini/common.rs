@@ -28,10 +28,16 @@ pub enum StrValue<'a> {
 //  Owned(String),
 }
 
-pub struct QuotedStringParam<'a>(StrValue<'a>);
+pub struct QuotedStringParam<'a>(pub StrValue<'a>);
 
-pub struct IdStringParam<'a>(StrValue<'a>);
-
+pub struct IdStringParam<'a>(pub StrValue<'a>);
+impl<'a> IdStringParam<'a> {
+    pub fn as_str(&'a self) -> &'a str {
+        match self.0 {
+            StrValue::Borrowed(x) => x,
+        }
+    }
+}
 
 //------------------------------------------------------
 

@@ -12,6 +12,8 @@ mod data;
 mod input;
 mod output;
 
+mod building_def;
+
 use cfg::APP_SETTINGS;
 
 
@@ -186,15 +188,15 @@ fn main() {
 
             match cmd {
                 cfg::ModCommand::Validate(cfg::ModValidateCommand { dir_input }) => {
+                    let bld_ini = &dir_input.join(BUILDING_INI);
+                    let render_ini = &dir_input.join(RENDERCONFIG_INI);
+                    let bld = building_def::BuildingDef::from_config(&bld_ini, &render_ini).unwrap();
+                    println!("{}", bld);
 
-                    let render_buf = fs::read_to_string(&dir_input.join(RENDERCONFIG_INI)).unwrap();
-                    let render_ini = ini::parse_renderconfig_ini(&render_buf).unwrap();
-                    println!("{}: OK", RENDERCONFIG_INI);
-
-                    let bld_buf = fs::read_to_string(&dir_input.join(BUILDING_INI)).unwrap();
-                    let bld_ini = ini::parse_building_ini(&bld_buf).unwrap();
-                    println!("{}: OK", BUILDING_INI);
-
+                    match bld.parse_and_validate() {
+                        Ok(()) => println!("OK"),
+                        Err(e) => println!("Building has errors:\n{}", e),
+                    }
                 },
 
                 cfg::ModCommand::Scale(cfg::ModScaleCommand { dir_input, factor, dir_output }) => {

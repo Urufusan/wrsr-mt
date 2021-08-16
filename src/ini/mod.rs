@@ -72,6 +72,10 @@ impl<'a, T> IniFile<'a, T> where T: IniToken {
         }
     }
 
+    pub fn tokens(&self) -> impl Iterator<Item = &T> {
+        self.tokens.iter().map(|(_, t)| t.token())
+    }
+
 
     pub fn write_to<W: Write>(&self, mut wr: W) -> std::io::Result<()> {
         unsafe {
