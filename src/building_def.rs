@@ -33,6 +33,7 @@ pub enum BuildingError {
 }
 
 
+use crate::ini::BuildingToken as BT;
 use crate::ini::RenderToken as RT;
 use crate::ini::MaterialToken as MT;
 
@@ -125,12 +126,12 @@ impl BuildingDef {
 
         if let Some(model) = &model {
             macro_rules! push_errors {
-                ($path:expr, $parser:expr, $pusher: ident) => {
+                ($path:expr, $parser:expr, $pusher: ident, $pfx:expr) => {
                     let read_res = read_to_string_buf(&$path, &mut str_buf);
                     match read_res {
                         Ok(()) => match $parser(&str_buf) {
                             Ok(ini) => {
-                                $pusher(&ini, model, &mut errors)
+                                $pusher(&ini, model, &mut errors, $pfx)
                             },
                             Err(e) => writeln!(errors, "Cannot parse file {}: {:#?}", $path.display(), e).unwrap()
                         },
@@ -139,10 +140,10 @@ impl BuildingDef {
                 };
             }
 
-            push_errors!(self.building_ini, ini::parse_building_ini, push_buildingini_errors);
-            push_errors!(self.material, ini::parse_mtl, push_mtl_errors);
+            push_errors!(self.building_ini, ini::parse_building_ini, push_buildingini_errors, "building.ini");
+            push_errors!(self.material, ini::parse_mtl, push_mtl_errors, "material");
             if let Some(material_e) = &self.material_e {
-                push_errors!(material_e, ini::parse_mtl, push_mtl_errors);
+                push_errors!(material_e, ini::parse_mtl, push_mtl_errors, "emissive material");
             }
         }
 
@@ -156,14 +157,51 @@ impl BuildingDef {
 }
 
 
-fn push_buildingini_errors(building_ini: &BuildingIni, model: &NmfInfo, errors: &mut String) {
-    //TODO
-    //todo!()
+fn push_buildingini_errors(building_ini: &BuildingIni, model: &NmfInfo, errors: &mut String, pfx: &'static str) {
+    for t in building_ini.tokens() {
+        macro_rules! check_model_node {
+            ($node:ident, $cmp:ident) => {
+                if model.objects.iter().all(|o| !o.name.as_str().$cmp($node.as_str())) {
+                    writeln!(errors, "Error in {}: invalid token '{}', matching node was not found in the model nmf", pfx, t).unwrap();
+                }
+            };
+        }
+
+        match t {
+            BT::StorageLivingAuto(id)          => check_model_node!(id, eq),
+            BT::CostWorkBuildingNode(id)       => check_model_node!(id, eq),
+            BT::CostWorkVehicleStationNode(id) => check_model_node!(id, eq),
+            BT::CostWorkBuildingKeyword(key)   => check_model_node!(key, starts_with),
+            _ => {}
+        }
+
+        // TODO: other checks
+    }
 }
 
-fn push_mtl_errors(mtl: &MaterialMtl, model: &NmfInfo, errors: &mut String) {
-    //TODO
-    //todo!()
+fn push_mtl_errors(mtl: &MaterialMtl, model: &NmfInfo, errors: &mut String, pfx: &'static str) {
+    let usage = model.get_submaterials_usage();
+
+    // For now there is only 1 hard rule:
+    // "all submaterials that are used by objects in NMF must have a token in mtl file"
+    // other checks could be added later
+
+    let used_by_objects = usage.iter().filter(|(_, i)| *i > 0);
+
+    'obj_iter: for (obj_sm, _) in used_by_objects {
+        for t in mtl.tokens() {
+            match t {
+                MT::Submaterial(mtl_sm) => {
+                    if *obj_sm == mtl_sm.as_str() {
+                        continue 'obj_iter;
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        writeln!(errors, "Error in {}: NMF uses submaterial '{}', but the MTL file has no corresponding token", pfx, obj_sm).unwrap();
+    }
 }
 
 

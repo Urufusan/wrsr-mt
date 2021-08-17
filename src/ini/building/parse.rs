@@ -26,6 +26,7 @@ use crate::ini::common::{ParseSlice,
                          Rect,
                          QuotedStringParam,
                          IdStringParam,
+                         CostKeywordParam,
                          RX_REMAINDER, 
                          chop_param, 
                          parse_param,
@@ -188,7 +189,7 @@ impl<'a> Token<'a> {
 
             Self::COST_WORK                        => parse!(CostWork,                    (ConstructionPhase, f32)),
             Self::COST_WORK_BUILDING_NODE          => parse!(CostWorkBuildingNode,        IdStringParam),
-            Self::COST_WORK_BUILDING_KEYWORD       => parse!(CostWorkBuildingKeyword,     IdStringParam),
+            Self::COST_WORK_BUILDING_KEYWORD       => parse!(CostWorkBuildingKeyword,     CostKeywordParam),
             Self::COST_WORK_BUILDING_ALL           => parse!(CostWorkBuildingAll),
 
             Self::COST_RESOURCE                    => parse!(CostResource,                (ResourceType, f32)),

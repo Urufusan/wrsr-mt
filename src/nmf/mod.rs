@@ -15,7 +15,9 @@ pub enum Error {
     HeaderEOF(ChopEOF),
     UnknownNmfType,
     FileLengthMismatch(usize, u64),
+    ZeroSubmaterials,
     Submaterial(usize, io::Error),
+    ZeroObjects,
     Object(usize, ObjectError),
     U32Conversion(std::num::TryFromIntError),
     WriteObject(usize, io::Error)
@@ -28,6 +30,7 @@ pub enum ObjectError {
     SliceReadU32,
     WrongIndicesCount(u32),
     ZeroSubmaterials,
+    SubmaterialIdxTooBig(u32),
     Allocation(String),
 }
 
@@ -62,7 +65,7 @@ pub struct NameBuf {
 
 
 pub struct ObjectInfo {
-    name: NameBuf,
+    pub name: NameBuf,
     range: std::ops::Range<u64>,
     vertices: u32,
     faces: u32,
@@ -76,7 +79,7 @@ pub type NmfBufFull = NmfBuf<ObjectFull>;
 
 
 pub trait ObjectReader<R: Read> {
-    fn from_reader(rdr: &mut R) -> Result<Self, ObjectError> where Self: Sized;
+    fn from_reader(rdr: &mut R, max_sm_idx: usize) -> Result<Self, ObjectError> where Self: Sized;
 }
 
 
@@ -109,6 +112,12 @@ impl<T: ObjectReader<fs::File>> NmfBuf<T> {
         if nmf_len as u64 != file_len {
             return Err(Error::FileLengthMismatch(nmf_len, file_len));
         }
+        if submat_count == 0 {
+            return Err(Error::ZeroSubmaterials);
+        }
+        if obj_count == 0 {
+            return Err(Error::ZeroObjects);
+        }
 
         let mut submaterials = Vec::<NameBuf>::with_capacity(submat_count);
         for i in 0 .. submat_count {
@@ -117,7 +126,7 @@ impl<T: ObjectReader<fs::File>> NmfBuf<T> {
         
         let mut objects = Vec::<T>::with_capacity(obj_count);
         for i in 0 .. obj_count {
-            objects.push(T::from_reader(&mut file).map_err(|e| Error::Object(i, e))?);
+            objects.push(T::from_reader(&mut file, submat_count - 1).map_err(|e| Error::Object(i, e))?);
         }
 
         let remainder = file_len - file.stream_position().map_err(Error::FileIO)?;
@@ -128,7 +137,7 @@ impl<T: ObjectReader<fs::File>> NmfBuf<T> {
 
 
 impl<R: Read + Seek> ObjectReader<R> for ObjectInfo {
-    fn from_reader(rdr: &mut R) -> Result<ObjectInfo, ObjectError> {
+    fn from_reader(rdr: &mut R, max_sm_idx: usize) -> Result<ObjectInfo, ObjectError> {
 
         #[inline]
         fn skip<R: Seek>(reader: &mut R, n: u32) -> Result<u64, ObjectError> {
@@ -164,10 +173,18 @@ impl<R: Read + Seek> ObjectReader<R> for ObjectInfo {
         skip(rdr, 20 + skip_len)?;
 
         let submat_main = read_u32(rdr)?;
+        if (submat_main as usize) > max_sm_idx {
+            return Err(ObjectError::SubmaterialIdxTooBig(submat_main));
+        }
 
         for _ in 1 .. submats {
             skip(rdr, 8)?;
-            submat_rest.push(read_u32(rdr)?);
+            let submat_extra = read_u32(rdr)?;
+            if (submat_extra as usize) > max_sm_idx { 
+                return Err(ObjectError::SubmaterialIdxTooBig(submat_extra));
+            }
+
+            submat_rest.push(submat_extra);
         }
 
         let end = rdr.stream_position().map_err(ObjectError::FileIO)?;
@@ -180,6 +197,21 @@ impl<R: Read + Seek> ObjectReader<R> for ObjectInfo {
             submat_main,
             submat_rest
         })
+    }
+}
+
+
+impl NmfInfo {
+    pub fn get_submaterials_usage(&self) -> Vec<(&str, u8)> {
+        let mut usage: Vec<(&str, u8)> = self.submaterials.iter().map(|n| (n.as_str(), 0u8)).collect();
+        for o in self.objects.iter() {
+            usage[o.submat_main as usize].1 += 1;
+            for sm in o.submat_rest.iter() {
+                usage[*sm as usize].1 += 1;
+            }
+        }
+
+        usage
     }
 }
 
@@ -257,7 +289,7 @@ impl NameBuf {
         Ok(name)
     }
 
-    fn as_str<'a>(&'a self) -> &'a str {
+    pub fn as_str<'a>(&'a self) -> &'a str {
         if self.displayed > 0 {
             let s = unsafe { std::str::from_utf8_unchecked(self.bytes.get_unchecked(0 .. self.displayed)) };
             &s

@@ -39,6 +39,12 @@ impl<'a> IdStringParam<'a> {
     }
 }
 
+pub struct CostKeywordParam<'a>(pub IdStringParam<'a>);
+impl<'a> CostKeywordParam<'a> {
+    pub fn as_str(&'a self) -> &'a str { self.0.as_str() }
+}
+
+
 //------------------------------------------------------
 
 
@@ -160,6 +166,24 @@ impl<'a> ParseSlice<'a> for IdStringParam<'a> {
 }
 
 
+impl<'a> ParseSlice<'a> for CostKeywordParam<'a> {
+    fn parse(src: Option<&'a str>) -> ParseResult<Self> {
+        lazy_static! {
+            static ref RX: Regex = Regex::new(r"^\$(.+)").unwrap();
+        }
+
+        let src = src.ok_or(String::from("Cost keyword parse failed: no data"))?;
+        match RX.captures(src) {
+            Some(caps) => {
+                let rest = caps.get(1).map(|x| x.as_str());
+                let (inner, rest) = IdStringParam::parse(rest)?;
+                Ok((CostKeywordParam(inner), rest))
+            },
+            None => Err(format!("Cost keyword must start with '$'. Chunk: [{}]", src))
+        }
+    }
+}
+
 //-----------------------------------------------------------------
 
 
@@ -197,6 +221,13 @@ impl Display for StrValue<'_> {
         };
 
         write!(f, "{}", s)
+    }
+}
+
+impl Display for CostKeywordParam<'_> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        let Self(s) = self;
+        write!(f, "${}", s)
     }
 }
 

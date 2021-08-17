@@ -1,7 +1,7 @@
 mod display;
 mod parse;
 
-use crate::ini::common::{Point3f, Rect, QuotedStringParam, IdStringParam};
+use crate::ini::common::{Point3f, Rect, QuotedStringParam, IdStringParam, CostKeywordParam};
 
 pub use parse::{parse_tokens, parse_tokens_strict};
 
@@ -136,7 +136,7 @@ pub enum Token<'a> {
 
     CostWork((ConstructionPhase, f32)),
     CostWorkBuildingNode(IdStringParam<'a>),
-    CostWorkBuildingKeyword(IdStringParam<'a>),
+    CostWorkBuildingKeyword(CostKeywordParam<'a>),
     CostWorkBuildingAll,
 
     CostResource((ResourceType, f32)),

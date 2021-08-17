@@ -91,7 +91,7 @@ fn read_u32size(bytes: &[u8]) -> Result<usize, ObjectError> {
 
 
 impl<R: Read + Seek> ObjectReader<R> for ObjectFull {
-    fn from_reader(rdr: &mut R) -> Result<ObjectFull, ObjectError> {
+    fn from_reader(rdr: &mut R, _max_sm_idx: usize) -> Result<ObjectFull, ObjectError> {
 
         let mut head_buf = [0u8; 260];
         rdr.read_exact(&mut head_buf[..]).map_err(ObjectError::FileIO)?;
