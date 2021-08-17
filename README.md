@@ -3,14 +3,27 @@
 Command-line application, providing a variety of modding-related tools for "Workers &amp; Resources: Soviet Republic".
 
 # Features
- - validation
-   - building.ini files (syntax validation, typos)
- - manipulating *\*.nmf* files
+ - Validating mods
+   - Parsing and reporting syntax errors in individual configuration files (renderconfig.ini, building.ini, \*.mtl). 
+     Catches most typos in token names, literals (construction phases, resources, ...), wrong amount or type of parameters.
+   - Complete modded buildings. Given a path to a building directory it does the following:
+       1. Parses renderconfig.ini and extracts paths to all \*.nmf and \*.mtl files;
+       2. Parses \*.mtl files from step 1 and extracts paths to all textures (\*.dds);
+       3. Checks that all the above references are correct (all those files exist);
+       4. Parses the building.ini;
+       5. Checks if any tokens in building.ini are referring to unexisting node names (using the main model's nmf as a reference).
+          This includes 
+           - $STORAGE_LIVING_AUTO
+           - $COST_WORK_BUILDING_NODE
+           - $COST_WORK_BUILDING_KEYWORD
+           - $COST_WORK_VEHICLE_STATION_ACCORDING_NODE
+       6. Checks if any active submaterial in the main model's nmf does not have a corresponding entry in the *.mtl files;
+       7. Prints out all found issues.
+ - manipulating \*.nmf files
    - displaying model structure (submaterials, objects, geometry)
-   - scaling
-   - mirroring
+   - geometry scaling (by a given factor)
+   - geometry mirroring (along X-axis)
    - exporting into Wavefront's \*.obj format ([example](https://www.youtube.com/watch?v=vJ6aN4iXCas))
-   - deleting objects
  
  - modpacks (generating customized mods in *workshop_wip* directory, using assets from workshop mods and stock buildings)
 
@@ -19,7 +32,12 @@ Command-line application, providing a variety of modding-related tools for "Work
 
 Check building ini-file for syntax errors:
 
-    $ wrsr-mt ini parse building.ini
+    $ wrsr-mt ini parse-building  CityMagazynA/building.ini
+
+
+Validate building mod in directory HOUSE3
+
+    $ wrsr-mt mod-building validate HOUSE3
 
 
 Show details of 'model.nmf':
@@ -42,7 +60,7 @@ Export model geometry from *model.nmf* into *model.obj*
     $ wrsr-mt nmf to-obj model.nmf model.obj
     
 
-Most subcommands can show usage help when used with parameter --help 
+Most subcommands support --help parameter
 
     $ wrsr-mt --help
     $ wrsr-mt nmf --help

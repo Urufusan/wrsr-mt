@@ -424,15 +424,21 @@ impl Display for super::ConstructionAutoCost {
 impl Display for super::ConstructionPhase {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let s = match self {
-            Self::Groundworks     => Self::GROUNDWORKS,
+            Self::AsphaltLaying   => Self::ASPHALT_LAYING,
+            Self::AsphaltRolling  => Self::ASPHALT_ROLLING,
             Self::BoardsLaying    => Self::BOARDS_LAYING,
             Self::BricksLaying    => Self::BRICKS_LAYING,
+            Self::BridgeBuilding  => Self::BRIDGE_BUILDING,
+            Self::GravelLaying    => Self::GRAVEL_LAYING,
+            Self::Groundworks     => Self::GROUNDWORKS,
+            Self::InteriorWorks   => Self::INTERIOR_WORKS,
+            Self::PanelsLaying    => Self::PANELS_LAYING,
+            Self::RailwayLaying   => Self::RAILWAY_LAYING,
+            Self::RooftopBuilding => Self::ROOFTOP_BUILDING,
             Self::SkeletonCasting => Self::SKELETON_CASTING,
             Self::SteelLaying     => Self::STEEL_LAYING,
-            Self::PanelsLaying    => Self::PANELS_LAYING,
-            Self::RooftopBuilding => Self::ROOFTOP_BUILDING,
-            Self::WireLaying      => Self::WIRE_LAYING,
             Self::Tunneling       => Self::TUNNELING,
+            Self::WireLaying      => Self::WIRE_LAYING,
         };
 
         write!(f, "{}", s)

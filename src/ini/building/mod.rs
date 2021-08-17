@@ -543,29 +543,35 @@ impl ParticleType {
 
 #[derive(Clone)]
 pub enum ConstructionPhase {
-    Groundworks,
+    AsphaltLaying,
+    AsphaltRolling,
     BoardsLaying,
     BricksLaying,
+    BridgeBuilding,
+    GravelLaying,
+    Groundworks,    
+    InteriorWorks,
+    PanelsLaying,
+    RailwayLaying,
+    RooftopBuilding,
     SkeletonCasting,
     SteelLaying,
-    PanelsLaying,
-    RooftopBuilding,
-    WireLaying,
     Tunneling,
+    WireLaying,
 }
 
 
 impl ConstructionPhase {
-    //const ASPHALT_LAYING:   &'static str = "SOVIET_CONSTRUCTION_ASPHALT_LAYING";
-    //const ASPHALT_ROLLING:  &'static str = "SOVIET_CONSTRUCTION_ASPHALT_ROLLING";
+    const ASPHALT_LAYING:   &'static str = "SOVIET_CONSTRUCTION_ASPHALT_LAYING";
+    const ASPHALT_ROLLING:  &'static str = "SOVIET_CONSTRUCTION_ASPHALT_ROLLING";
     const BOARDS_LAYING:    &'static str = "SOVIET_CONSTRUCTION_BOARDS_LAYING";
     const BRICKS_LAYING:    &'static str = "SOVIET_CONSTRUCTION_BRICKS_LAYING";
-    //const BRIDGE_BUILDING:  &'static str = "SOVIET_CONSTRUCTION_BRIDGE_BUILDING";
-    //const GRAVEL_LAYING:    &'static str = "SOVIET_CONSTRUCTION_GRAVEL_LAYING";
+    const BRIDGE_BUILDING:  &'static str = "SOVIET_CONSTRUCTION_BRIDGE_BUILDING";
+    const GRAVEL_LAYING:    &'static str = "SOVIET_CONSTRUCTION_GRAVEL_LAYING";
     const GROUNDWORKS:      &'static str = "SOVIET_CONSTRUCTION_GROUNDWORKS";
-    //const INTERIOR_WORKS:   &'static str = "SOVIET_CONSTRUCTION_INTERIOR_WORKS";
+    const INTERIOR_WORKS:   &'static str = "SOVIET_CONSTRUCTION_INTERIOR_WORKS";
     const PANELS_LAYING:    &'static str = "SOVIET_CONSTRUCTION_PANELS_LAYING";
-    //const RAILWAY_LAYING:   &'static str = "SOVIET_CONSTRUCTION_RAILWAY_LAYING";
+    const RAILWAY_LAYING:   &'static str = "SOVIET_CONSTRUCTION_RAILWAY_LAYING";
     const ROOFTOP_BUILDING: &'static str = "SOVIET_CONSTRUCTION_ROOFTOP_BUILDING";
     const SKELETON_CASTING: &'static str = "SOVIET_CONSTRUCTION_SKELETON_CASTING";
     const STEEL_LAYING:     &'static str = "SOVIET_CONSTRUCTION_STEEL_LAYING";

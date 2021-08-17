@@ -161,9 +161,11 @@ lazy_static! {
 
         let cmd_modbuilding = {
             let cmd_mod_validate = SubCommand::with_name("validate")
+                .about("Checks the specified building mod for errors")
                 .arg(Arg::with_name("dir-input").required(true));
 
             let cmd_modbuilding_scale = SubCommand::with_name("scale")
+                .about("Not implemented (WIP)")
                 .arg(Arg::with_name("dir-input").required(true))
                 .arg(Arg::with_name("factor").required(true))
                 .arg(Arg::with_name("dir-output").required(true));
@@ -196,7 +198,7 @@ lazy_static! {
 
         let m = App::new("wrsr-mt")
             .author("kromgart@gmail.com")
-            .version("0.2")
+            .version("0.3")
             .about("Modding tools for \"Workers & Resources: Soviet Rebuplic\"")
             .long_about("Modding tools for \"Workers & Resources: Soviet Rebuplic\"\n\
                          homepage: https://github.com/Kromgart/wrsr-mt")

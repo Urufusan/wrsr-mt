@@ -478,15 +478,21 @@ impl ParseSlice<'_> for ParticleType {
 impl ConstructionPhase {
     fn from_str(src: &str) -> Option<Self> {
         match src {
-            Self::GROUNDWORKS      => Some(Self::Groundworks),
+            Self::ASPHALT_LAYING   => Some(Self::AsphaltLaying),
+            Self::ASPHALT_ROLLING  => Some(Self::AsphaltRolling),
             Self::BOARDS_LAYING    => Some(Self::BoardsLaying),
             Self::BRICKS_LAYING    => Some(Self::BricksLaying),
+            Self::BRIDGE_BUILDING  => Some(Self::BridgeBuilding),
+            Self::GRAVEL_LAYING    => Some(Self::GravelLaying),
+            Self::GROUNDWORKS      => Some(Self::Groundworks),
+            Self::INTERIOR_WORKS   => Some(Self::InteriorWorks),
+            Self::PANELS_LAYING    => Some(Self::PanelsLaying),
+            Self::RAILWAY_LAYING   => Some(Self::RailwayLaying),
+            Self::ROOFTOP_BUILDING => Some(Self::RooftopBuilding),
             Self::SKELETON_CASTING => Some(Self::SkeletonCasting),
             Self::STEEL_LAYING     => Some(Self::SteelLaying),
-            Self::PANELS_LAYING    => Some(Self::PanelsLaying),
-            Self::ROOFTOP_BUILDING => Some(Self::RooftopBuilding),
-            Self::WIRE_LAYING      => Some(Self::WireLaying),
             Self::TUNNELING        => Some(Self::Tunneling),
+            Self::WIRE_LAYING      => Some(Self::WireLaying),
             _ => None
         }
     }
