@@ -5,22 +5,25 @@ use std::io::Error as IOErr;
 
 use crate::ini::{self, BuildingIni, MaterialMtl};
 use crate::nmf::NmfInfo;
+use crate::read_to_string_buf;
+
+use normpath::BasePath;
 
 
 #[derive(Debug)]
 pub struct BuildingDef {
-    building_ini: PathBuf,
-    renderconfig: PathBuf,
+    pub building_ini: PathBuf,
+    pub renderconfig: PathBuf,
 
-    model: PathBuf,
-    model_lod: Option<PathBuf>,
-    model_lod2: Option<PathBuf>,
-    model_e: Option<PathBuf>,
+    pub model: PathBuf,
+    pub model_lod: Option<PathBuf>,
+    pub model_lod2: Option<PathBuf>,
+    pub model_e: Option<PathBuf>,
 
-    material: PathBuf,
-    material_e: Option<PathBuf>,
+    pub material: PathBuf,
+    pub material_e: Option<PathBuf>,
 
-    textures: Vec<PathBuf>,
+    pub textures: Vec<PathBuf>,
 }
 
 
@@ -41,6 +44,7 @@ use crate::ini::MaterialToken as MT;
 impl BuildingDef {
     pub fn from_config(building_ini: &Path, renderconfig: &Path) -> Result<Self, BuildingError> {
         let render_root = renderconfig.parent().expect(&format!("Cannot get render root from {}", renderconfig.display()));
+        let render_root = BasePath::new(render_root).unwrap();
 
         let render_buf = fs::read_to_string(renderconfig).map_err(|e| BuildingError::FileIO(renderconfig.to_path_buf(), e))?;
         let render_ini = ini::parse_renderconfig_ini(&render_buf).map_err(|e| BuildingError::Parse(renderconfig.to_path_buf(), concat_parse_errors(e)))?;
@@ -51,7 +55,7 @@ impl BuildingDef {
                 for t in render_ini.tokens() {
                     match t {
                         $p => {
-                            res = Some(render_root.join($s.as_str()));
+                            res = Some(render_root.join($s.as_str()).into_path_buf());
                             break;
                         }, 
                         _ => ()
@@ -154,6 +158,53 @@ impl BuildingDef {
         }
     }
 
+    pub fn shallow_copy_to(&self, target_dir: &Path) -> Result<Self, IOErr> {
+        let source_root = self.renderconfig.parent().unwrap();
+        
+        let mk_fld = |fld: &PathBuf| -> Result<PathBuf, IOErr> {
+            if fld.starts_with(source_root) {
+                let new_fld = target_dir.join(fld.strip_prefix(source_root).unwrap());
+                fs::create_dir_all(new_fld.parent().unwrap())?;
+                fs::copy(fld, &new_fld)?;
+
+                Ok(new_fld)
+            } else {
+                Ok(fld.clone())
+            }
+        };
+
+        macro_rules! mk_fld_opt {
+            ($fld:expr) => { $fld.as_ref().map(|x| mk_fld(x)).transpose() };
+        }
+
+        let renderconfig = mk_fld(&self.renderconfig)?;
+        let building_ini = mk_fld(&self.building_ini)?;
+        let model        = mk_fld(&self.model)?;
+        let model_lod    = mk_fld_opt!(self.model_lod)?;
+        let model_lod2   = mk_fld_opt!(self.model_lod2)?;
+        let model_e      = mk_fld_opt!(self.model_e)?;
+        let material     = mk_fld(&self.material)?;
+        let material_e   = mk_fld_opt!(&self.material_e)?;
+
+        let mut textures = Vec::with_capacity(self.textures.len());
+        for tx in self.textures.iter() {
+            let tx = mk_fld(tx)?;
+            textures.push(tx);
+        }
+
+        Ok(BuildingDef {
+            renderconfig,
+            building_ini,
+            model,
+            model_lod,
+            model_lod2,
+            model_e,
+            material,
+            material_e,
+            textures
+        })
+    }
+
 }
 
 
@@ -219,14 +270,15 @@ fn push_textures(mtl_path: &Path, textures: &mut Vec<PathBuf>) -> Result<(), Bui
     use crate::cfg::APP_SETTINGS;
 
     let mtl_root = mtl_path.parent().expect(&format!("Cannot get mtl root from {}", mtl_path.display()));
+    let mtl_root = BasePath::new(mtl_root).unwrap();
     let mtl_buf = fs::read_to_string(mtl_path).map_err(|e| BuildingError::FileIO(mtl_path.to_path_buf(), e))?;
     let mtl = ini::parse_mtl(&mtl_buf).map_err(|e| BuildingError::Parse(mtl_path.to_path_buf(), concat_parse_errors(e)))?;
     for t in mtl.tokens() {
         let tx_path = match t {
             MT::Texture((_, s))         => Some(APP_SETTINGS.path_stock.join(s.as_str())),
             MT::TextureNoMip((_, s))    => Some(APP_SETTINGS.path_stock.join(s.as_str())),
-            MT::TextureMtl((_, s))      => Some(mtl_root.join(s.as_str())),
-            MT::TextureNoMipMtl((_, s)) => Some(mtl_root.join(s.as_str())),
+            MT::TextureMtl((_, s))      => Some(mtl_root.join(s.as_str()).into_path_buf()),
+            MT::TextureNoMipMtl((_, s)) => Some(mtl_root.join(s.as_str()).into_path_buf()),
             _ => None
         };
 
@@ -241,45 +293,31 @@ fn push_textures(mtl_path: &Path, textures: &mut Vec<PathBuf>) -> Result<(), Bui
 }
 
 
-pub fn read_to_string_buf(path: &Path, buf: &mut String) -> Result<(), IOErr> {
-    use std::io::Read;
-    use std::convert::TryInto;
-    buf.truncate(0);
-
-    let mut file = fs::File::open(path)?;
-    let meta = file.metadata()?;
-    let sz: usize = meta.len().try_into().expect("Cannot get file length");
-    buf.reserve(sz);
-    file.read_to_string(buf)?;
-    Ok(())
-}
-
-
 impl Display for BuildingDef {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         macro_rules! w_optln {
             ($f:ident, $fstr:expr, $v:expr) => {
                 if let Some(ref v) = $v {
-                    write!($f, $fstr, v)
+                    writeln!($f, $fstr, v.display())
                 } else {    
-                    write!($f, $fstr, "<NONE>")
+                    writeln!($f, $fstr, "<NONE>")
                 }
             };
         }
 
         writeln!(f, "Building {{")?;
-        writeln!(f, "    building.ini:     {:?}", self.building_ini)?;
-        writeln!(f, "    renderconfig.ini: {:?}", self.renderconfig)?;
-        writeln!(f, "    model:            {:?}", self.model)?;
-        w_optln!(f, "    model_lod:        {:?}", self.model_lod)?;
-        w_optln!(f, "    model_lod2:       {:?}", self.model_lod2)?;
-        w_optln!(f, "    model_e:          {:?}", self.model_e)?;
-        writeln!(f, "    material:         {:?}", self.material)?;
-        w_optln!(f, "    material_e:       {:?}", self.material_e)?;
+        writeln!(f, "    building.ini:     {}", self.building_ini.display())?;
+        writeln!(f, "    renderconfig.ini: {}", self.renderconfig.display())?;
+        writeln!(f, "    model:            {}", self.model.display())?;
+        w_optln!(f, "    model_lod:        {}", self.model_lod)?;
+        w_optln!(f, "    model_lod2:       {}", self.model_lod2)?;
+        w_optln!(f, "    model_e:          {}", self.model_e)?;
+        writeln!(f, "    material:         {}", self.material.display())?;
+        w_optln!(f, "    material_e:       {}", self.material_e)?;
 
         writeln!(f, "    textures: [")?;
         for tx in self.textures.iter() {
-            writeln!(f, "        {:?}", tx)?;
+            writeln!(f, "        {}", tx.display())?;
         }
 
         writeln!(f, "    ]\n}}")

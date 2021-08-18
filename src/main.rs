@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 
 use regex::Regex;
+use const_format::concatcp;
 
 mod nmf;
 mod ini;
@@ -188,8 +189,8 @@ fn main() {
 
             match cmd {
                 cfg::ModCommand::Validate(cfg::ModValidateCommand { dir_input }) => {
-                    let bld_ini = &dir_input.join(BUILDING_INI);
-                    let render_ini = &dir_input.join(RENDERCONFIG_INI);
+                    let bld_ini = dir_input.join(BUILDING_INI);
+                    let render_ini = dir_input.join(RENDERCONFIG_INI);
                     match building_def::BuildingDef::from_config(&bld_ini, &render_ini) {
                         Ok(bld) => {
                             match bld.parse_and_validate() {
@@ -209,31 +210,77 @@ fn main() {
 
                 cfg::ModCommand::Scale(cfg::ModScaleCommand { dir_input, factor, dir_output }) => {
 
-                    let render_buf = fs::read_to_string(&dir_input.join(RENDERCONFIG_INI)).unwrap();
-                    let mut render_ini = ini::parse_renderconfig_ini(&render_buf).unwrap();
-                    println!("{}: OK", RENDERCONFIG_INI);
+                    assert!(dir_input != dir_output, "Input and output directories must be different");
 
-                    let bld_buf = fs::read_to_string(&dir_input.join(BUILDING_INI)).unwrap();
-                    let mut bld_ini = ini::parse_building_ini(&bld_buf).unwrap();
-                    println!("{}: OK", BUILDING_INI);
+                    let render_ini = dir_input.join(RENDERCONFIG_INI);
+                    let bld_ini = dir_input.join(BUILDING_INI);
+                    let bld_def = building_def::BuildingDef::from_config(&bld_ini, &render_ini)
+                        .expect("Cannot parse building");
 
-                    // TODO: make clean copy
-                    println!("ini files parsed successfully. Copying directory...");
-                    copy_directory(&dir_input, &dir_output).expect("Cannot copy mod directory");
+                    // NOTE: debug
+                    //println!("{}", bld_def);
 
-                    ini::scale::render(&mut render_ini, *factor);
-                    let render_out_path = dir_output.join(RENDERCONFIG_INI);
-                    let mut render_ini_out = io::BufWriter::new(fs::OpenOptions::new().write(true).truncate(true).open(render_out_path).unwrap());
-                    render_ini.write_to(&mut render_ini_out).expect(&format!("Cannot write {}", BUILDING_INI));
-                    render_ini_out.flush().unwrap();
-                    println!("{}: updated", RENDERCONFIG_INI);
+                    {
+                        macro_rules! check_path {
+                            ($path:expr) => { assert!($path.starts_with(dir_input), 
+                                              "To update the whole building in one operation, all potentially modified files (building.ini, \
+                                              renderconfig.ini, *.nmf) must be located in the input directory. Otherwise you should update \
+                                              files individually, one-by-one."); };
+                        }
 
-                    ini::scale::building(&mut bld_ini, *factor);
-                    let bld_out_path = dir_output.join(BUILDING_INI);
-                    let mut bld_ini_out = io::BufWriter::new(fs::OpenOptions::new().write(true).truncate(true).open(bld_out_path).unwrap());
-                    bld_ini.write_to(&mut bld_ini_out).expect(&format!("Cannot write {}", BUILDING_INI));
-                    bld_ini_out.flush().unwrap();
-                    println!("{}: updated", BUILDING_INI);
+                        macro_rules! check_path_opt {
+                            ($opt:expr) => { if let Some(path) = &$opt { 
+                                    check_path!(path); 
+                                } 
+                            };
+                        }
+
+                        check_path!(bld_def.renderconfig);
+                        check_path!(bld_def.building_ini);
+                        check_path!(bld_def.model);
+                        check_path_opt!(bld_def.model_lod);
+                        check_path_opt!(bld_def.model_lod2);
+                        check_path_opt!(bld_def.model_e);
+                    }
+
+                    println!("Building parsed successfully. Copying files...");
+                    let bld_def = bld_def.shallow_copy_to(dir_output).expect("Cannot copy building files");
+                    println!("Files copied. Updating...");
+
+                    // Update INI files
+                    let mut buf = String::with_capacity(16 * 1024);
+
+                    macro_rules! scale_ini {
+                        ($path:expr, $name:expr, $parser:expr, $scaler:expr) => {{
+                            read_to_string_buf($path, &mut buf).expect(concatcp!("Cannot read ", $name));
+                            let mut ini = $parser(&buf).expect(concatcp!("Cannot parse ", $name));
+                            $scaler(&mut ini, *factor);
+                            let out_writer = io::BufWriter::new(fs::OpenOptions::new().write(true).truncate(true).open($path).unwrap());
+                            ini.write_to(out_writer).unwrap();
+                            println!("{}: OK", $name);
+                        }};
+                    }
+
+                    scale_ini!(&bld_def.building_ini, BUILDING_INI, ini::parse_building_ini, ini::scale::building);
+                    scale_ini!(&bld_def.renderconfig, RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::scale::render);
+
+                    // Update NMF models
+                    let scale_nmf = |path: Option<&PathBuf>| {
+                        if let Some(path) = path {
+                            let mut nmf = nmf::NmfBufFull::from_path(path).expect("Failed to read the nmf file");
+                            for o in nmf.objects.iter_mut() {
+                                o.scale(*factor);
+                            }
+
+                            nmf.write_to_file(path).expect("Failed to write the updated nmf");
+                            println!("{}: OK", path.strip_prefix(dir_output).unwrap().display());
+                        }
+                    };
+
+                    scale_nmf(Some(&bld_def.model));
+                    scale_nmf(bld_def.model_lod.as_ref());
+                    scale_nmf(bld_def.model_lod2.as_ref());
+                    scale_nmf(bld_def.model_e.as_ref());
                 },
             }
         },
@@ -291,40 +338,29 @@ fn print_dirs() {
 }
 
 
-fn copy_directory(src: &Path, dest: &Path) -> io::Result<()> {
-    if !dest.exists() {
-        fs::create_dir_all(dest)?;
-    }
+pub fn read_to_buf(path: &Path, buf: &mut Vec<u8>) -> Result<(), std::io::Error> {
+    use std::io::Read;
+    use std::convert::TryInto;
+    buf.truncate(0);
 
-    for d_res in fs::read_dir(src)? {
-        let e = d_res?;
-        let fname = e.file_name();
-        let ftyp = e.file_type()?;
-        if ftyp.is_file() && fname != "building.bbox" && fname != "building.fire" {
-            fs::copy(&e.path(), &dest.join(fname))?;
-
-        } else if ftyp.is_dir() {
-            copy_directory(&e.path(), &dest.join(fname))?;
-        } 
-    }
-
+    let mut file = fs::File::open(path)?;
+    let meta = file.metadata()?;
+    let sz: usize = meta.len().try_into().expect("Cannot get file length");
+    buf.reserve(sz);
+    file.read_to_end(buf)?;
     Ok(())
 }
 
-/*
-fn parse_ini_or_abort<'a, T: ini::IniToken>(name: &str, ini_buf: &'a str) -> ini::IniFile<'a, T> {
-    let ini = ini::IniFile::<T>::from_slice(&ini_buf);
-    match ini {
-        Ok(ini) => { 
-            println!("{}: OK", name);
-            ini
-        },
-        Err(errors) => {
-            eprintln!("Invalid {}: {} errors", name, errors.len());
-            for (chunk, e) in errors {
-                eprintln!("{}; chunk: [{}]\n", e, chunk);
-            }
-            std::process::exit(1);
-        }
-    }
-}*/
+
+pub fn read_to_string_buf(path: &Path, buf: &mut String) -> Result<(), std::io::Error> {
+    use std::io::Read;
+    use std::convert::TryInto;
+    buf.truncate(0);
+
+    let mut file = fs::File::open(path)?;
+    let meta = file.metadata()?;
+    let sz: usize = meta.len().try_into().expect("Cannot get file length");
+    buf.reserve(sz);
+    file.read_to_string(buf)?;
+    Ok(())
+}

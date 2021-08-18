@@ -165,7 +165,7 @@ lazy_static! {
                 .arg(Arg::with_name("dir-input").required(true));
 
             let cmd_modbuilding_scale = SubCommand::with_name("scale")
-                .about("Not implemented (WIP)")
+                .about("Scales the whole building (models and .ini files) by the specified factor")
                 .arg(Arg::with_name("dir-input").required(true))
                 .arg(Arg::with_name("factor").required(true))
                 .arg(Arg::with_name("dir-output").required(true));

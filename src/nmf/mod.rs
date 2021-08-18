@@ -223,7 +223,8 @@ impl NmfBuf<ObjectFull> {
         
         let f_out = fs::OpenOptions::new()
                         .write(true)
-                        .create_new(true)
+                        .create(true)
+                        .truncate(true)
                         .open(path)
                         .map_err(Error::FileIO)?;
 
