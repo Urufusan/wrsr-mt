@@ -21,22 +21,22 @@ Command-line application, providing a variety of modding-related tools for "Work
        7. Prints out all found issues.
 
  - applying geometry transformations to whole mod buildings (\*.nmf and \*.ini files together). This batch transformation requires all needed files to be in the building directory - otherwise you can use the individual file manipulation operations.
-  - scaling the building by a given factor
-  - (WIP) mirroring the building
+   - scaling the building by a given factor
+   - (WIP) mirroring the building
 
  - manipulating individual mod files
 
-  - building.ini and renderconfig.ini
-   - Scaling coordinates by a given factor
-   - (WIP) mirroring coordinates
+   - building.ini and renderconfig.ini
+     - Scaling coordinates by a given factor
+     - (WIP) mirroring coordinates
 
-  - \*.nmf files
-   - displaying model structure (submaterials, objects, geometry)
-   - geometry scaling (by a given factor)
-   - geometry mirroring (along X-axis)
-   - exporting into Wavefront's \*.obj format ([example](https://www.youtube.com/watch?v=vJ6aN4iXCas))
+   - \*.nmf files
+     - displaying model structure (submaterials, objects, geometry)
+     - geometry scaling (by a given factor)
+     - geometry mirroring (along X-axis)
+     - exporting into Wavefront's \*.obj format ([example](https://www.youtube.com/watch?v=vJ6aN4iXCas))
  
- - modpacks (generating customized mods in *workshop_wip* directory, using assets from workshop mods and stock buildings)
+ - (WIP) modpacks (generating customized mods in *workshop_wip* directory, using assets from workshop mods and stock buildings)
 
 
 Most subcommands support --help parameter:
