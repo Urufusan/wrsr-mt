@@ -19,13 +19,22 @@ Command-line application, providing a variety of modding-related tools for "Work
            - $COST_WORK_VEHICLE_STATION_ACCORDING_NODE
        6. Checks if any active submaterial in the main model's nmf does not have a corresponding entry in the *.mtl files;
        7. Prints out all found issues.
- - manipulating \*.nmf files
+ - manipulating individual mod files
+  - scaling coordinates in building.ini and renderconfig.ini by a given factor
+  - \*.nmf files
    - displaying model structure (submaterials, objects, geometry)
    - geometry scaling (by a given factor)
    - geometry mirroring (along X-axis)
    - exporting into Wavefront's \*.obj format ([example](https://www.youtube.com/watch?v=vJ6aN4iXCas))
  
  - modpacks (generating customized mods in *workshop_wip* directory, using assets from workshop mods and stock buildings)
+
+
+Most subcommands support --help parameter:
+
+    $ wrsr-mt --help
+    $ wrsr-mt nmf --help
+    $ wrsr-mt nmf scale --help
 
 
 # Examples
@@ -38,6 +47,11 @@ Check building ini-file for syntax errors:
 Validate building mod in directory HOUSE3
 
     $ wrsr-mt mod-building validate HOUSE3
+
+
+Scale building.ini by x1.3. Updated file will be saved as building.ini\_x1.3
+
+    $ wrsr-mt ini scale-building building.ini 1.3
 
 
 Show details of 'model.nmf':
@@ -59,9 +73,3 @@ Export model geometry from *model.nmf* into *model.obj*
 
     $ wrsr-mt nmf to-obj model.nmf model.obj
     
-
-Most subcommands support --help parameter
-
-    $ wrsr-mt --help
-    $ wrsr-mt nmf --help
-    $ wrsr-mt nmf scale --help

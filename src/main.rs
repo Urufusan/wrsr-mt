@@ -193,6 +193,7 @@ fn main() {
                     let render_ini = dir_input.join(RENDERCONFIG_INI);
                     match building_def::BuildingDef::from_config(&bld_ini, &render_ini) {
                         Ok(bld) => {
+                            println!("{}\nValidating...", bld);
                             match bld.parse_and_validate() {
                                 Ok(()) => println!("OK"),
                                 Err(e) => {
@@ -261,8 +262,8 @@ fn main() {
                         }};
                     }
 
-                    scale_ini!(&bld_def.building_ini, BUILDING_INI, ini::parse_building_ini, ini::scale::building);
-                    scale_ini!(&bld_def.renderconfig, RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::scale::render);
+                    scale_ini!(&bld_def.building_ini, BUILDING_INI,     ini::parse_building_ini,     ini::transform::scale_building);
+                    scale_ini!(&bld_def.renderconfig, RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::scale_render);
 
                     // Update NMF models
                     let scale_nmf = |path: Option<&PathBuf>| {
@@ -304,6 +305,12 @@ fn main() {
                 }
             }
 
+            fn save_ini_as<U: ini::IniToken>(path: &Path, ini: ini::IniFile<U>) {
+                let out_writer = io::BufWriter::new(fs::OpenOptions::new().write(true).create_new(true).open(path).unwrap());
+                ini.write_to(out_writer).expect("Could not write modified file");
+                println!("Done. File saved as {}", path.display());
+            }
+
             match cmd {
                 cfg::IniCommand::ParseBuilding(path) => {
                     let buf = fs::read_to_string(path).expect("Cannot read the specified file");
@@ -320,6 +327,24 @@ fn main() {
                     let tokens = ini::parse_material_tokens(&buf);
                     process_tokens(tokens);
                 },
+                cfg::IniCommand::ScaleBuilding(path, factor) => {
+                    let file = fs::read_to_string(path).expect("Cannot read the specified file");
+                    let mut ini = ini::parse_building_ini(&file).expect("Cannot parse building.ini");
+                    ini::transform::scale_building(&mut ini, *factor);
+                    let mut path = path.clone();
+
+                    path.set_file_name(format!("{}_x{}", path.file_name().unwrap().to_str().unwrap(), factor));
+                    save_ini_as(&path, ini);
+                },
+                cfg::IniCommand::ScaleRender(path, factor) => {
+                    let file = fs::read_to_string(path).expect("Cannot read the specified file");
+                    let mut ini = ini::parse_renderconfig_ini(&file).expect("Cannot parse renderconfig");
+                    ini::transform::scale_render(&mut ini, *factor);
+
+                    let mut path = path.clone();
+                    path.set_file_name(format!("{}_x{}", path.file_name().unwrap().to_str().unwrap(), factor));
+                    save_ini_as(&path, ini);
+                }
             }
 
         },

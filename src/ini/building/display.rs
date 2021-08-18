@@ -10,69 +10,81 @@ use super::{BuildingType,
 
 type IOResult = Result<(), std::io::Error>;
 
-macro_rules! write_pts {
-    ($wr:ident, $pfx:expr, $($i:ident),+) => {{
-        write!($wr, "{}", $pfx)?;
-        $(write!($wr, "\r\n{} {} {}", $i.x, $i.y, $i.z)?;)+
-        Ok(())
-    }};
-}
-
-macro_rules! write_x_pts {
-    ($wr:ident, $pfx:expr, $x:expr, $($i:ident),+) => {{
-        write!($wr, "{} {}", $pfx, $x)?;
-        $(write!($wr, "\r\n{} {} {}", $i.x, $i.y, $i.z)?;)+
-        Ok(())
-    }};
-}
-
-macro_rules! write_tag_pts {
-    ($wr:ident, $pfx:expr, $tag:expr, $($i:ident),+) => {{
-        write!($wr, "{}{}", $pfx, $tag)?;
-        $(write!($wr, "\r\n{} {} {}", $i.x, $i.y, $i.z)?;)+
-        Ok(())
-    }};
-}
-
 impl Token<'_> {
     pub fn serialize_token<W: Write>(&self, mut wr: W) -> IOResult {
 
+        // float serialization precision
+        const PREC: usize = 4;
+
+        macro_rules! write_pts {
+            ($pfx:expr, $($i:ident),+) => {{
+                write!(wr, "{}", $pfx)?;
+                $(write!(wr, "\r\n{:.prec$} {:.prec$} {:.prec$}", $i.x, $i.y, $i.z, prec = PREC)?;)+
+                Ok(())
+            }};
+        }
+
+        macro_rules! write_x_pts {
+            ($pfx:expr, $x:expr, $($i:ident),+) => {{
+                write!(wr, "{} {}", $pfx, $x)?;
+                $(write!(wr, "\r\n{:.prec$} {:.prec$} {:.prec$}", $i.x, $i.y, $i.z, prec = PREC)?;)+
+                Ok(())
+            }};
+        }
+
+        macro_rules! write_tag_pts {
+            ($pfx:expr, $tag:expr, $($i:ident),+) => {{
+                write!(wr, "{}{}", $pfx, $tag)?;
+                $(write!(wr, "\r\n{:.prec$} {:.prec$} {:.prec$}", $i.x, $i.y, $i.z, prec = PREC)?;)+
+                Ok(())
+            }};
+        }
+
         match self {
-            Self::VehicleStation((a, b))           => write_pts!(wr, Self::VEHICLE_STATION, a, b),
-            Self::VehicleStationDetourPoint(p)     => write_pts!(wr, Self::VEHICLE_STATION_DETOUR_POINT, p),
-            Self::VehicleStationDetourPid((i, p))  => write_x_pts!(wr, Self::VEHICLE_STATION_DETOUR_PID, i, p),
+            Self::VehicleStation((a, b))           => write_pts!(Self::VEHICLE_STATION, a, b),
+            Self::VehicleStationDetourPoint(p)     => write_pts!(Self::VEHICLE_STATION_DETOUR_POINT, p),
+            Self::VehicleStationDetourPid((i, p))  => write_x_pts!(Self::VEHICLE_STATION_DETOUR_PID, i, p),
 
-            Self::VehicleParking((a, b))           => write_pts!(wr, Self::VEHICLE_PARKING, a, b),
-            Self::VehicleParkingDetourPoint(p)     => write_pts!(wr, Self::VEHICLE_PARKING_DETOUR_POINT, p),
-            Self::VehicleParkingDetourPid((i, p))  => write_x_pts!(wr, Self::VEHICLE_PARKING_DETOUR_PID, i, p),
-            Self::VehicleParkingPersonal((a, b))   => write_pts!(wr, Self::VEHICLE_PARKING_PERSONAL, a, b),
+            Self::VehicleParking((a, b))           => write_pts!(Self::VEHICLE_PARKING, a, b),
+            Self::VehicleParkingDetourPoint(p)     => write_pts!(Self::VEHICLE_PARKING_DETOUR_POINT, p),
+            Self::VehicleParkingDetourPid((i, p))  => write_x_pts!(Self::VEHICLE_PARKING_DETOUR_PID, i, p),
+            Self::VehicleParkingPersonal((a, b))   => write_pts!(Self::VEHICLE_PARKING_PERSONAL, a, b),
 
-            Self::AirplaneStation((t, p1, p2))     => write_tag_pts!(wr, Self::AIRPLANE_STATION, t, p1, p2),
-            Self::HeliportStation((a, b))          => write_pts!(wr, Self::HELIPORT_STATION, a, b),
-            Self::ShipStation((a, b))              => write_pts!(wr, Self::SHIP_STATION, a, b),
+            Self::AirplaneStation((t, p1, p2))     => write_tag_pts!(Self::AIRPLANE_STATION, t, p1, p2),
+            Self::HeliportStation((a, b))          => write_pts!(Self::HELIPORT_STATION, a, b),
+            Self::ShipStation((a, b))              => write_pts!(Self::SHIP_STATION, a, b),
 
-            Self::Connection2Points((t, p1, p2))   => write_tag_pts!(wr, Self::CONNECTION, t, p1, p2),
-            Self::Connection1Point((t, p))         => write_tag_pts!(wr, Self::CONNECTION, t, p),
-            Self::OffsetConnection((i, p))         => write_x_pts!(wr, Self::OFFSET_CONNECTION_XYZW, i, p),
+            Self::Connection2Points((t, p1, p2))   => write_tag_pts!(Self::CONNECTION, t, p1, p2),
+            Self::Connection1Point((t, p))         => write_tag_pts!(Self::CONNECTION, t, p),
+            Self::OffsetConnection((i, p))         => write_x_pts!(Self::OFFSET_CONNECTION_XYZW, i, p),
 
-            Self::ConnectionsSpace(r)                => write!(wr, "{}\r\n{} {}\r\n{} {}",       Self::CONNECTIONS_SPACE,               r.x1, r.z1, r.x2, r.z2),
-            Self::ConnectionsRoadDeadSquare(r)       => write!(wr, "{}\r\n{} {}\r\n{} {}",       Self::CONNECTIONS_ROAD_DEAD_SQUARE,    r.x1, r.z1, r.x2, r.z2),
-            Self::ConnectionsAirportDeadSquare(r)    => write!(wr, "{}\r\n{} {}\r\n{} {}",       Self::CONNECTIONS_AIRPORT_DEAD_SQUARE, r.x1, r.z1, r.x2, r.z2),
-            Self::ConnectionsWaterDeadSquare((x, r)) => write!(wr, "{}\r\n{}\r\n{} {}\r\n{} {}", Self::CONNECTIONS_ROAD_DEAD_SQUARE, x, r.x1, r.z1, r.x2, r.z2),
+            Self::ConnectionsSpace(r)                => write!(wr, "{}\r\n{:.prec$} {:.prec$}\r\n{:.prec$} {:.prec$}",         
+                                                               Self::CONNECTIONS_SPACE, r.x1, r.z1, r.x2, r.z2, prec = PREC),
+            Self::ConnectionsRoadDeadSquare(r)       => write!(wr, "{}\r\n{:.prec$} {:.prec$}\r\n{:.prec$} {:.prec$}",
+                                                               Self::CONNECTIONS_ROAD_DEAD_SQUARE,    r.x1, r.z1, r.x2, r.z2, prec = PREC),
+            Self::ConnectionsAirportDeadSquare(r)    => write!(wr, "{}\r\n{:.prec$} {:.prec$}\r\n{:.prec$} {:.prec$}",
+                                                               Self::CONNECTIONS_AIRPORT_DEAD_SQUARE, r.x1, r.z1, r.x2, r.z2, prec = PREC),
+            Self::ConnectionsWaterDeadSquare((x, r)) => write!(wr, "{}\r\n{:.prec$}\r\n{:.prec$} {:.prec$}\r\n{:.prec$} {:.prec$}",
+                                                               Self::CONNECTIONS_ROAD_DEAD_SQUARE, x, r.x1, r.z1, r.x2, r.z2, prec = PREC),
 
-            Self::Particle((t, p, a, s))           => write!(wr, "{} {} {} {} {} {} {}", Self::PARTICLE, t, p.x, p.y, p.z, a, s),
-            Self::ParticleReactor(p)               => write_pts!(wr, Self::PARTICLE_REACTOR, p),
-            Self::TextCaption((a, b))              => write_pts!(wr, Self::TEXT_CAPTION, a, b),
-            Self::WorkerRenderingArea((a, b))      => write_pts!(wr, Self::WORKER_RENDERING_AREA, a, b),
+            Self::Particle((t, p, a, s))           => write!(wr, "{} {} {:.prec$} {:.prec$} {:.prec$} {:.prec$} {:.prec$}", 
+                                                             Self::PARTICLE, t, p.x, p.y, p.z, a, s, prec = PREC),
+            Self::ParticleReactor(p)               => write_pts!(Self::PARTICLE_REACTOR, p),
+            Self::TextCaption((a, b))              => write_pts!(Self::TEXT_CAPTION, a, b),
+            Self::WorkerRenderingArea((a, b))      => write_pts!(Self::WORKER_RENDERING_AREA, a, b),
             Self::ResourceVisualization(ResourceVisualization { storage_id, position: p, rotation, scale: s, numstep_x: (x1, x2), numstep_z: (z1, z2) }) => 
-                write!(wr, "{} {}\nposition {} {} {}\nrotation {}\nscale {} {} {}\nnumstep_x {} {}\nnumstep_t {} {}", 
-                       Self::RESOURCE_VISUALIZATION, storage_id, p.x, p.y, p.z, rotation, s.x, s.y, s.z, x1, x2, z1, z2),
-            Self::ResourceIncreasePoint((i, p))        => write_x_pts!(wr, Self::RESOURCE_INCREASE_POINT, i, p),
-            Self::ResourceIncreaseConvPoint((i, a, b)) => write_x_pts!(wr, Self::RESOURCE_INCREASE_CONV_POINT, i, a, b),
-            Self::ResourceFillingPoint(p)              => write_pts!(wr, Self::RESOURCE_FILLING_POINT, p),
-            Self::ResourceFillingConvPoint((a, b))     => write_pts!(wr, Self::RESOURCE_FILLING_CONV_POINT, a, b),
+                write!(wr, "{} {}\nposition {:.prec$} {:.prec$} {:.prec$}\n\
+                                  rotation {:.prec$}\n\
+                                  scale {:.prec$} {:.prec$} {:.prec$}\n\
+                                  numstep_x {:.prec$} {}\n\
+                                  numstep_t {:.prec$} {}", 
+                       Self::RESOURCE_VISUALIZATION, storage_id, p.x, p.y, p.z, rotation, s.x, s.y, s.z, x1, x2, z1, z2, prec = PREC),
+            Self::ResourceIncreasePoint((i, p))        => write_x_pts!(Self::RESOURCE_INCREASE_POINT, i, p),
+            Self::ResourceIncreaseConvPoint((i, a, b)) => write_x_pts!(Self::RESOURCE_INCREASE_CONV_POINT, i, a, b),
+            Self::ResourceFillingPoint(p)              => write_pts!(Self::RESOURCE_FILLING_POINT, p),
+            Self::ResourceFillingConvPoint((a, b))     => write_pts!(Self::RESOURCE_FILLING_CONV_POINT, a, b),
 
-            Self::CostWorkVehicleStation((a, b))       => write_pts!(wr, Self::COST_WORK_VEHICLE_STATION, a, b),
+            Self::CostWorkVehicleStation((a, b))       => write_pts!(Self::COST_WORK_VEHICLE_STATION, a, b),
 
             t => write!(wr, "{}", t)
         }

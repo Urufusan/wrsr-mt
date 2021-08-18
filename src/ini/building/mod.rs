@@ -507,7 +507,7 @@ impl StorageCargoType {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum ParticleType {
     ResidentialHeating,
     BigBlack,
@@ -856,20 +856,12 @@ impl ResourceSourceType {
 }
 
 
+#[derive(Clone)]
 pub struct ResourceVisualization {
-    storage_id: u32,
-    position: Point3f,
-    rotation: f32,
-    scale: Point3f,
-    numstep_x: (f32, u32),
-    numstep_z: (f32, u32),
+    pub storage_id: u32,
+    pub position: Point3f,
+    pub rotation: f32,
+    pub scale: Point3f,
+    pub numstep_x: (f32, u32),
+    pub numstep_z: (f32, u32),
 }
-
-/*
-#[inline]
-fn scale_point(factor: f64, mut p: Point3f) -> Point3f {
-    p.x = ((p.x as f64) * factor) as f32;
-    p.y = ((p.y as f64) * factor) as f32;
-    p.z = ((p.z as f64) * factor) as f32;
-    p
-}*/

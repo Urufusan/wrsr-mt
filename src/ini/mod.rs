@@ -7,7 +7,7 @@ pub mod building;
 pub mod renderconfig;
 pub mod material;
 
-pub mod scale;
+pub mod transform;
 
 use common::ParseError;
 

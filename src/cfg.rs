@@ -79,6 +79,8 @@ pub enum IniCommand {
     ParseBuilding(PathBuf),
     ParseRender(PathBuf),
     ParseMaterial(PathBuf),
+    ScaleBuilding(PathBuf, f64),
+    ScaleRender(PathBuf, f64),
 }
 
 //-------------------------------
@@ -189,11 +191,23 @@ lazy_static! {
                 .about("Parse the specified *.mtl, check for errors, print results")
                 .arg(Arg::with_name("path").required(true));
 
+            let cmd_ini_scalebuilding = SubCommand::with_name("scale-building")
+                .about("Parse the specified building.ini, scale by the specified factor, save to a new ile")
+                .arg(Arg::with_name("path").required(true))
+                .arg(Arg::with_name("factor").required(true));
+
+            let cmd_ini_scalerender = SubCommand::with_name("scale-render")
+                .about("Parse the specified renderconfig.ini, scale by the specified factor, save to a new file")
+                .arg(Arg::with_name("path").required(true))
+                .arg(Arg::with_name("factor").required(true));
+
             SubCommand::with_name("ini")
                 .about("Operations for individual configuration files")
                 .subcommand(cmd_ini_parsebuilding)
                 .subcommand(cmd_ini_parserender)
                 .subcommand(cmd_ini_parsemtl)
+                .subcommand(cmd_ini_scalebuilding)
+                .subcommand(cmd_ini_scalerender)
         };
 
         let m = App::new("wrsr-mt")
@@ -248,6 +262,16 @@ lazy_static! {
                         ("parse-mtl", Some(m)) => {
                             let path = mk_path(m, "path");
                             IniCommand::ParseMaterial(path)
+                        },
+                        ("scale-building", Some(m)) => {
+                            let path = mk_path(m, "path");
+                            let factor = f64::from_str(m.value_of("factor").unwrap()).expect("Cannot parse scale factor as float");
+                            IniCommand::ScaleBuilding(path, factor)
+                        },
+                        ("scale-render", Some(m)) => {
+                            let path = mk_path(m, "path");
+                            let factor = f64::from_str(m.value_of("factor").unwrap()).expect("Cannot parse scale factor as float");
+                            IniCommand::ScaleRender(path, factor)
                         },
                         (cname, _) => panic!("Unknown ini subcommand '{}'" , cname)
                     };

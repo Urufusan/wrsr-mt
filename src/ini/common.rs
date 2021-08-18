@@ -10,6 +10,7 @@ pub type ParseError = String;
 
 pub type ParseResult<'a, T> = Result<(T, Option<&'a str>), ParseError>;
 
+#[derive(Clone)]
 pub struct Point3f {
     pub x: f32,
     pub y: f32,
