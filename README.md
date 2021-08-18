@@ -19,8 +19,17 @@ Command-line application, providing a variety of modding-related tools for "Work
            - $COST_WORK_VEHICLE_STATION_ACCORDING_NODE
        6. Checks if any active submaterial in the main model's nmf does not have a corresponding entry in the *.mtl files;
        7. Prints out all found issues.
+
+ - applying geometry transformations to whole mod buildings (\*.nmf and \*.ini files together). This batch transformation requires all needed files to be in the building directory - otherwise you can use the individual file manipulation operations.
+  - scaling the building by a given factor
+  - (WIP) mirroring the building
+
  - manipulating individual mod files
-  - scaling coordinates in building.ini and renderconfig.ini by a given factor
+
+  - building.ini and renderconfig.ini
+   - Scaling coordinates by a given factor
+   - (WIP) mirroring coordinates
+
   - \*.nmf files
    - displaying model structure (submaterials, objects, geometry)
    - geometry scaling (by a given factor)
@@ -49,10 +58,14 @@ Validate building mod in directory HOUSE3
     $ wrsr-mt mod-building validate HOUSE3
 
 
+Scale the whole building in directory HOUSE3 (models and ini files) by x1.2. Store the result in directory HOUSE3\_bigger.
+    
+    $ wrsr-mt mod-building scale HOUSE3 1.2 HOUSE3_bigger
+
+
 Scale building.ini by x1.3. Updated file will be saved as building.ini\_x1.3
 
     $ wrsr-mt ini scale-building building.ini 1.3
-
 
 Show details of 'model.nmf':
 
