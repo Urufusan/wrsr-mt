@@ -14,6 +14,7 @@ use normpath::BasePath;
 pub struct BuildingDef {
     pub building_ini: PathBuf,
     pub renderconfig: PathBuf,
+    pub image_gui: Option<PathBuf>,
 
     pub model: PathBuf,
     pub model_lod: Option<PathBuf>,
@@ -48,6 +49,15 @@ impl BuildingDef {
 
         let render_buf = fs::read_to_string(renderconfig).map_err(|e| BuildingError::FileIO(renderconfig.to_path_buf(), e))?;
         let render_ini = ini::parse_renderconfig_ini(&render_buf).map_err(|e| BuildingError::Parse(renderconfig.to_path_buf(), concat_parse_errors(e)))?;
+
+        let image_gui = {
+            let img_path = render_root.join("imagegui.png");
+            if img_path.exists() {
+                Some(img_path.into_path_buf())
+            } else {
+                None
+            }
+        };
 
         macro_rules! get_render_value {
             ($p:pat, $s:ident) => {{
@@ -84,6 +94,7 @@ impl BuildingDef {
         Ok(BuildingDef {
             building_ini: building_ini.to_path_buf(),
             renderconfig: renderconfig.to_path_buf(),
+            image_gui,
             model,
             model_lod,
             model_lod2,
@@ -108,6 +119,7 @@ impl BuildingDef {
 
         check_path!("building.ini", &self.building_ini);
         check_path!("renderconfig.ini", &self.renderconfig);
+        check_popt!("imagegui", &self.image_gui);
         check_path!("MODEL", &self.model);
         check_popt!("MODEL_LOD", &self.model_lod);
         check_popt!("MODEL_LOD2", &self.model_lod2);
@@ -179,6 +191,7 @@ impl BuildingDef {
 
         let renderconfig = mk_fld(&self.renderconfig)?;
         let building_ini = mk_fld(&self.building_ini)?;
+        let image_gui    = mk_fld_opt!(self.image_gui)?;
         let model        = mk_fld(&self.model)?;
         let model_lod    = mk_fld_opt!(self.model_lod)?;
         let model_lod2   = mk_fld_opt!(self.model_lod2)?;
@@ -195,6 +208,7 @@ impl BuildingDef {
         Ok(BuildingDef {
             renderconfig,
             building_ini,
+            image_gui,
             model,
             model_lod,
             model_lod2,
@@ -308,6 +322,7 @@ impl Display for BuildingDef {
         writeln!(f, "Building {{")?;
         writeln!(f, "    building.ini:     {}", self.building_ini.display())?;
         writeln!(f, "    renderconfig.ini: {}", self.renderconfig.display())?;
+        w_optln!(f, "    imagegui.png:     {}", self.image_gui)?;
         writeln!(f, "    model:            {}", self.model.display())?;
         w_optln!(f, "    model_lod:        {}", self.model_lod)?;
         w_optln!(f, "    model_lod2:       {}", self.model_lod2)?;
