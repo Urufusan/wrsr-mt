@@ -57,7 +57,7 @@ Validation:
 
 ```bash
 # Check building.ini for syntax errors
-$ wrsr-mt ini parse-building  CityMagazynA/building.ini
+$ wrsr-mt ini parse building CityMagazynA/building.ini
 
 # Validate whole building in directory 'HOUSE3'
 $ wrsr-mt mod-building validate HOUSE3
