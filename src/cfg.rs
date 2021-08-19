@@ -23,15 +23,10 @@ pub struct InstallCommand {
 //-----------------------------
 
 pub enum NmfCommand {
-    Show(NmfShowCommand),
+    Show(PathBuf),
     ToObj(NmfToObjCommand),
-    Scale(NmfScaleCommand),
-    MirrorX(NmfMirrorXCommand),
-    Patch(NmfPatchCommand),
-}
-
-pub struct NmfShowCommand {
-    pub path: PathBuf,
+    Scale(ScaleCommand),
+    Mirror(MirrorCommand),
 }
 
 pub struct NmfToObjCommand {
@@ -39,38 +34,12 @@ pub struct NmfToObjCommand {
     pub output: PathBuf
 }
 
-pub struct NmfScaleCommand {
-    pub input: PathBuf,
-    pub factor: f64,
-    pub output: PathBuf
-}
-
-pub struct NmfMirrorXCommand {
-    pub input: PathBuf,
-    pub output: PathBuf
-}
-
-pub struct NmfPatchCommand {
-    pub input: PathBuf,
-    pub patch: PathBuf,
-    pub output: PathBuf
-}
-
 //-------------------------------
 
 pub enum ModCommand {
-    Validate(ModValidateCommand),
-    Scale(ModScaleCommand),
-}
-
-pub struct ModValidateCommand {
-    pub dir_input: PathBuf
-}
-
-pub struct ModScaleCommand {
-    pub dir_input: PathBuf,
-    pub factor: f64,
-    pub dir_output: PathBuf
+    Validate(PathBuf),
+    Scale(ScaleCommand),
+    Mirror(MirrorCommand),
 }
 
 //-------------------------------
@@ -78,9 +47,24 @@ pub struct ModScaleCommand {
 pub enum IniCommand {
     ParseBuilding(PathBuf),
     ParseRender(PathBuf),
-    ParseMaterial(PathBuf),
-    ScaleBuilding(PathBuf, f64),
-    ScaleRender(PathBuf, f64),
+    ParseMtl(PathBuf),
+    ScaleBuilding(ScaleCommand),
+    ScaleRender(ScaleCommand),
+    MirrorBuilding(MirrorCommand),
+    MirrorRender(MirrorCommand),
+}
+
+//-------------------------------
+
+pub struct MirrorCommand {
+    pub input: PathBuf,
+    pub output: PathBuf
+}
+
+pub struct ScaleCommand {
+    pub input: PathBuf,
+    pub factor: f64,
+    pub output: PathBuf
 }
 
 //-------------------------------
@@ -115,7 +99,7 @@ impl AppSettings {
 
 lazy_static! {
     pub static ref APP_SETTINGS: AppSettings = {
-        // TODO: read from configuration + arguments
+        // TODO: read from configuration
         use clap::{App, Arg, SubCommand};
 
         let cmd_install = SubCommand::with_name("install")
@@ -141,24 +125,17 @@ lazy_static! {
                 .arg(Arg::with_name("factor").required(true))
                 .arg(Arg::with_name("nmf-output").required(true));
 
-            let cmd_nmf_mirror_x = SubCommand::with_name("mirror-x")
-                .about("Mirror the specified *.nmf along the X-axis")
+            let cmd_nmf_mirror = SubCommand::with_name("mirror")
+                .about("Mirror the specified *.nmf, save to a new file")
                 .arg(Arg::with_name("nmf-input").required(true))
                 .arg(Arg::with_name("nmf-output").required(true));
-
-            /*
-            let cmd_nmf_patch = SubCommand::with_name("patch")
-                .arg(Arg::with_name("nmf-input").required(true))
-                .arg(Arg::with_name("nmf-patch").required(true))
-                .arg(Arg::with_name("nmf-output").required(true));*/
 
             SubCommand::with_name("nmf")
                 .about("Operations for *.nmf files")
                 .subcommand(cmd_nmf_show)
                 .subcommand(cmd_nmf_toobj)
                 .subcommand(cmd_nmf_scale)
-                .subcommand(cmd_nmf_mirror_x)
-                //.subcommand(cmd_nmf_patch)
+                .subcommand(cmd_nmf_mirror)
         };
 
         let cmd_modbuilding = {
@@ -172,47 +149,86 @@ lazy_static! {
                 .arg(Arg::with_name("factor").required(true))
                 .arg(Arg::with_name("dir-output").required(true));
 
+            let cmd_modbuilding_mirror = SubCommand::with_name("mirror")
+                .about("Mirrors the whole building (models and .ini files)")
+                .arg(Arg::with_name("dir-input").required(true))
+                .arg(Arg::with_name("dir-output").required(true));
+
             SubCommand::with_name("mod-building")
                 .about("Operations for whole mods")
                 .subcommand(cmd_mod_validate)
                 .subcommand(cmd_modbuilding_scale)
+                .subcommand(cmd_modbuilding_mirror)
         };
 
         let cmd_ini = {
-            let cmd_ini_parsebuilding = SubCommand::with_name("parse-building")
-                .about("Parse the specified building.ini, check for errors, print results")
-                .arg(Arg::with_name("path").required(true));
+            let cmd_ini_parse = {
+                let cmd_ini_parse_building = SubCommand::with_name("building")
+                    .about("Parse the specified building.ini, check for errors, print results")
+                    .arg(Arg::with_name("path").required(true));
 
-            let cmd_ini_parserender = SubCommand::with_name("parse-renderconfig")
-                .about("Parse the specified renderconfig.ini, check for errors, print results")
-                .arg(Arg::with_name("path").required(true));
+                let cmd_ini_parse_render = SubCommand::with_name("renderconfig")
+                    .about("Parse the specified renderconfig.ini, check for errors, print results")
+                    .arg(Arg::with_name("path").required(true));
 
-            let cmd_ini_parsemtl = SubCommand::with_name("parse-mtl")
-                .about("Parse the specified *.mtl, check for errors, print results")
-                .arg(Arg::with_name("path").required(true));
+                let cmd_ini_parse_mtl = SubCommand::with_name("mtl")
+                    .about("Parse the specified *.mtl, check for errors, print results")
+                    .arg(Arg::with_name("path").required(true));
 
-            let cmd_ini_scalebuilding = SubCommand::with_name("scale-building")
-                .about("Parse the specified building.ini, scale by the specified factor, save to a new ile")
-                .arg(Arg::with_name("path").required(true))
-                .arg(Arg::with_name("factor").required(true));
+                SubCommand::with_name("parse")
+                    .about("Parsing and validating *.ini and *.mtl files")
+                    .subcommand(cmd_ini_parse_building)
+                    .subcommand(cmd_ini_parse_render)
+                    .subcommand(cmd_ini_parse_mtl)
+            };
 
-            let cmd_ini_scalerender = SubCommand::with_name("scale-render")
-                .about("Parse the specified renderconfig.ini, scale by the specified factor, save to a new file")
-                .arg(Arg::with_name("path").required(true))
-                .arg(Arg::with_name("factor").required(true));
+            let cmd_ini_scale = {
+                let cmd_ini_scale_building = SubCommand::with_name("building")
+                    .about("Parse the specified building.ini, scale by a given factor, save to a new file")
+                    .arg(Arg::with_name("ini-input").required(true))
+                    .arg(Arg::with_name("factor").required(true))
+                    .arg(Arg::with_name("ini-output").required(true));
+
+                let cmd_ini_scale_render = SubCommand::with_name("renderconfig")
+                    .about("Parse the specified renderconfig.ini, scale by a given factor, save to a new file")
+                    .arg(Arg::with_name("ini-input").required(true))
+                    .arg(Arg::with_name("factor").required(true))
+                    .arg(Arg::with_name("ini-output").required(true));
+
+                SubCommand::with_name("scale")
+                    .about("Scaling *.ini files")
+                    .subcommand(cmd_ini_scale_building)
+                    .subcommand(cmd_ini_scale_render)
+            };
+
+
+            let cmd_ini_mirror = {
+                let cmd_ini_mirror_building = SubCommand::with_name("building")
+                    .about("Parse the specified building.ini, mirror Z coordinates, save to a new file")
+                    .arg(Arg::with_name("ini-input").required(true))
+                    .arg(Arg::with_name("ini-output").required(true));
+
+                let cmd_ini_mirror_render = SubCommand::with_name("renderconfig")
+                    .about("Parse the specified building.ini, mirror Z coordinates, save to a new file")
+                    .arg(Arg::with_name("ini-input").required(true))
+                    .arg(Arg::with_name("ini-output").required(true));
+
+                SubCommand::with_name("mirror")
+                    .about("Mirroring *.ini files")
+                    .subcommand(cmd_ini_mirror_building)
+                    .subcommand(cmd_ini_mirror_render)
+            };
 
             SubCommand::with_name("ini")
-                .about("Operations for individual configuration files")
-                .subcommand(cmd_ini_parsebuilding)
-                .subcommand(cmd_ini_parserender)
-                .subcommand(cmd_ini_parsemtl)
-                .subcommand(cmd_ini_scalebuilding)
-                .subcommand(cmd_ini_scalerender)
+                .about("Operations for individual text-based files")
+                .subcommand(cmd_ini_parse)
+                .subcommand(cmd_ini_scale)
+                .subcommand(cmd_ini_mirror)
         };
 
         let m = App::new("wrsr-mt")
             .author("kromgart@gmail.com")
-            .version("0.3")
+            .version("0.4")
             .about("Modding tools for \"Workers & Resources: Soviet Rebuplic\"")
             .long_about("Modding tools for \"Workers & Resources: Soviet Rebuplic\"\n\
                          homepage: https://github.com/Kromgart/wrsr-mt")
@@ -235,10 +251,25 @@ lazy_static! {
         let path_stock = PathBuf::from(m.value_of("stock").unwrap());
         let path_workshop = PathBuf::from(m.value_of("workshop").unwrap());
 
-
         let command = { 
-            let run_dir = std::env::current_dir().unwrap();
-            let mk_path = |m: &clap::ArgMatches, p| run_dir.join(m.value_of(p).unwrap());
+            use normpath::BasePathBuf;
+            let run_dir = BasePathBuf::try_new(std::env::current_dir().unwrap()).unwrap();
+            let mk_path = |m: &clap::ArgMatches, p| run_dir.join(m.value_of(p).unwrap()).into_path_buf();
+
+            let mk_scale = |m, p_in, p_out| -> ScaleCommand {
+                let input = mk_path(m, p_in);
+                let factor = f64::from_str(m.value_of("factor").unwrap()).expect("Cannot parse scale factor as float");
+                let output = mk_path(m, p_out);
+                assert!(input != output, "{} and {} cannot be the same", p_in, p_out);
+                ScaleCommand { input, factor, output }
+            };
+            
+            let mk_mirror = |m, p_in, p_out| -> MirrorCommand {
+                let input = mk_path(m, p_in);
+                let output = mk_path(m, p_out);
+                assert!(input != output, "{} and {} cannot be the same", p_in, p_out);
+                MirrorCommand { input, output }
+            };
 
             match m.subcommand() {
                 ("install", Some(m)) => {
@@ -249,96 +280,46 @@ lazy_static! {
                     AppCommand::Install(InstallCommand { source, destination, is_check })
                 },
 
-                ("ini", Some(m)) => {
-                    let command = match m.subcommand() {
-                        ("parse-building", Some(m)) => {
-                            let path = mk_path(m, "path");
-                            IniCommand::ParseBuilding(path)
-                        },
-                        ("parse-renderconfig", Some(m)) => {
-                            let path = mk_path(m, "path");
-                            IniCommand::ParseRender(path)
-                        },
-                        ("parse-mtl", Some(m)) => {
-                            let path = mk_path(m, "path");
-                            IniCommand::ParseMaterial(path)
-                        },
-                        ("scale-building", Some(m)) => {
-                            let path = mk_path(m, "path");
-                            let factor = f64::from_str(m.value_of("factor").unwrap()).expect("Cannot parse scale factor as float");
-                            IniCommand::ScaleBuilding(path, factor)
-                        },
-                        ("scale-render", Some(m)) => {
-                            let path = mk_path(m, "path");
-                            let factor = f64::from_str(m.value_of("factor").unwrap()).expect("Cannot parse scale factor as float");
-                            IniCommand::ScaleRender(path, factor)
-                        },
-                        (cname, _) => panic!("Unknown ini subcommand '{}'" , cname)
-                    };
+                ("ini", Some(m)) => AppCommand::Ini( match m.subcommand() {
+                    ("parse", Some(m)) => match m.subcommand() {
+                        ("building",     Some(m)) => IniCommand::ParseBuilding(mk_path(m, "path")),
+                        ("renderconfig", Some(m)) => IniCommand::ParseRender(mk_path(m, "path")),
+                        ("mtl",          Some(m)) => IniCommand::ParseMtl(mk_path(m, "path")),
+                        (cname, _)                => panic!("Unknown ini parse subcommand '{}'" , cname)
+                    },
+                    ("scale", Some(m)) => match m.subcommand() {
+                        ("building", Some(m))     => IniCommand::ScaleBuilding(mk_scale(m, "ini-input", "ini-output")),
+                        ("renderconfig", Some(m)) => IniCommand::ScaleRender(mk_scale(m, "ini-input", "ini-output")),
+                        (cname, _)                => panic!("Unknown ini scale subcommand '{}'" , cname)
+                    },
+                    ("mirror", Some(m)) => match m.subcommand() {
+                        ("building", Some(m))     => IniCommand::MirrorBuilding(mk_mirror(m, "ini-input", "ini-output")),
+                        ("renderconfig", Some(m)) => IniCommand::MirrorRender(mk_mirror(m, "ini-input", "ini-output")),
+                        (cname, _)                => panic!("Unknown ini mirror subcommand '{}'" , cname)
+                    },
+                    (cname, _) => panic!("Unknown ini subcommand '{}'" , cname)
+                }),
 
-                    AppCommand::Ini(command)
-                },
+                ("mod-building", Some(m)) => AppCommand::ModBuilding(match m.subcommand() {
+                    ("validate", Some(m)) => ModCommand::Validate(mk_path(m, "dir-input")),
+                    ("scale", Some(m))    => ModCommand::Scale(mk_scale(m, "dir-input", "dir-output")),
+                    ("mirror", Some(m))   => ModCommand::Mirror(mk_mirror(m, "dir-input", "dir-output")),
+                    (cname, _)            => panic!("Unknown mod subcommand '{}'" , cname)
+                }),
 
-                ("mod-building", Some(m)) => {
-                    let command = match m.subcommand() {
-                        ("validate", Some(m)) => {
-                            let dir_input = mk_path(m, "dir-input");
-                            ModCommand::Validate(ModValidateCommand { dir_input })
-                        },
-                        ("scale", Some(m)) => {
-                            let dir_input = mk_path(m, "dir-input");
-                            let factor = f64::from_str(m.value_of("factor").unwrap()).expect("Cannot parse scale factor as float");
-                            let dir_output = mk_path(m, "dir-output");
-                            ModCommand::Scale(ModScaleCommand { dir_input, factor, dir_output })
-                        },
-                        (cname, _) => panic!("Unknown mod subcommand '{}'" , cname)
-                    };
+                ("nmf", Some(m)) => AppCommand::Nmf(match m.subcommand() {
+                    ("show", Some(m)) => NmfCommand::Show(mk_path(m, "nmf-path")),
+                    ("to-obj", Some(m)) => {
+                        let input = mk_path(m, "nmf-input");
+                        let output = mk_path(m, "obj-output");
+                        assert!(input != output, "input and output cannot be the same");
+                        NmfCommand::ToObj(NmfToObjCommand { input, output })
+                    },
+                    ("scale", Some(m))  => NmfCommand::Scale(mk_scale(m, "nmf-input", "nmf-output")),
+                    ("mirror", Some(m)) => NmfCommand::Mirror(mk_mirror(m, "nmf-input", "nmf-output")),
+                    (cname, _)          => panic!("Unknown nmf subcommand '{}'" , cname)
+                }),
 
-                    AppCommand::ModBuilding(command)
-                },
-
-                ("nmf", Some(m)) => {
-                    let command = match m.subcommand() {
-                        ("show", Some(m)) => {
-                            let path = mk_path(m, "nmf-path");
-                            NmfCommand::Show(NmfShowCommand { path })
-                        },
-
-                        ("to-obj", Some(m)) => {
-                            let input = mk_path(m, "nmf-input");
-                            let output = mk_path(m, "obj-output");
-
-                            NmfCommand::ToObj(NmfToObjCommand { input, output })
-                        },
-
-                        ("scale", Some(m)) => {
-                            let input = mk_path(m, "nmf-input");
-                            let factor = f64::from_str(m.value_of("factor").unwrap()).expect("Cannot parse scale factor as float");
-                            let output = mk_path(m, "nmf-output");
-
-                            NmfCommand::Scale(NmfScaleCommand { input, factor, output })
-                        },
-
-                        ("mirror-x", Some(m)) => {
-                            let input = mk_path(m, "nmf-input");
-                            let output = mk_path(m, "nmf-output");
-
-                            NmfCommand::MirrorX(NmfMirrorXCommand { input, output })
-                        },
-
-                        ("patch", Some(m)) => {
-                            let input = mk_path(m, "nmf-input");
-                            let patch = mk_path(m, "nmf-patch");
-                            let output = mk_path(m, "nmf-output");
-
-                            NmfCommand::Patch(NmfPatchCommand { input, patch, output })
-                        },
-
-                        (cname, _) => panic!("Unknown nmf subcommand '{}'" , cname)
-                    };
-
-                    AppCommand::Nmf(command)
-                },
                 _ => {
                     eprintln!("Error: missing arguments. Run with '--help' to see usage instructions");
                     std::process::exit(1);

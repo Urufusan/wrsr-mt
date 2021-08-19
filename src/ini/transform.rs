@@ -51,6 +51,52 @@ pub fn scale_render(f: &mut ini::RenderIni<'_>, factor: f64) {
 }
 
 
+//-------------------------------------------------------------------
+
+fn mirror_z_point(pt: &Point3f) -> Point3f {
+    Point3f { x: pt.x, y: pt.y, z: 0f32 - pt.z }
+}
+
+pub fn mirror_z_building(file: &mut ini::BuildingIni<'_>) {
+    use crate::ini::BuildingToken as T;
+    use crate::ini::building::ResourceVisualization as RV;
+
+    for (_, t_state) in file.tokens.iter_mut() {
+        t_state.modify(|t_source| match t_source {
+            T::ResourceVisualization(rv) => Some(T::ResourceVisualization (RV {
+                storage_id: rv.storage_id,
+                position:   mirror_z_point(&rv.position),
+                rotation:   0f32 - rv.rotation,
+                scale:      rv.scale.clone(),
+                numstep_x:  rv.numstep_x,
+                numstep_z:  ((0f32 - rv.numstep_z.0), rv.numstep_z.1),
+            })),
+            // must flip these points, otherwise the text faces backwards
+            T::TextCaption((p1, p2)) => Some(T::TextCaption((mirror_z_point(p2), mirror_z_point(p1)))),
+            other => transform_point(other, |p| mirror_z_point(p))
+                     .or_else(|| transform_rect(t_source, |r|
+                        Rect {  x1: r.x1, 
+                                z1: 0f32 - r.z1, 
+                                x2: r.x2, 
+                                z2: 0f32 - r.z2 }))
+        });
+    }
+}
+
+pub fn mirror_z_render(f: &mut ini::RenderIni<'_>) {
+    use crate::ini::RenderToken as T;
+
+    for (_, t_state) in f.tokens.iter_mut() {
+        t_state.modify(|t| match t {
+           T::Light((pt, x))            => Some(T::Light((mirror_z_point(pt), *x))),
+           T::LightRgb((pt, x, c))      => Some(T::LightRgb((mirror_z_point(pt), *x, *c))),
+           T::LightRgbBlink((pt, x, c)) => Some(T::LightRgbBlink((mirror_z_point(pt), *x, *c))),
+            _ => None 
+        });
+    }
+}
+
+
 //----------------------------------------------------------------------------------------------
 
 

@@ -264,27 +264,27 @@ impl ObjectFull {
         }
     }
 
-    pub fn mirror_x(&mut self) {
-        self.bbox_mut().mirror_x();
+    pub fn mirror_z(&mut self) {
+        self.bbox_mut().mirror_z();
 
         for f in self.faces_mut() {
             f.reverse();
         }
 
         for v in self.vertices_mut() {
-            v.mirror_x();
+            v.mirror_z();
         }
 
         for n in self.normals_all_mut() {
-            n.mirror_x();
+            n.mirror_z();
         }
 
         for RawFaceExtra { auto_normal, .. } in self.face_extras_mut() {
-            auto_normal.mirror_x();
+            auto_normal.mirror_z();
         }
 
         for bbox in self.face_bboxes_mut() {
-            bbox.mirror_x();
+            bbox.mirror_z();
         }
     }
 }
@@ -305,8 +305,8 @@ impl RawVertex {
     }
 
     #[inline]
-    fn mirror_x(&mut self) {
-        self.x = 0f32 - self.x;
+    fn mirror_z(&mut self) {
+        self.z = 0f32 - self.z;
     }
 }
 
@@ -319,11 +319,11 @@ impl RawBBox {
     }
 
     #[inline]
-    fn mirror_x(&mut self) {
-        let min_x = 0f32 - self.v_max.x;
-        let max_x = 0f32 - self.v_min.x;
-        self.v_min.x = min_x;
-        self.v_max.x = max_x;
+    fn mirror_z(&mut self) {
+        let min_z = 0f32 - self.v_max.z;
+        let max_z = 0f32 - self.v_min.z;
+        self.v_min.z = min_z;
+        self.v_max.z = max_z;
     }
 }
 

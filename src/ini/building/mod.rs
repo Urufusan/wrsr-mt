@@ -281,16 +281,8 @@ impl<'a> Token<'a> {
 
     const COST_RESOURCE:                  &'static str = "COST_RESOURCE";
     const COST_RESOURCE_AUTO:             &'static str = "COST_RESOURCE_AUTO";
-    const COST_WORK_VEHICLE_STATION     : &'static str = "COST_WORK_VEHICLE_STATION";
+    const COST_WORK_VEHICLE_STATION:      &'static str = "COST_WORK_VEHICLE_STATION";
     const COST_WORK_VEHICLE_STATION_NODE: &'static str = "COST_WORK_VEHICLE_STATION_ACCORDING_NODE";
-/*
-    pub fn maybe_scale(&self, _factor: f64) -> Option<Self> {
-        match self {
-            // TODO: process all geometry variants
-            //Self::Connection2Points((t, p1, p2)) => Some(Self::Connection2Points((*t, scale_point(factor, *p1), scale_point(factor, *p2)))),
-            _ => None
-        }
-    }*/
 }
 
 
@@ -458,7 +450,7 @@ impl BuildingSubtype {
     const SUBTYPE_MEDICAL:            &'static str = "MEDICAL";
     const SUBTYPE_RADIO:              &'static str = "RADIO";
     const SUBTYPE_RAIL:               &'static str = "RAIL";
-//  const SUBTYPE_RAL:                &'static str = "RAL";
+//  const SUBTYPE_RAL:                &'static str = "RAL";  probably a typo from early release?
     const SUBTYPE_RESTAURANT:         &'static str = "RESTAURANT";
     const SUBTYPE_ROAD:               &'static str = "ROAD";
     const SUBTYPE_SHIP:               &'static str = "SHIP";
