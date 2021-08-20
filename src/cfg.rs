@@ -1,23 +1,19 @@
 use std::path::PathBuf;
-
-use lazy_static::lazy_static;
 use std::str::FromStr;
 
+use lazy_static::lazy_static;
+use normpath::BasePathBuf;
+
+
+pub const RENDERCONFIG_INI: &str = "renderconfig.ini";
+pub const BUILDING_INI: &str = "building.ini";
 
 
 pub enum AppCommand {
-    Install(InstallCommand),
+    Modpack(ModpackCommand),
     Nmf(NmfCommand),
     ModBuilding(ModCommand),
     Ini(IniCommand),
-}
-
-//-----------------------------
-
-pub struct InstallCommand {
-    pub source: PathBuf,
-    pub destination: PathBuf,
-    pub is_check: bool
 }
 
 //-----------------------------
@@ -56,6 +52,18 @@ pub enum IniCommand {
 
 //-------------------------------
 
+pub enum ModpackCommand {
+    Install(ModpackInstallCommand),
+    Validate(PathBuf),
+}
+
+pub struct ModpackInstallCommand {
+    pub source: PathBuf,
+    pub destination: PathBuf,
+}
+
+//-------------------------------
+
 pub struct MirrorCommand {
     pub input: PathBuf,
     pub output: PathBuf
@@ -70,8 +78,8 @@ pub struct ScaleCommand {
 //-------------------------------
 
 pub struct AppSettings {
-    pub path_stock: PathBuf,
-    pub path_workshop: PathBuf,
+    pub path_stock: BasePathBuf,
+    pub path_workshop: BasePathBuf,
 
     pub command: AppCommand,
 }
@@ -101,13 +109,6 @@ lazy_static! {
     pub static ref APP_SETTINGS: AppSettings = {
         // TODO: read from configuration
         use clap::{App, Arg, SubCommand};
-
-        let cmd_install = SubCommand::with_name("install")
-            .about("Install modpack from specified source")
-            .arg(Arg::with_name("in").required(true))
-            .arg(Arg::with_name("out")
-                .default_value(r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet\workshop_wip"))
-            .arg(Arg::with_name("check").long("check").takes_value(false));
 
         let cmd_nmf = {
             let cmd_nmf_show = SubCommand::with_name("show")
@@ -159,6 +160,23 @@ lazy_static! {
                 .subcommand(cmd_mod_validate)
                 .subcommand(cmd_modbuilding_scale)
                 .subcommand(cmd_modbuilding_mirror)
+        };
+
+        let cmd_modpack = {
+            let cmd_modpack_install = SubCommand::with_name("install")
+                .about("Installs modpack from the specified source directory")
+                .arg(Arg::with_name("dir-source").required(true))
+                .arg(Arg::with_name("dir-destination")
+                    .default_value(r"C:\Program Files (x86)\Steam\steamapps\common\SovietRepublic\media_soviet\workshop_wip"));
+
+            let cmd_modpack_validate = SubCommand::with_name("validate")
+                .about("Checks the modpack source in the specified directory for errors")
+                .arg(Arg::with_name("dir-source").required(true));
+
+            SubCommand::with_name("modpack")
+                .about("Modpacks management")
+                .subcommand(cmd_modpack_install)
+                .subcommand(cmd_modpack_validate)
         };
 
         let cmd_ini = {
@@ -242,14 +260,14 @@ lazy_static! {
                     .long("workshop")
                     .default_value(r"C:\Program Files (x86)\Steam\steamapps\workshop\content\784150")
             )
-            .subcommand(cmd_install)
             .subcommand(cmd_nmf)
             .subcommand(cmd_modbuilding)
             .subcommand(cmd_ini)
+            .subcommand(cmd_modpack)
             .get_matches();
 
-        let path_stock = PathBuf::from(m.value_of("stock").unwrap());
-        let path_workshop = PathBuf::from(m.value_of("workshop").unwrap());
+        let path_stock    = BasePathBuf::new(m.value_of("stock").unwrap()).unwrap();
+        let path_workshop = BasePathBuf::new(m.value_of("workshop").unwrap()).unwrap();
 
         let command = { 
             use normpath::BasePathBuf;
@@ -272,13 +290,15 @@ lazy_static! {
             };
 
             match m.subcommand() {
-                ("install", Some(m)) => {
-                    let source = mk_path(m, "in");
-                    let destination = mk_path(m, "out");
-                    let is_check = m.is_present("check");
-
-                    AppCommand::Install(InstallCommand { source, destination, is_check })
-                },
+                ("modpack", Some(m)) => AppCommand::Modpack(match m.subcommand() {
+                    ("install", Some(m)) => {
+                        let source = mk_path(m, "dir-source");
+                        let destination = mk_path(m, "dir-destination");
+                        ModpackCommand::Install(ModpackInstallCommand { source, destination })
+                    },
+                    ("validate", Some(m)) => ModpackCommand::Validate(mk_path(m, "dir-source")),
+                    (cname, _)            => panic!("Unknown modpack subcommand '{}'", cname)
+                }),
 
                 ("ini", Some(m)) => AppCommand::Ini( match m.subcommand() {
                     ("parse", Some(m)) => match m.subcommand() {

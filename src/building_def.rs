@@ -7,7 +7,7 @@ use crate::ini::{self, BuildingIni, MaterialMtl};
 use crate::nmf::NmfInfo;
 use crate::read_to_string_buf;
 
-use normpath::BasePath;
+use normpath::{BasePath, BasePathBuf};
 
 
 #[derive(Debug)]
@@ -43,7 +43,7 @@ use crate::ini::MaterialToken as MT;
 
 
 impl BuildingDef {
-    pub fn from_config(building_ini: &Path, renderconfig: &Path) -> Result<Self, BuildingError> {
+    pub fn from_config(building_ini: &Path, renderconfig: &Path, path_resolver: fn(&BasePath, &str) -> BasePathBuf) -> Result<Self, BuildingError> {
         let render_root = renderconfig.parent().expect(&format!("Cannot get render root from {}", renderconfig.display()));
         let render_root = BasePath::new(render_root).unwrap();
 
@@ -65,7 +65,7 @@ impl BuildingDef {
                 for t in render_ini.tokens() {
                     match t {
                         $p => {
-                            res = Some(render_root.join($s.as_str()).into_path_buf());
+                            res = Some(path_resolver(&render_root, $s.as_str()).into_path_buf());
                             break;
                         }, 
                         _ => ()
@@ -86,9 +86,9 @@ impl BuildingDef {
 
         let mut textures = Vec::with_capacity(10);
 
-        push_textures(&material, &mut textures)?;
+        push_textures(&material, &mut textures, path_resolver)?;
         if let Some(ref material_e) = material_e {
-            push_textures(material_e, &mut textures)?;
+            push_textures(material_e, &mut textures, path_resolver)?;
         }
 
         Ok(BuildingDef {
@@ -280,7 +280,9 @@ fn concat_parse_errors(errors: Vec<(&str, String)>) -> String {
 }
 
 
-fn push_textures(mtl_path: &Path, textures: &mut Vec<PathBuf>) -> Result<(), BuildingError> {
+fn push_textures<F>(mtl_path: &Path, textures: &mut Vec<PathBuf>, mtl_path_resolver: F) -> Result<(), BuildingError>
+where F: Fn(&BasePath, &str) -> BasePathBuf 
+{
     use crate::cfg::APP_SETTINGS;
 
     let mtl_root = mtl_path.parent().expect(&format!("Cannot get mtl root from {}", mtl_path.display()));
@@ -291,12 +293,13 @@ fn push_textures(mtl_path: &Path, textures: &mut Vec<PathBuf>) -> Result<(), Bui
         let tx_path = match t {
             MT::Texture((_, s))         => Some(APP_SETTINGS.path_stock.join(s.as_str())),
             MT::TextureNoMip((_, s))    => Some(APP_SETTINGS.path_stock.join(s.as_str())),
-            MT::TextureMtl((_, s))      => Some(mtl_root.join(s.as_str()).into_path_buf()),
-            MT::TextureNoMipMtl((_, s)) => Some(mtl_root.join(s.as_str()).into_path_buf()),
+            MT::TextureMtl((_, s))      => Some(mtl_path_resolver(&mtl_root, s.as_str())),
+            MT::TextureNoMipMtl((_, s)) => Some(mtl_path_resolver(&mtl_root, s.as_str())),
             _ => None
         };
 
         if let Some(tx_path) = tx_path {
+            let tx_path = tx_path.into_path_buf();
             if textures.iter().all(|x| *x != tx_path) {
                 textures.push(tx_path);
             }
@@ -346,7 +349,7 @@ impl Display for BuildingError {
             BuildingError::FileIO(path, e) => write!(f, "File error ({}): {:?}", path.display(), e),
             BuildingError::Parse(path, e)  => write!(f, "Parse error ({}): {}", path.display(), e),
             BuildingError::ModelMissing    => write!(f, "Model is missing"),
-            BuildingError::MaterialMissing => write!(f, "Model is missing"),
+            BuildingError::MaterialMissing => write!(f, "Material is missing"),
         }
     }
 }

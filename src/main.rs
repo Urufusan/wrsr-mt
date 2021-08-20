@@ -1,73 +1,66 @@
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::collections::HashMap;
 
-use regex::Regex;
 use const_format::concatcp;
 
 mod nmf;
 mod ini;
-mod cfg;
-mod data;
-mod input;
-mod output;
 
 mod building_def;
+mod modpack;
 
-use cfg::APP_SETTINGS;
+mod cfg;
+
+//mod data;
+//mod input;
+//mod output;
+
+
+use cfg::{APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
 
 
 fn main() {
 
     match &APP_SETTINGS.command {
-        cfg::AppCommand::Install(cfg::InstallCommand{ source, destination, is_check }) => {
-            print_dirs();
+        cfg::AppCommand::Modpack(cmd) => match cmd {
+            cfg::ModpackCommand::Install(cfg::ModpackInstallCommand { source, destination: _ }) => {
+                print_dirs();
+                println!("Installing from source: {}", source.display());
+                assert!(source.exists(), "Modpack source directory does not exist!");
+                println!("Reading modpack sources...");
 
-            println!("Installing from source: {}", source.to_str().unwrap());
-            assert!(source.exists(), "Pack source directory does not exist!");
-
-            println!("Installing to:          {}", destination.to_str().unwrap());
-            assert!(destination.exists(), "Destination directory does not exist.");
-            
-            let mut pathbuf: PathBuf = APP_SETTINGS.path_stock.clone();
-            pathbuf.push("buildings");
-            pathbuf.push("buildingtypes.ini");
-
-            let stock_buildings_ini = fs::read_to_string(&pathbuf).expect("Stock buildings: cannot read buildingtypes.ini");
-            let mut stock_buildings = { 
-                let mut mp = HashMap::with_capacity(512);
-                let rx = Regex::new(r"\$TYPE ([_[:alnum:]]+?)\r\n((?s).+?\n END\r\n)").expect("Stock buildings: cannot create parsing regex");
-
-                for caps in rx.captures_iter(&stock_buildings_ini) {
-                    let key = caps.get(1).unwrap().as_str();
-                    let raw_value = caps.get(2).unwrap().as_str();
-                    mp.insert(
-                        key, 
-                        (key, data::StockBuilding::Unparsed(raw_value))
-                    );
+                match modpack::read_validate_sources(source.as_path()) {
+                    Ok(_) => {
+                        todo!()
+                    },
+                    Err(e) => {
+                        eprintln!("FAILED: encountered {} errors when reading sources", e);
+                    }
                 }
-                
-                mp
-            };
+            },
+            cfg::ModpackCommand::Validate(source) => {
+                print_dirs();
+                println!("Validating modpack at {}", source.display());
+                assert!(source.exists(), "Modpack source directory does not exist!");
+                println!("Reading modpack sources...");
 
-            println!("Found {} stock buildings", stock_buildings.len());
+                match modpack::read_validate_sources(source.as_path()) {
+                    Ok(res) => {
+                        println!("OK: found {} buildings", res.len());
+                    },
+                    Err(e) => {
+                        eprintln!("FAILED: encountered {} errors", e);
+                    }
+                }
+            },
+        },
 
-            pathbuf.push(source);
-            println!("Reading modpack sources...");
+/*        cfg::AppCommand::Install(cfg::InstallCommand{ source, destination, is_check }) => {
 
             match input::read_validate_sources(pathbuf.as_path(), &mut stock_buildings) {
                 Ok(data) => {
-                    println!("Modpack sources verified.");
-
-                    if *is_check {
-                        println!("Check complete.");
-                    } else {
-                        println!("Creating mods...");
-                        pathbuf.push(destination);
-
-                        output::generate_mods(pathbuf.as_path(), data);
-                    }
+                    output::generate_mods(pathbuf.as_path(), data);
                 },
                 Err(errs) => {
                     eprintln!("\nThe following {} errors were encountered when processing modpack sources:\n", errs.len());
@@ -80,8 +73,9 @@ fn main() {
                     std::process::exit(1);
                 }
             }
-        },
 
+        },
+*/
 
         cfg::AppCommand::Nmf(cmd) => {
             match cmd {
@@ -159,13 +153,10 @@ fn main() {
         cfg::AppCommand::ModBuilding(cmd) => {
             use building_def::BuildingDef;
 
-            const RENDERCONFIG_INI: &str = "renderconfig.ini";
-            const BUILDING_INI: &str = "building.ini";
-
             fn check_and_copy_building(dir_input: &PathBuf, dir_output: &PathBuf) -> BuildingDef {
                 let render_ini = dir_input.join(RENDERCONFIG_INI);
                 let bld_ini = dir_input.join(BUILDING_INI);
-                let bld_def = BuildingDef::from_config(&bld_ini, &render_ini)
+                let bld_def = BuildingDef::from_config(&bld_ini, &render_ini, |root, tail| root.join(tail))
                     .expect("Cannot parse building");
 
                 {
@@ -225,7 +216,7 @@ fn main() {
                 cfg::ModCommand::Validate(dir_input) => {
                     let bld_ini = dir_input.join(BUILDING_INI);
                     let render_ini = dir_input.join(RENDERCONFIG_INI);
-                    match building_def::BuildingDef::from_config(&bld_ini, &render_ini) {
+                    match building_def::BuildingDef::from_config(&bld_ini, &render_ini, |root, tail| root.join(tail)) {
                         Ok(bld) => {
                             println!("{}\nValidating...", bld);
                             match bld.parse_and_validate() {
@@ -340,10 +331,10 @@ fn main() {
 
 
 fn print_dirs() {
-    println!("Stock game files:   {}", APP_SETTINGS.path_stock.to_str().unwrap());
+    println!("Stock game files:   {}", APP_SETTINGS.path_stock.as_path().display());
     assert!(APP_SETTINGS.path_stock.exists(), "Stock game files directory does not exist.");
 
-    println!("Workshop directory: {}", APP_SETTINGS.path_workshop.to_str().unwrap());
+    println!("Workshop directory: {}", APP_SETTINGS.path_workshop.as_path().display());
     assert!(APP_SETTINGS.path_workshop.exists(), "Workshop directory does not exist.");
 }
 
