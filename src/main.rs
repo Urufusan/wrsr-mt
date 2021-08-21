@@ -23,37 +23,46 @@ use cfg::{APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
 fn main() {
 
     match &APP_SETTINGS.command {
-        cfg::AppCommand::Modpack(cmd) => match cmd {
-            cfg::ModpackCommand::Install(cfg::ModpackInstallCommand { source, destination: _ }) => {
-                print_dirs();
-                println!("Installing from source: {}", source.display());
-                assert!(source.exists(), "Modpack source directory does not exist!");
-                println!("Reading modpack sources...");
+        cfg::AppCommand::Modpack(cmd) => {
+            print_dirs();
 
-                match modpack::read_validate_sources(source.as_path()) {
-                    Ok(_) => {
-                        todo!()
-                    },
-                    Err(e) => {
-                        eprintln!("FAILED: encountered {} errors when reading sources", e);
-                    }
-                }
-            },
-            cfg::ModpackCommand::Validate(source) => {
-                print_dirs();
-                println!("Validating modpack at {}", source.display());
-                assert!(source.exists(), "Modpack source directory does not exist!");
-                println!("Reading modpack sources...");
+            let stock_defs_buf = {
+                let stock_ini = APP_SETTINGS.path_stock.join("buildings/buildingtypes.ini");
+                println!("Parsing stock buildings at {}", stock_ini.as_path().display());
+                fs::read_to_string(stock_ini).expect("Could not read stock buildings ini")
+            };
+            let stock_defs = building_def::StockBuilding::parse_map(&stock_defs_buf);
 
-                match modpack::read_validate_sources(source.as_path()) {
-                    Ok(res) => {
-                        println!("OK: found {} buildings", res.len());
-                    },
-                    Err(e) => {
-                        eprintln!("FAILED: encountered {} errors", e);
+            match cmd {
+                cfg::ModpackCommand::Install(cfg::ModpackInstallCommand { source, destination: _ }) => {
+                    println!("Installing from source: {}", source.display());
+                    assert!(source.exists(), "Modpack source directory does not exist!");
+                    println!("Reading modpack sources...");
+
+                    match modpack::read_validate_sources(source.as_path(), stock_defs) {
+                        Ok(_) => {
+                            todo!("Modpack install not implemented")
+                        },
+                        Err(e) => {
+                            eprintln!("FAILED: encountered {} errors when reading sources", e);
+                        }
                     }
-                }
-            },
+                },
+                cfg::ModpackCommand::Validate(source) => {
+                    println!("Validating modpack at {}", source.display());
+                    assert!(source.exists(), "Modpack source directory does not exist!");
+                    println!("Reading modpack sources...");
+
+                    match modpack::read_validate_sources(source.as_path(), stock_defs) {
+                        Ok(res) => {
+                            println!("OK: found {} buildings", res.len());
+                        },
+                        Err(e) => {
+                            eprintln!("FAILED: encountered {} errors", e);
+                        }
+                    }
+                },
+            }
         },
 
 /*        cfg::AppCommand::Install(cfg::InstallCommand{ source, destination, is_check }) => {
@@ -151,12 +160,12 @@ fn main() {
 
         //---------------- mod subcommand --------------------------------
         cfg::AppCommand::ModBuilding(cmd) => {
-            use building_def::BuildingDef;
+            use building_def::ModBuildingDef;
 
-            fn check_and_copy_building(dir_input: &PathBuf, dir_output: &PathBuf) -> BuildingDef {
+            fn check_and_copy_building(dir_input: &PathBuf, dir_output: &PathBuf) -> ModBuildingDef {
                 let render_ini = dir_input.join(RENDERCONFIG_INI);
                 let bld_ini = dir_input.join(BUILDING_INI);
-                let bld_def = BuildingDef::from_config(&bld_ini, &render_ini, |root, tail| root.join(tail))
+                let bld_def = ModBuildingDef::from_render_path(&bld_ini, &render_ini, |root, tail| root.join(tail))
                     .expect("Cannot parse building");
 
                 {
@@ -167,7 +176,7 @@ fn main() {
 
                     let check_path_opt = |opt: &Option<PathBuf>| if let Some(p) = opt.as_ref() { check_path(p) };
 
-                    check_path(&bld_def.renderconfig);
+                    check_path(&bld_def.render);
                     check_path(&bld_def.building_ini);
                     check_path(&bld_def.model);
                     check_path_opt(&bld_def.model_lod);
@@ -192,7 +201,7 @@ fn main() {
                 }};
             }
 
-            fn modify_models<F: Fn(&mut nmf::ObjectFull)>(bld_def: &BuildingDef, pfx: &Path, obj_modifier: F) {
+            fn modify_models<F: Fn(&mut nmf::ObjectFull)>(bld_def: &ModBuildingDef, pfx: &Path, obj_modifier: F) {
                 let modify_nmf = |path: Option<&PathBuf>| {
                     if let Some(path) = path {
                         let mut nmf = nmf::NmfBufFull::from_path(path).expect("Failed to read the nmf file");
@@ -216,10 +225,10 @@ fn main() {
                 cfg::ModCommand::Validate(dir_input) => {
                     let bld_ini = dir_input.join(BUILDING_INI);
                     let render_ini = dir_input.join(RENDERCONFIG_INI);
-                    match building_def::BuildingDef::from_config(&bld_ini, &render_ini, |root, tail| root.join(tail)) {
+                    match building_def::ModBuildingDef::from_render_path(&bld_ini, &render_ini, |root, tail| root.join(tail)) {
                         Ok(bld) => {
                             println!("{}\nValidating...", bld);
-                            match bld.parse_and_validate() {
+                            match bld.parse_and_validate(|rnd| if rnd.exists() { Ok(()) } else { Err(rnd.display()) }) {
                                 Ok(()) => println!("OK"),
                                 Err(e) => {
                                     eprintln!("Building has errors:\n{}", e);
@@ -241,7 +250,7 @@ fn main() {
 
                     let mut buf = String::with_capacity(16 * 1024);
                     modify_ini!(buf, &bld_def.building_ini, BUILDING_INI,     ini::parse_building_ini,     ini::transform::scale_building, *factor);
-                    modify_ini!(buf, &bld_def.renderconfig, RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::scale_render,   *factor);
+                    modify_ini!(buf, &bld_def.render,       RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::scale_render,   *factor);
                     modify_models(&bld_def, dir_output, |o| o.scale(*factor));
                 },
                 cfg::ModCommand::Mirror(cfg::MirrorCommand { input: dir_input, output: dir_output }) => {
@@ -250,7 +259,7 @@ fn main() {
 
                     let mut buf = String::with_capacity(16 * 1024);
                     modify_ini!(buf, &bld_def.building_ini, BUILDING_INI,     ini::parse_building_ini,     ini::transform::mirror_z_building);
-                    modify_ini!(buf, &bld_def.renderconfig, RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::mirror_z_render);
+                    modify_ini!(buf, &bld_def.render,       RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::mirror_z_render);
                     modify_models(&bld_def, dir_output, |o| o.mirror_z());
                 },
             }
@@ -353,7 +362,7 @@ pub fn read_to_buf(path: &Path, buf: &mut Vec<u8>) -> Result<(), std::io::Error>
 }
 
 
-pub fn read_to_string_buf(path: &Path, buf: &mut String) -> Result<(), std::io::Error> {
+pub fn read_to_string_buf<P: AsRef<Path>>(path: P, buf: &mut String) -> Result<(), std::io::Error> {
     use std::io::Read;
     use std::convert::TryInto;
     buf.truncate(0);

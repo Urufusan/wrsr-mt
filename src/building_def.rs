@@ -2,18 +2,28 @@ use std::path::{Path, PathBuf};
 use std::fs;
 use std::fmt::{Display, Formatter, Write};
 use std::io::Error as IOErr;
+use std::collections::HashMap;
 
-use crate::ini::{self, BuildingIni, MaterialMtl};
-use crate::nmf::NmfInfo;
 use crate::read_to_string_buf;
+use crate::cfg::APP_SETTINGS;
+use crate::nmf::NmfInfo;
+use crate::ini::{self,
+                 BuildingIni,
+                 RenderIni,
+                 MaterialMtl,
+                 BuildingToken as BT,
+                 RenderToken as RT,
+                 MaterialToken as MT,
+                 };
+
 
 use normpath::{BasePath, BasePathBuf};
 
 
-#[derive(Debug)]
-pub struct BuildingDef {
+#[derive(Debug, Clone)]
+pub struct BuildingDef<T> {
+    pub render: T,
     pub building_ini: PathBuf,
-    pub renderconfig: PathBuf,
     pub image_gui: Option<PathBuf>,
 
     pub model: PathBuf,
@@ -27,31 +37,64 @@ pub struct BuildingDef {
     pub textures: Vec<PathBuf>,
 }
 
+pub type StockBuildingDef = BuildingDef<String>;
+pub type ModBuildingDef   = BuildingDef<PathBuf>;
+
 
 #[derive(Debug)]
 pub enum BuildingError {
     FileIO(PathBuf, IOErr),
     Parse(PathBuf, String),
+    ParseStock(String, String),
     ModelMissing,
     MaterialMissing,
+    UnknownStockKey(String),
 }
 
 
-use crate::ini::BuildingToken as BT;
-use crate::ini::RenderToken as RT;
-use crate::ini::MaterialToken as MT;
+pub type StockBuildingsMap<'stock> = HashMap<&'stock str, (&'stock str, StockBuilding<'stock>)>;
+
+pub enum StockBuilding<'stock> {
+    Unparsed(&'stock str),
+    Parsed(StockBuildingDef)
+}
+
+impl StockBuilding<'_> {
+    pub fn parse_map<'stock>(stock_buildings_ini: &'stock str) -> StockBuildingsMap<'stock> {
+        let mut mp = HashMap::with_capacity(512);
+        let rx = regex::Regex::new(r"\$TYPE ([_[:alnum:]]+?)\r\n((?s).+?\n END\r\n)").expect("Stock buildings: cannot create parsing regex");
+
+        for caps in rx.captures_iter(stock_buildings_ini) {
+            let key = caps.get(1).unwrap().as_str();
+            let raw_value = caps.get(2).unwrap().as_str();
+            mp.insert(
+                key, 
+                (key, StockBuilding::Unparsed(raw_value))
+            );
+        }
+        
+        mp
+    }
+}
 
 
-impl BuildingDef {
-    pub fn from_config(building_ini: &Path, renderconfig: &Path, path_resolver: fn(&BasePath, &str) -> BasePathBuf) -> Result<Self, BuildingError> {
-        let render_root = renderconfig.parent().expect(&format!("Cannot get render root from {}", renderconfig.display()));
-        let render_root = BasePath::new(render_root).unwrap();
+impl StockBuildingDef {
+    fn from_slice(key: &str, chunk: &str) -> Result<Self, BuildingError> {
+        let render_ini = ini::parse_renderconfig_ini(chunk)
+            .map_err(|e| BuildingError::ParseStock(key.to_string(), concat_parse_errors(e)))?;
 
-        let render_buf = fs::read_to_string(renderconfig).map_err(|e| BuildingError::FileIO(renderconfig.to_path_buf(), e))?;
-        let render_ini = ini::parse_renderconfig_ini(&render_buf).map_err(|e| BuildingError::Parse(renderconfig.to_path_buf(), concat_parse_errors(e)))?;
+        let bld_ini = APP_SETTINGS.path_stock.join(format!("building_types/{}.ini", key));
 
-        let image_gui = {
-            let img_path = render_root.join("imagegui.png");
+        let mut result = Self::from_render_ini(
+            bld_ini.as_path(), 
+            key.to_string(), 
+            &APP_SETTINGS.path_stock, 
+            render_ini, 
+            |_, tail| APP_SETTINGS.path_stock.join(tail),
+            |root, tail| root.join(tail))?;
+
+        result.image_gui = {
+            let img_path = APP_SETTINGS.path_stock.join(format!("editor/tool_{}.png", key));
             if img_path.exists() {
                 Some(img_path.into_path_buf())
             } else {
@@ -59,16 +102,26 @@ impl BuildingDef {
             }
         };
 
+        Ok(result)
+    }
+}
+
+impl<T> BuildingDef<T> {
+    fn from_render_ini(
+        building_ini: &Path, 
+        render: T,
+        render_root: &BasePath, 
+        render_ini: RenderIni, 
+        render_path_resolver: fn(&BasePath, &str) -> BasePathBuf,
+        mtl_path_resolver:    fn(&BasePath, &str) -> BasePathBuf) -> Result<Self, BuildingError> 
+    {
         macro_rules! get_render_value {
             ($p:pat, $s:ident) => {{
                 let mut res = None;
                 for t in render_ini.tokens() {
-                    match t {
-                        $p => {
-                            res = Some(path_resolver(&render_root, $s.as_str()).into_path_buf());
-                            break;
-                        }, 
-                        _ => ()
+                    if let $p = t {
+                        res = Some(render_path_resolver(&render_root, $s.as_str()).into_path_buf());
+                        break;
                     }
                 }
 
@@ -80,21 +133,19 @@ impl BuildingDef {
         let model_lod  = get_render_value!(RT::ModelLod((s, _)),    s);
         let model_lod2 = get_render_value!(RT::ModelLod2((s, _)),   s);
         let model_e    = get_render_value!(RT::ModelEmissive(s),    s);
-
         let material   = get_render_value!(RT::Material(s),         s).ok_or(BuildingError::MaterialMissing)?;
         let material_e = get_render_value!(RT::MaterialEmissive(s), s);
 
         let mut textures = Vec::with_capacity(10);
-
-        push_textures(&material, &mut textures, path_resolver)?;
+        push_textures(&material, &mut textures, mtl_path_resolver)?;
         if let Some(ref material_e) = material_e {
-            push_textures(material_e, &mut textures, path_resolver)?;
+            push_textures(material_e, &mut textures, mtl_path_resolver)?;
         }
 
         Ok(BuildingDef {
             building_ini: building_ini.to_path_buf(),
-            renderconfig: renderconfig.to_path_buf(),
-            image_gui,
+            render,
+            image_gui: None,
             model,
             model_lod,
             model_lod2,
@@ -106,8 +157,12 @@ impl BuildingDef {
     }
 
 
-    pub fn parse_and_validate(&self) -> Result<(), String> {
+    pub fn parse_and_validate<'a, D: Display + 'a, F: Fn(&'a T) -> Result<(), D>>(&'a self, render_check: F) -> Result<(), String> {
         let mut errors = String::with_capacity(0);
+
+        if let Err(e) = render_check(&self.render) {
+            writeln!(errors, "render does not exist: {}", e).unwrap();
+        }
 
         macro_rules! check_path {
             ($name:expr, $path:expr) => { if !$path.exists() { writeln!(errors, "{} does not exist: {}", $name, $path.display()).unwrap(); }};
@@ -117,14 +172,13 @@ impl BuildingDef {
             ($name:expr, $path:expr) => { $path.as_ref().map(|p| check_path!($name, p)); };
         }
 
-        check_path!("building.ini", &self.building_ini);
-        check_path!("renderconfig.ini", &self.renderconfig);
-        check_popt!("imagegui", &self.image_gui);
-        check_path!("MODEL", &self.model);
-        check_popt!("MODEL_LOD", &self.model_lod);
-        check_popt!("MODEL_LOD2", &self.model_lod2);
-        check_popt!("MODELEMISSIVE", &self.model_e);
-        check_path!("MATERIAL", &self.material);
+        check_path!("building.ini",     &self.building_ini);
+        check_popt!("imagegui",         &self.image_gui);
+        check_path!("MODEL",            &self.model);
+        check_popt!("MODEL_LOD",        &self.model_lod);
+        check_popt!("MODEL_LOD2",       &self.model_lod2);
+        check_popt!("MODELEMISSIVE",    &self.model_e);
+        check_path!("MATERIAL",         &self.material);
         check_popt!("MATERIALEMISSIVE", &self.material_e);
         for tx in self.textures.iter() {
             check_path!("texture", tx);
@@ -157,9 +211,9 @@ impl BuildingDef {
             }
 
             push_errors!(self.building_ini, ini::parse_building_ini, push_buildingini_errors, "building.ini");
-            push_errors!(self.material, ini::parse_mtl, push_mtl_errors, "material");
+            push_errors!(self.material,     ini::parse_mtl,          push_mtl_errors,         "material");
             if let Some(material_e) = &self.material_e {
-                push_errors!(material_e, ini::parse_mtl, push_mtl_errors, "emissive material");
+                push_errors!(material_e,    ini::parse_mtl,          push_mtl_errors,         "emissive material");
             }
         }
 
@@ -169,9 +223,33 @@ impl BuildingDef {
             Err(errors)
         }
     }
+}
+
+impl ModBuildingDef {
+    pub fn from_render_path(building_ini: &Path, renderconfig: &Path, path_resolver: fn(&BasePath, &str) -> BasePathBuf) -> Result<Self, BuildingError> {
+        let render_root = renderconfig.parent().expect(&format!("Cannot get render root from {}", renderconfig.display()));
+        let render_root = BasePath::new(render_root).unwrap();
+
+        let render_buf = fs::read_to_string(renderconfig).map_err(|e| BuildingError::FileIO(renderconfig.to_path_buf(), e))?;
+        let render_ini = ini::parse_renderconfig_ini(&render_buf).map_err(|e| BuildingError::Parse(renderconfig.to_path_buf(), concat_parse_errors(e)))?;
+
+        let mut result = Self::from_render_ini(building_ini, renderconfig.to_path_buf(), &render_root, render_ini, path_resolver, path_resolver)?;
+
+        result.image_gui = {
+            let img_path = render_root.join("imagegui.png");
+            if img_path.exists() {
+                Some(img_path.into_path_buf())
+            } else {
+                None
+            }
+        };
+
+        Ok(result)
+    }
+
 
     pub fn shallow_copy_to(&self, target_dir: &Path) -> Result<Self, IOErr> {
-        let source_root = self.renderconfig.parent().unwrap();
+        let source_root = self.render.parent().unwrap();
         
         let mk_fld = |fld: &PathBuf| -> Result<PathBuf, IOErr> {
             if fld.starts_with(source_root) {
@@ -189,7 +267,7 @@ impl BuildingDef {
             ($fld:expr) => { $fld.as_ref().map(|x| mk_fld(x)).transpose() };
         }
 
-        let renderconfig = mk_fld(&self.renderconfig)?;
+        let render       = mk_fld(&self.render)?;
         let building_ini = mk_fld(&self.building_ini)?;
         let image_gui    = mk_fld_opt!(self.image_gui)?;
         let model        = mk_fld(&self.model)?;
@@ -205,8 +283,8 @@ impl BuildingDef {
             textures.push(tx);
         }
 
-        Ok(BuildingDef {
-            renderconfig,
+        Ok(ModBuildingDef {
+            render,
             building_ini,
             image_gui,
             model,
@@ -218,7 +296,6 @@ impl BuildingDef {
             textures
         })
     }
-
 }
 
 
@@ -283,8 +360,6 @@ fn concat_parse_errors(errors: Vec<(&str, String)>) -> String {
 fn push_textures<F>(mtl_path: &Path, textures: &mut Vec<PathBuf>, mtl_path_resolver: F) -> Result<(), BuildingError>
 where F: Fn(&BasePath, &str) -> BasePathBuf 
 {
-    use crate::cfg::APP_SETTINGS;
-
     let mtl_root = mtl_path.parent().expect(&format!("Cannot get mtl root from {}", mtl_path.display()));
     let mtl_root = BasePath::new(mtl_root).unwrap();
     let mtl_buf = fs::read_to_string(mtl_path).map_err(|e| BuildingError::FileIO(mtl_path.to_path_buf(), e))?;
@@ -310,35 +385,62 @@ where F: Fn(&BasePath, &str) -> BasePathBuf
 }
 
 
-impl Display for BuildingDef {
+pub fn fetch_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildingsMap<'ini>) -> Result<StockBuildingDef, BuildingError> {
+    if let Some(mref) = hmap.get_mut(key) {
+        match mref {
+            (_, StockBuilding::Parsed(ref x)) => Ok(x.clone()),
+            (key, StockBuilding::Unparsed(chunk)) => {
+                let x = StockBuildingDef::from_slice(key, chunk)?;
+                *mref = (key, StockBuilding::Parsed(x.clone()));
+                Ok(x)
+            }
+        }
+    } else {
+        Err(BuildingError::UnknownStockKey(key.to_string()))
+    }
+}
+
+
+
+//-----------------------------------------------------------------------
+
+macro_rules! w_optln {
+    ($f:ident, $fstr:expr, $v:expr) => {
+        if let Some(ref v) = $v {
+            writeln!($f, $fstr, v.display())
+        } else {    
+            writeln!($f, $fstr, "<NONE>")
+        }
+    };
+}
+
+fn write_building_def<'a, T: 'a, D: Display + 'a, F: Fn(&'a T) -> D>(f: &mut Formatter, def: &'a BuildingDef<T>, writer: F) -> Result<(), std::fmt::Error> {
+    writeln!(f, "Building {{")?;
+    writeln!(f, "  building.ini:     {}", def.building_ini.display())?;
+    writeln!(f, "  render:           {}", writer(&def.render))?;
+    w_optln!(f, "  imagegui.png:     {}", def.image_gui)?;
+    writeln!(f, "  model:            {}", def.model.display())?;
+    w_optln!(f, "  model_lod:        {}", def.model_lod)?;
+    w_optln!(f, "  model_lod2:       {}", def.model_lod2)?;
+    w_optln!(f, "  model_e:          {}", def.model_e)?;
+    writeln!(f, "  material:         {}", def.material.display())?;
+    w_optln!(f, "  material_e:       {}", def.material_e)?;
+    writeln!(f, "  textures: [")?;
+    for tx in def.textures.iter() {
+        writeln!(f, "    {}", tx.display())?;
+    }
+    writeln!(f, "  ]\n}}")
+}
+
+impl Display for StockBuildingDef {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        macro_rules! w_optln {
-            ($f:ident, $fstr:expr, $v:expr) => {
-                if let Some(ref v) = $v {
-                    writeln!($f, $fstr, v.display())
-                } else {    
-                    writeln!($f, $fstr, "<NONE>")
-                }
-            };
-        }
+        write_building_def(f, self, |x| x)
+    }
+}
 
-        writeln!(f, "Building {{")?;
-        writeln!(f, "    building.ini:     {}", self.building_ini.display())?;
-        writeln!(f, "    renderconfig.ini: {}", self.renderconfig.display())?;
-        w_optln!(f, "    imagegui.png:     {}", self.image_gui)?;
-        writeln!(f, "    model:            {}", self.model.display())?;
-        w_optln!(f, "    model_lod:        {}", self.model_lod)?;
-        w_optln!(f, "    model_lod2:       {}", self.model_lod2)?;
-        w_optln!(f, "    model_e:          {}", self.model_e)?;
-        writeln!(f, "    material:         {}", self.material.display())?;
-        w_optln!(f, "    material_e:       {}", self.material_e)?;
-
-        writeln!(f, "    textures: [")?;
-        for tx in self.textures.iter() {
-            writeln!(f, "        {}", tx.display())?;
-        }
-
-        writeln!(f, "    ]\n}}")
+impl Display for ModBuildingDef {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        write_building_def(f, self, |x| x.display())
     }
 }
 
@@ -346,10 +448,12 @@ impl Display for BuildingDef {
 impl Display for BuildingError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         match self {
-            BuildingError::FileIO(path, e) => write!(f, "File error ({}): {:?}", path.display(), e),
-            BuildingError::Parse(path, e)  => write!(f, "Parse error ({}): {}", path.display(), e),
-            BuildingError::ModelMissing    => write!(f, "Model is missing"),
-            BuildingError::MaterialMissing => write!(f, "Material is missing"),
+            BuildingError::FileIO(path, e)    => write!(f, "File error ({}): {:?}", path.display(), e),
+            BuildingError::Parse(path, e)     => write!(f, "Parse error ({}): {}", path.display(), e),
+            BuildingError::ParseStock(key, e) => write!(f, "Parse stock error ({}): {}", key, e),
+            BuildingError::ModelMissing       => write!(f, "Model is missing"),
+            BuildingError::MaterialMissing    => write!(f, "Material is missing"),
+            BuildingError::UnknownStockKey(k) => write!(f, "Unknown stock building key '{}'", k),
         }
     }
 }
