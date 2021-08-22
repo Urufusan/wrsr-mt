@@ -7,7 +7,7 @@ use regex::Regex;
 use normpath::{BasePath, BasePathBuf, PathExt};
 use lazy_static::lazy_static;
 
-use crate::building_def::{ModBuildingDef, StockBuildingDef, BuildingError as DefError, StockBuildingsMap, fetch_stock_building};
+use crate::building_def::{ModBuildingDef, StockBuildingDef, BuildingError as DefError, StockBuildingsMap, fetch_stock_with_ini};
 use crate::cfg::{APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
 use crate::read_to_string_buf;
 
@@ -69,7 +69,7 @@ pub fn read_validate_sources(source_dir: &Path, mut stock: StockBuildingsMap) ->
 
             let building_source_type = match (render_src, render_ref) {
                 (None, Some(render_ref)) => get_source_type_from_ref(bld_ini, render_ref, &mut stock, &mut str_buf),
-                (Some(render_src), None) => ModBuildingDef::from_render_path(&bld_ini, &render_src, resolve_source_path)
+                (Some(render_src), None) => ModBuildingDef::from_render_path(&bld_ini, &render_src, resolve_source_path, true)
                                                 .map_err(SourceError::Def)
                                                 .map(SourceType::Mod),
                 (None, None)       => Err(SourceError::NoRenderconfig), 
@@ -77,21 +77,28 @@ pub fn read_validate_sources(source_dir: &Path, mut stock: StockBuildingsMap) ->
             };
 
             let building_source = building_source_type.and_then(|def| {
-                // TODO: add local overrides
-
                 // NOTE: debug
-                println!("{}\n{}", path.display(), def);
-                def.validate().and_then(|_| {
-                    // TODO: skins + actions + their validations
-                    let skins = None;
-                    let actions = None;
+                //println!("{}: {}", path.strip_prefix(source_dir).unwrap().display(), def);
 
-                    Ok(BuildingSource { def, skins, actions })
-                })
+                // TODO: add local imagegui.png
+
+                // TODO: read skins
+                let skins = None;
+                // TODO: check if skins cover active submaterials from the main model
+
+                // TODO: read actions
+                let actions = None;
+
+                // TODO: check if actions are applicable (obj deletion?)
+
+                Ok(BuildingSource { def, skins, actions })
             });
 
             match building_source {
-                Ok(bs) => result.push(bs),
+                Ok(bs) => {
+                    println!("{}: OK", path.strip_prefix(source_dir).expect("Impossible: could not strip root prefix").display());
+                    result.push(bs)
+                },
                 Err(e) => log_err!(format!("{:?}", e))
             }
         } else {
@@ -138,7 +145,7 @@ fn get_source_type_from_ref(bld_ini: PathBuf, mut render_ref: BasePathBuf, stock
     let caps = RX_REF.captures(buf).ok_or(SourceError::RefParse)?;
     if let Some(c) = caps.get(4) {
         // stock, get def directly from stock buildings
-        fetch_stock_building(c.as_str(), stock)
+        fetch_stock_with_ini(c.as_str(), stock, bld_ini)
             .map_err(SourceError::Def)
             .map(SourceType::Stock)
     } else {
@@ -154,7 +161,7 @@ fn get_source_type_from_ref(bld_ini: PathBuf, mut render_ref: BasePathBuf, stock
         }?;
 
         root.push(RENDERCONFIG_INI);
-        ModBuildingDef::from_render_path(&bld_ini, root.as_path(), resolve_source_path)
+        ModBuildingDef::from_render_path(&bld_ini, root.as_path(), resolve_source_path, true)
             .map_err(SourceError::Def)
             .map(SourceType::Mod)
     }
@@ -173,17 +180,19 @@ fn resolve_source_path(root: &BasePath, tail: &str) -> BasePathBuf {
 }
 
 
-impl SourceType {
-    fn validate(&self) -> Result<(), SourceError> {
-        todo!()
+impl fmt::Display for BuildingSource {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        writeln!(f, "{}", self.def)?;
+        writeln!(f, "skins: {:?}", self.skins)?;
+        writeln!(f, "actions: {:?}", self.actions)
     }
 }
 
 impl fmt::Display for SourceType {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            SourceType::Mod(def)   => write!(f, "Mod {}", def),
-            SourceType::Stock(def) => write!(f, "Stock {}", def),
+            SourceType::Mod(def)   => write!(f, "mod {}", def),
+            SourceType::Stock(def) => write!(f, "stock {}", def),
         }
     }
 }

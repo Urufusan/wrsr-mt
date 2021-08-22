@@ -170,7 +170,7 @@ impl super::IniToken for Token<'_> {
 
 
 lazy_static! {
-    static ref RX_SPLIT: Regex = Regex::new(r"(?s)(\s*\n)+\s*").unwrap();
+    static ref RX_SPLIT: Regex = Regex::new(r"(?s)(^\s|(\s*\n)+)\s*").unwrap();
 }
 
 

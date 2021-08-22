@@ -165,7 +165,7 @@ fn main() {
             fn check_and_copy_building(dir_input: &PathBuf, dir_output: &PathBuf) -> ModBuildingDef {
                 let render_ini = dir_input.join(RENDERCONFIG_INI);
                 let bld_ini = dir_input.join(BUILDING_INI);
-                let bld_def = ModBuildingDef::from_render_path(&bld_ini, &render_ini, |root, tail| root.join(tail))
+                let bld_def = ModBuildingDef::from_render_path(&bld_ini, &render_ini, |root, tail| root.join(tail), false)
                     .expect("Cannot parse building");
 
                 {
@@ -225,16 +225,9 @@ fn main() {
                 cfg::ModCommand::Validate(dir_input) => {
                     let bld_ini = dir_input.join(BUILDING_INI);
                     let render_ini = dir_input.join(RENDERCONFIG_INI);
-                    match building_def::ModBuildingDef::from_render_path(&bld_ini, &render_ini, |root, tail| root.join(tail)) {
+                    match building_def::ModBuildingDef::from_render_path(&bld_ini, &render_ini, |root, tail| root.join(tail), true) {
                         Ok(bld) => {
-                            println!("{}\nValidating...", bld);
-                            match bld.parse_and_validate(|rnd| if rnd.exists() { Ok(()) } else { Err(rnd.display()) }) {
-                                Ok(()) => println!("OK"),
-                                Err(e) => {
-                                    eprintln!("Building has errors:\n{}", e);
-                                    std::process::exit(1);
-                                }
-                            }
+                            println!("{}\nOK", bld);
                         },
                         Err(e) => {
                             eprintln!("Building has errors:\n{}", e);
