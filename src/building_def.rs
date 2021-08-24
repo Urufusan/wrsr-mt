@@ -23,6 +23,11 @@ use normpath::{BasePath, BasePathBuf};
 #[derive(Debug, Clone)]
 pub struct BuildingDef<T> {
     pub render: T,
+    pub data: DefData,
+}
+
+#[derive(Debug, Clone)]
+pub struct DefData {
     pub building_ini: PathBuf,
     pub image_gui: Option<PathBuf>,
 
@@ -36,6 +41,7 @@ pub struct BuildingDef<T> {
 
     pub textures: Vec<PathBuf>,
 }
+
 
 pub type StockBuildingDef = BuildingDef<String>;
 pub type ModBuildingDef   = BuildingDef<PathBuf>;
@@ -57,8 +63,8 @@ pub type StockBuildingsMap<'stock> = HashMap<&'stock str, (&'stock str, StockBui
 
 pub enum StockBuilding<'stock> {
     Unparsed(&'stock str),
-    Parsed(StockBuildingDef),
-    Invalid(BuildingError),
+    Parsed(&'stock str, StockBuildingDef),
+    Invalid(&'stock str, BuildingError),
 
 }
 
@@ -118,16 +124,18 @@ impl<T> BuildingDef<T> {
         }
 
         Ok(BuildingDef {
-            building_ini: building_ini.to_path_buf(),
             render,
-            image_gui: None,
-            model,
-            model_lod,
-            model_lod2,
-            model_e,
-            material,
-            material_e,
-            textures
+            data: DefData {
+                building_ini: building_ini.to_path_buf(),
+                image_gui: None,
+                model,
+                model_lod,
+                model_lod2,
+                model_e,
+                material,
+                material_e,
+                textures
+            }
         })
     }
 
@@ -145,19 +153,19 @@ impl<T> BuildingDef<T> {
             ($name:expr, $path:expr) => { $path.as_ref().map(|p| check_path!($name, p)); };
         }
 
-        check_path!("building.ini",     &self.building_ini);
-        check_popt!("imagegui",         &self.image_gui);
-        check_path!("MODEL",            &self.model);
-        check_popt!("MODEL_LOD",        &self.model_lod);
-        check_popt!("MODEL_LOD2",       &self.model_lod2);
-        check_popt!("MODELEMISSIVE",    &self.model_e);
-        check_path!("MATERIAL",         &self.material);
-        check_popt!("MATERIALEMISSIVE", &self.material_e);
-        for tx in self.textures.iter() {
+        check_path!("building.ini",     &self.data.building_ini);
+        check_popt!("imagegui",         &self.data.image_gui);
+        check_path!("MODEL",            &self.data.model);
+        check_popt!("MODEL_LOD",        &self.data.model_lod);
+        check_popt!("MODEL_LOD2",       &self.data.model_lod2);
+        check_popt!("MODELEMISSIVE",    &self.data.model_e);
+        check_path!("MATERIAL",         &self.data.material);
+        check_popt!("MATERIALEMISSIVE", &self.data.material_e);
+        for tx in self.data.textures.iter() {
             check_path!("texture", tx);
         }
 
-        let model = match NmfInfo::from_path(&self.model) {
+        let model = match NmfInfo::from_path(&self.data.model) {
             Ok(model) => Some(model),
             Err(e) => { 
                 writeln!(errors, "Cannot load model nmf: {:?}", e).unwrap();
@@ -183,10 +191,10 @@ impl<T> BuildingDef<T> {
                 };
             }
 
-            push_errors!(self.building_ini, ini::parse_building_ini, push_buildingini_errors, "building.ini");
-            push_errors!(self.material,     ini::parse_mtl,          push_mtl_errors,         "material");
-            if let Some(material_e) = &self.material_e {
-                push_errors!(material_e,    ini::parse_mtl,          push_mtl_errors,         "emissive material");
+            push_errors!(self.data.building_ini, ini::parse_building_ini, push_buildingini_errors, "building.ini");
+            push_errors!(self.data.material,     ini::parse_mtl,          push_mtl_errors,         "material");
+            if let Some(material_e) = &self.data.material_e {
+                push_errors!(material_e,         ini::parse_mtl,          push_mtl_errors,         "emissive material");
             }
         }
 
@@ -214,7 +222,7 @@ impl StockBuildingDef {
             |_, tail| APP_SETTINGS.path_stock.join(tail),
             |root, tail| root.join(tail))?;
 
-        result.image_gui = {
+        result.data.image_gui = {
             let img_path = APP_SETTINGS.path_stock.join(format!("editor/tool_{}.png", key));
             if img_path.exists() {
                 Some(img_path.into_path_buf())
@@ -238,7 +246,7 @@ impl ModBuildingDef {
 
         let mut result = Self::from_render_ini(building_ini, renderconfig.to_path_buf(), &render_root, render_ini, path_resolver, path_resolver)?;
 
-        result.image_gui = {
+        result.data.image_gui = {
             let img_path = render_root.join("imagegui.png");
             if img_path.exists() {
                 Some(img_path.into_path_buf())
@@ -275,32 +283,34 @@ impl ModBuildingDef {
         }
 
         let render       = mk_fld(&self.render)?;
-        let building_ini = mk_fld(&self.building_ini)?;
-        let image_gui    = mk_fld_opt!(self.image_gui)?;
-        let model        = mk_fld(&self.model)?;
-        let model_lod    = mk_fld_opt!(self.model_lod)?;
-        let model_lod2   = mk_fld_opt!(self.model_lod2)?;
-        let model_e      = mk_fld_opt!(self.model_e)?;
-        let material     = mk_fld(&self.material)?;
-        let material_e   = mk_fld_opt!(&self.material_e)?;
+        let building_ini = mk_fld(&self.data.building_ini)?;
+        let image_gui    = mk_fld_opt!(self.data.image_gui)?;
+        let model        = mk_fld(&self.data.model)?;
+        let model_lod    = mk_fld_opt!(self.data.model_lod)?;
+        let model_lod2   = mk_fld_opt!(self.data.model_lod2)?;
+        let model_e      = mk_fld_opt!(self.data.model_e)?;
+        let material     = mk_fld(&self.data.material)?;
+        let material_e   = mk_fld_opt!(&self.data.material_e)?;
 
-        let mut textures = Vec::with_capacity(self.textures.len());
-        for tx in self.textures.iter() {
+        let mut textures = Vec::with_capacity(self.data.textures.len());
+        for tx in self.data.textures.iter() {
             let tx = mk_fld(tx)?;
             textures.push(tx);
         }
 
         Ok(ModBuildingDef {
             render,
-            building_ini,
-            image_gui,
-            model,
-            model_lod,
-            model_lod2,
-            model_e,
-            material,
-            material_e,
-            textures
+            data: DefData {
+                building_ini,
+                image_gui,
+                model,
+                model_lod,
+                model_lod2,
+                model_e,
+                material,
+                material_e,
+                textures
+            }
         })
     }
 }
@@ -392,24 +402,25 @@ where F: Fn(&BasePath, &str) -> BasePathBuf
 }
 
 
-pub fn fetch_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildingsMap<'ini>) -> Result<StockBuildingDef, BuildingError> {
+pub fn fetch_stock_building<'a, 'ini, 'map>(key: &'a str, hmap: &'map mut StockBuildingsMap<'ini>) -> Result<(&'ini str, StockBuildingDef), BuildingError> {
     if let Some(mref) = hmap.get_mut(key) {
         match mref {
-            (_, StockBuilding::Parsed(ref x)) => Ok(x.clone()),
+            (_, StockBuilding::Parsed(chunk, ref x)) => Ok((chunk, x.clone())),
             (key, StockBuilding::Unparsed(chunk)) => {
                 match StockBuildingDef::from_slice(key, chunk)
                     .and_then(|def| def.parse_and_validate().map(|_| def)) {
                     Ok(def) => {
-                        *mref = (key, StockBuilding::Parsed(def.clone()));
-                        Ok(def)
+                        let res = (chunk.clone(), def.clone());
+                        *mref = (key, StockBuilding::Parsed(chunk, def));
+                        Ok(res)
                     },
                     Err(e) => {
-                        *mref = (key, StockBuilding::Invalid(e.clone()));
+                        *mref = (key, StockBuilding::Invalid(chunk, e.clone()));
                         Err(e)
                     }
                 }
             },
-            (_, StockBuilding::Invalid(e)) => Err(e.clone())
+            (_, StockBuilding::Invalid(_, e)) => Err(e.clone())
         }
     } else {
         Err(BuildingError::UnknownStockKey(key.to_string()))
@@ -422,8 +433,8 @@ pub fn fetch_stock_with_ini<'a, 'ini, 'map>(
     hmap: &'map mut StockBuildingsMap<'ini>, 
     building_ini: PathBuf) -> Result<StockBuildingDef, BuildingError> {
 
-    let mut def = fetch_stock_building(key, hmap)?;
-    def.building_ini = building_ini;
+    let (_, mut def) = fetch_stock_building(key, hmap)?;
+    def.data.building_ini = building_ini;
     def.parse_and_validate()?;
     Ok(def)
 }
@@ -442,17 +453,17 @@ macro_rules! w_optln {
 
 fn write_building_def<'a, T: 'a, D: Display + 'a, F: Fn(&'a T) -> D>(f: &mut Formatter, def: &'a BuildingDef<T>, writer: F) -> Result<(), std::fmt::Error> {
     writeln!(f, "building {{")?;
-    writeln!(f, "  building.ini:     {}", def.building_ini.display())?;
     writeln!(f, "  render:           {}", writer(&def.render))?;
-    w_optln!(f, "  imagegui.png:     {}", def.image_gui)?;
-    writeln!(f, "  model:            {}", def.model.display())?;
-    w_optln!(f, "  model_lod:        {}", def.model_lod)?;
-    w_optln!(f, "  model_lod2:       {}", def.model_lod2)?;
-    w_optln!(f, "  model_e:          {}", def.model_e)?;
-    writeln!(f, "  material:         {}", def.material.display())?;
-    w_optln!(f, "  material_e:       {}", def.material_e)?;
+    writeln!(f, "  building.ini:     {}", def.data.building_ini.display())?;
+    w_optln!(f, "  imagegui.png:     {}", def.data.image_gui)?;
+    writeln!(f, "  model:            {}", def.data.model.display())?;
+    w_optln!(f, "  model_lod:        {}", def.data.model_lod)?;
+    w_optln!(f, "  model_lod2:       {}", def.data.model_lod2)?;
+    w_optln!(f, "  model_e:          {}", def.data.model_e)?;
+    writeln!(f, "  material:         {}", def.data.material.display())?;
+    w_optln!(f, "  material_e:       {}", def.data.material_e)?;
     writeln!(f, "  textures: [")?;
-    for tx in def.textures.iter() {
+    for tx in def.data.textures.iter() {
         writeln!(f, "    {}", tx.display())?;
     }
     writeln!(f, "  ]\n}}")

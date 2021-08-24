@@ -47,7 +47,7 @@ pub enum Token<'a> {
 impl<'a> Token<'a> {
     const END:                       &'static str = "END";
     const TYPE_STOCK:                &'static str = "$TYPE";
-    const TYPE_WORKSHOP:             &'static str = "$TYPE_WORKSHOP";
+    pub const TYPE_WORKSHOP:             &'static str = "$TYPE_WORKSHOP";
     const MODEL:                     &'static str = "MODEL";
     const MODEL_LOD:                 &'static str = "MODEL_LOD";
     const MODEL_LOD2:                &'static str = "MODEL_LOD2";

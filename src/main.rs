@@ -17,7 +17,7 @@ mod cfg;
 //mod output;
 
 
-use cfg::{APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
+use cfg::{AppSettings, APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
 
 
 fn main() {
@@ -31,20 +31,38 @@ fn main() {
                 println!("Parsing stock buildings at {}", stock_ini.as_path().display());
                 fs::read_to_string(stock_ini).expect("Could not read stock buildings ini")
             };
-            let stock_defs = building_def::StockBuilding::parse_map(&stock_defs_buf);
+            let mut stock_defs = building_def::StockBuilding::parse_map(&stock_defs_buf);
 
             match cmd {
-                cfg::ModpackCommand::Install(cfg::ModpackInstallCommand { source, destination: _ }) => {
+                cfg::ModpackCommand::Install(cfg::ModpackInstallCommand { source, destination }) => {
                     println!("Installing from source: {}", source.display());
                     assert!(source.exists(), "Modpack source directory does not exist!");
                     println!("Reading modpack sources...");
 
-                    match modpack::read_validate_sources(source.as_path(), stock_defs) {
-                        Ok(_) => {
-                            todo!("Modpack install not implemented")
+                    match modpack::read_validate_sources(source.as_path(), &mut stock_defs) {
+                        Ok((buildings, skins_count)) => {
+                            println!("Found {} buildings, {} skins", buildings.len(), skins_count);
+                            let max_buildings = AppSettings::MAX_BUILDINGS - (skins_count / AppSettings::MAX_SKINS_IN_MOD + 1) * AppSettings::MAX_BUILDINGS_IN_MOD;
+                            assert!(buildings.len() < max_buildings, "Too many building sources");
+                            println!("Installing to {}...", destination.display());
+                            assert!(destination.exists(), "Destination directory does not exist");
+
+                            let mut log_path = destination.to_path_buf();
+                            log_path.push(modpack::MODPACK_LOG);
+                            if log_path.exists() {
+                                panic!("Cannot proceed: target directory has {}, which indicates that a modpack has already been installed here.", modpack::MODPACK_LOG);
+                            }
+
+                            let log_file = fs::OpenOptions::new().write(true).create_new(true).open(log_path).expect("Cannot create log file");
+                            let mut log_file = std::io::BufWriter::new(log_file);
+
+                            modpack::install(buildings, destination, &mut log_file, &mut stock_defs);
+
+                            log_file.flush().unwrap();
+                            println!("Modpack installed");
                         },
                         Err(e) => {
-                            eprintln!("FAILED: encountered {} errors when reading sources", e);
+                            panic!("FAILED: encountered {} errors when reading sources", e);
                         }
                     }
                 },
@@ -53,9 +71,9 @@ fn main() {
                     assert!(source.exists(), "Modpack source directory does not exist!");
                     println!("Reading modpack sources...");
 
-                    match modpack::read_validate_sources(source.as_path(), stock_defs) {
-                        Ok(res) => {
-                            println!("OK: found {} buildings", res.len());
+                    match modpack::read_validate_sources(source.as_path(), &mut stock_defs) {
+                        Ok((buildings, skins_count)) => {
+                            println!("OK: found {} buildings, {} skins", buildings.len(), skins_count);
                         },
                         Err(e) => {
                             eprintln!("FAILED: encountered {} errors", e);
@@ -177,11 +195,11 @@ fn main() {
                     let check_path_opt = |opt: &Option<PathBuf>| if let Some(p) = opt.as_ref() { check_path(p) };
 
                     check_path(&bld_def.render);
-                    check_path(&bld_def.building_ini);
-                    check_path(&bld_def.model);
-                    check_path_opt(&bld_def.model_lod);
-                    check_path_opt(&bld_def.model_lod2);
-                    check_path_opt(&bld_def.model_e);
+                    check_path(&bld_def.data.building_ini);
+                    check_path(&bld_def.data.model);
+                    check_path_opt(&bld_def.data.model_lod);
+                    check_path_opt(&bld_def.data.model_lod2);
+                    check_path_opt(&bld_def.data.model_e);
                 }
 
                 println!("Building parsed successfully. Copying files...");
@@ -214,10 +232,10 @@ fn main() {
                     }
                 };
 
-                modify_nmf(Some(&bld_def.model));
-                modify_nmf(bld_def.model_lod.as_ref());
-                modify_nmf(bld_def.model_lod2.as_ref());
-                modify_nmf(bld_def.model_e.as_ref());
+                modify_nmf(Some(&bld_def.data.model));
+                modify_nmf(bld_def.data.model_lod.as_ref());
+                modify_nmf(bld_def.data.model_lod2.as_ref());
+                modify_nmf(bld_def.data.model_e.as_ref());
             }
 
 
@@ -242,8 +260,8 @@ fn main() {
                     println!("Updating...");
 
                     let mut buf = String::with_capacity(16 * 1024);
-                    modify_ini!(buf, &bld_def.building_ini, BUILDING_INI,     ini::parse_building_ini,     ini::transform::scale_building, *factor);
-                    modify_ini!(buf, &bld_def.render,       RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::scale_render,   *factor);
+                    modify_ini!(buf, &bld_def.data.building_ini, BUILDING_INI,     ini::parse_building_ini,     ini::transform::scale_building, *factor);
+                    modify_ini!(buf, &bld_def.render,            RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::scale_render,   *factor);
                     modify_models(&bld_def, dir_output, |o| o.scale(*factor));
                 },
                 cfg::ModCommand::Mirror(cfg::MirrorCommand { input: dir_input, output: dir_output }) => {
@@ -251,8 +269,8 @@ fn main() {
                     println!("Updating...");
 
                     let mut buf = String::with_capacity(16 * 1024);
-                    modify_ini!(buf, &bld_def.building_ini, BUILDING_INI,     ini::parse_building_ini,     ini::transform::mirror_z_building);
-                    modify_ini!(buf, &bld_def.render,       RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::mirror_z_render);
+                    modify_ini!(buf, &bld_def.data.building_ini, BUILDING_INI,     ini::parse_building_ini,     ini::transform::mirror_z_building);
+                    modify_ini!(buf, &bld_def.render,            RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::mirror_z_render);
                     modify_models(&bld_def, dir_output, |o| o.mirror_z());
                 },
             }

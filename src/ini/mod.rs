@@ -27,14 +27,14 @@ pub enum IniTokenState<T> {
 
 
 impl<T> IniTokenState<T> {
-    fn token(&self) -> &T {
+    pub fn token(&self) -> &T {
         match self {
             Self::Original(t) => t,
             Self::Modified(t) => t
         }
     }
 
-    fn modify<F: Fn(&T) -> Option<T>>(&mut self, f: F) {
+    pub fn modify<F: Fn(&T) -> Option<T>>(&mut self, f: F) {
         match f(self.token()) {
             None => { },
             Some(t) => *self = Self::Modified(t)
@@ -54,6 +54,8 @@ impl<T: fmt::Display> fmt::Display for IniTokenState<T> {
 
 
 //-------------------------------------------------
+pub trait Captures<'a> {}
+impl<'a, T: ?Sized> Captures<'a> for T {}
 
 pub struct IniFile<'a, T: IniToken> {
     ini_slice: &'a str,
@@ -76,6 +78,9 @@ impl<'a, T> IniFile<'a, T> where T: IniToken {
         self.tokens.iter().map(|(_, t)| t.token())
     }
 
+    pub fn tokens_mut(&mut self) -> impl Iterator<Item = &mut IniTokenState<T>> + Captures<'a> {
+        self.tokens.iter_mut().map(|(_, t)| t)
+    }
 
     pub fn write_to<W: Write>(&self, mut wr: W) -> std::io::Result<()> {
         unsafe {

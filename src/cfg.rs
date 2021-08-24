@@ -88,19 +88,19 @@ pub struct AppSettings {
 impl AppSettings {
 
     // mod folder is 7 digits and cannot start from zero.
-    pub const MOD_IDS_START:        u32 = 1_000_000;
-    pub const MOD_IDS_END:          u32 = 9_999_999;
-    pub const MAX_BUILDINGS_IN_MOD: u8  = 99;
-    pub const MAX_SKINS_IN_MOD:     u8  = 16;
+    pub const MOD_IDS_START:        usize = 1_000_000;
+    pub const MOD_IDS_END:          usize = 9_999_999;
+    pub const MAX_BUILDINGS_IN_MOD: usize = 99;
+    pub const MAX_SKINS_IN_MOD:     usize = 16;
 
-    pub const MAX_MODS:      usize = (AppSettings::MOD_IDS_END - AppSettings::MOD_IDS_START) as usize;
-    pub const MAX_BUILDINGS: usize = AppSettings::MAX_MODS * (AppSettings::MAX_BUILDINGS_IN_MOD as usize);
+    pub const MAX_MODS:      usize = AppSettings::MOD_IDS_END - AppSettings::MOD_IDS_START;
+    pub const MAX_BUILDINGS: usize = AppSettings::MAX_MODS * AppSettings::MAX_BUILDINGS_IN_MOD;
 
     // Paths in ini files:
-    pub const SRX_PATH_PREFIX: &'static str =  "([~.$]/)";
-    pub const SRX_PATH:        &'static str = r"([^\r\s\n]+?)";
-    pub const SRX_PATH_EXT:    &'static str =  "([^\"\\r\\n]+?)";
-    pub const SRX_EOL:         &'static str = r"(:?[\s\r\n$])";
+    //pub const SRX_PATH_PREFIX: &'static str =  "([~.$]/)";
+    //pub const SRX_PATH:        &'static str = r"([^\r\s\n]+?)";
+    //pub const SRX_PATH_EXT:    &'static str =  "([^\"\\r\\n]+?)";
+    //pub const SRX_EOL:         &'static str = r"(:?[\s\r\n$])";
 }
 
 

@@ -26,7 +26,7 @@ pub struct Rect {
 
 pub enum StrValue<'a> {
     Borrowed(&'a str),
-//  Owned(String),
+    Owned(String),
 }
 
 pub struct QuotedStringParam<'a>(pub StrValue<'a>);
@@ -36,7 +36,12 @@ impl<'a> IdStringParam<'a> {
     pub fn as_str(&'a self) -> &'a str {
         match self.0 {
             StrValue::Borrowed(x) => x,
+            StrValue::Owned(ref x) => x,
         }
+    }
+
+    pub fn new_owned(s: &'_ str) -> Self {
+        IdStringParam(StrValue::Owned(s.to_string()))
     }
 }
 
@@ -218,7 +223,7 @@ impl Display for StrValue<'_> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let s: &str = match self {
             Self::Borrowed(s) => s,
-            //Self::Owned(s) => s.as_str()
+            Self::Owned(s) => s.as_str()
         };
 
         write!(f, "{}", s)
