@@ -5,17 +5,26 @@ use std::fmt::{self, Write as FmtWrite};
 
 //use const_format::concatcp;
 use regex::Regex;
-use normpath::{BasePath, BasePathBuf, PathExt};
+use normpath::{BasePathBuf, PathExt};
 use lazy_static::lazy_static;
 
-use crate::building_def::{ModBuildingDef, StockBuildingDef, BuildingError as DefError, StockBuildingsMap, fetch_stock_with_ini, fetch_stock_building};
+use crate::building_def::{ModBuildingDef, StockBuildingDef, DefData, BuildingError as DefError, StockBuildingsMap, fetch_stock_with_ini, fetch_stock_building};
 use crate::cfg::{AppSettings, APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
-use crate::{read_to_buf, read_to_string_buf};
+use crate::{read_to_buf, read_to_string_buf, normalize_join};
 
 
 pub enum SourceType {
     Mod(ModBuildingDef),
     Stock(StockBuildingDef),
+}
+
+impl SourceType {
+    fn data(&self) -> &DefData {
+        match self {
+            SourceType::Mod(ModBuildingDef { data, .. }) => data,
+            SourceType::Stock(StockBuildingDef { data, .. }) => data,
+        }
+    }
 }
 
 pub struct BuildingSource {
@@ -104,8 +113,11 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
 
             let building_source = building_source.and_then(|bs| {
                 // TODO: check if skins cover active submaterials from the main model
+                //println!("skins: {:#?}", bs.skins);
+
+                validate_skins(&path, &bs.skins, &bs.def.data().model)
                 // TODO: check if actions are applicable (obj deletion?)
-                Ok(bs)
+                .and_then(|_| Ok(bs))
             });
 
             match building_source {
@@ -149,19 +161,71 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
 
 fn read_skins(path: &Path, buf: &mut String) -> Result<Skins, SourceError> {
     lazy_static! {
-        static ref RX_SKINS: Regex = Regex::new(r"(?s)^([^\s]+)(\s+([^\s]+))?$").unwrap();
+        static ref RX_SKIN: Regex = Regex::new(r"(?s)^([^\s]+)(\s+([^\s]+))?$").unwrap();
+        static ref RX_LINES: Regex = Regex::new(r"(?s)(\s*\r?\n)+").unwrap();
     }
 
-    // TODO: read skins
+    buf.truncate(0);
     read_to_string_buf(path, buf).map_err(|e| SourceError::Skins(format!("Could not read skins: {:?}", e)))?;
     let mut result = Skins::with_capacity(0);
     result.reserve(16);
-    for cap in RX_SKINS.captures_iter(buf) {
-        let mtl = resolve_source_path(&path.parent().unwrap().normalize_virtually().expect("skins path not normalized"), cap.get(1).unwrap().as_str());
-        let mtl_e = cap.get(3).map(|x| x.as_str());
+
+    for line in RX_LINES.split(&buf) {
+        if !line.is_empty() {
+            match RX_SKIN.captures(line) {
+                Some(cap) => {
+                    let root = path.parent().unwrap();
+                    let mtl = resolve_source_path(root, cap.get(1).unwrap().as_str()).into_path_buf();
+                    if !mtl.exists() {
+                        return Err(SourceError::Skins(format!("Skin refers to mtl that does not exist: {}", mtl.display())))
+                    }
+
+                    let mtl_e = cap.get(3).map(|x| {
+                        let mtl_e = resolve_source_path(root, x.as_str()).into_path_buf();
+                        if mtl_e.exists() {
+                            Ok(mtl_e)
+                        } else {
+                            Err(SourceError::Skins(format!("Skin refers to mtl that does not exist: {}", mtl_e.display())))
+                        }
+                    }).transpose()?;
+
+                    result.push((mtl, mtl_e));
+                },
+                None => return Err(SourceError::Skins(format!("Could not parse skins: non-empty line failed to match '{}'", line)))
+            }
+        }
     }
 
     Ok(result)
+}
+
+fn validate_skins(root: &Path, skins: &Skins, model: &Path) -> Result<(), SourceError> {
+    // TODO: subj
+    
+    /*let usage = model.get_submaterials_usage();
+
+    // For now there is only 1 hard rule:
+    // "all submaterials that are used by objects in NMF must have a token in mtl file"
+    // other checks could be added later
+
+    let used_by_objects = usage.iter().filter(|(_, i)| *i > 0);
+
+    'obj_iter: for (obj_sm, _) in used_by_objects {
+        for t in mtl.tokens() {
+            match t {
+                MT::Submaterial(mtl_sm) => {
+                    if *obj_sm == mtl_sm.as_str() {
+                        continue 'obj_iter;
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        writeln!(errors, "Error in {}: NMF uses submaterial '{}', but the MTL file has no corresponding token", pfx, obj_sm).unwrap();
+    }*/
+
+    todo!();
 }
 
 fn read_actions(_path: &mut PathBuf) -> Result<Option<()>, SourceError> {
@@ -199,6 +263,7 @@ pub fn install(sources: Vec<BuildingSource>, target: &Path, log_file: &mut BufWr
                 fs::create_dir_all(&pathbuf).unwrap();
 
                 install_building(&src.def, &pathbuf, stock_map, &mut assets_map, &mut str_buf, &mut byte_buf).unwrap();
+                // TODO: SKINS
 
                 pathbuf.pop();
             } else {
@@ -320,7 +385,7 @@ fn install_building(src: &SourceType,
 
     macro_rules! update_mtl {
         ($path:expr, $old_mtl_path:expr) => {{
-            let old_mtl_root = $old_mtl_path.parent().unwrap().normalize_virtually().unwrap();
+            let old_mtl_root = $old_mtl_path.parent().unwrap();
             read_to_string_buf($path, str_buf)?;
             let mut mtl = ini::parse_mtl(str_buf).expect("Invalid *.mtl");
             for token_state in mtl.tokens_mut() {
@@ -425,13 +490,13 @@ fn get_source_type_from_ref(bld_ini: PathBuf, mut render_ref: BasePathBuf, stock
 
 
 
-fn resolve_source_path(local_root: &BasePath, tail: &str) -> BasePathBuf {
+fn resolve_source_path(local_root: &Path, tail: &str) -> BasePathBuf {
     let mut iter = tail.chars();
     let pfx = iter.next().expect("resolve_source_path called with empty tail");
     match pfx {
         '#' => APP_SETTINGS.path_workshop.join(iter.as_str()),
         '~' => APP_SETTINGS.path_stock.join(iter.as_str()),
-        _   => local_root.join(tail)
+        _   => normalize_join(local_root, tail)
     }
 }
 

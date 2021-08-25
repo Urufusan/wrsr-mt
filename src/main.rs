@@ -3,6 +3,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use const_format::concatcp;
+use normpath::{PathExt, BasePathBuf};
 
 mod nmf;
 mod ini;
@@ -183,7 +184,7 @@ fn main() {
             fn check_and_copy_building(dir_input: &PathBuf, dir_output: &PathBuf) -> ModBuildingDef {
                 let render_ini = dir_input.join(RENDERCONFIG_INI);
                 let bld_ini = dir_input.join(BUILDING_INI);
-                let bld_def = ModBuildingDef::from_render_path(&bld_ini, &render_ini, |root, tail| root.join(tail), false)
+                let bld_def = ModBuildingDef::from_render_path(&bld_ini, &render_ini, normalize_join, false)
                     .expect("Cannot parse building");
 
                 {
@@ -244,7 +245,7 @@ fn main() {
                 cfg::ModCommand::Validate(dir_input) => {
                     let bld_ini = dir_input.join(BUILDING_INI);
                     let render_ini = dir_input.join(RENDERCONFIG_INI);
-                    match building_def::ModBuildingDef::from_render_path(&bld_ini, &render_ini, |root, tail| root.join(tail), true) {
+                    match building_def::ModBuildingDef::from_render_path(&bld_ini, &render_ini, normalize_join, true) {
                         Ok(bld) => {
                             println!("{}\nOK", bld);
                         },
@@ -385,4 +386,10 @@ pub fn read_to_string_buf<P: AsRef<Path>>(path: P, buf: &mut String) -> Result<(
     buf.reserve(sz);
     file.read_to_string(buf)?;
     Ok(())
+}
+
+pub fn normalize_join(root: &Path, tail: &str) -> BasePathBuf {
+    let mut root = root.normalize_virtually().unwrap();
+    root.push(tail);
+    root
 }
