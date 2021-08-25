@@ -90,7 +90,7 @@ impl AppSettings {
     // mod folder is 7 digits and cannot start from zero.
     pub const MOD_IDS_START:        usize = 1_000_000;
     pub const MOD_IDS_END:          usize = 9_999_999;
-    pub const MAX_BUILDINGS_IN_MOD: usize = 99;
+    pub const MAX_BUILDINGS_IN_MOD: usize = 100; // [0..99]
     pub const MAX_SKINS_IN_MOD:     usize = 16;
 
     pub const MAX_MODS:      usize = AppSettings::MOD_IDS_END - AppSettings::MOD_IDS_START;

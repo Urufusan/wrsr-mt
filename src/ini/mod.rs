@@ -34,7 +34,7 @@ impl<T> IniTokenState<T> {
         }
     }
 
-    pub fn modify<F: Fn(&T) -> Option<T>>(&mut self, f: F) {
+    pub fn modify<F: FnMut(&T) -> Option<T>>(&mut self, mut f: F) {
         match f(self.token()) {
             None => { },
             Some(t) => *self = Self::Modified(t)
@@ -80,6 +80,12 @@ impl<'a, T> IniFile<'a, T> where T: IniToken {
 
     pub fn tokens_mut(&mut self) -> impl Iterator<Item = &mut IniTokenState<T>> + Captures<'a> {
         self.tokens.iter_mut().map(|(_, t)| t)
+    }
+
+    pub fn write_file<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
+        let mut new_ini_file = std::io::BufWriter::new(std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(path)?);
+        self.write_to(&mut new_ini_file)?;
+        new_ini_file.flush()
     }
 
     pub fn write_to<W: Write>(&self, mut wr: W) -> std::io::Result<()> {

@@ -213,8 +213,9 @@ fn main() {
                     read_to_string_buf($path, &mut $buf).expect(concatcp!("Cannot read ", $name));
                     let mut ini = $parser(&mut $buf).expect(concatcp!("Cannot parse ", $name));
                     $modifier(&mut ini $(, $m_p)*);
-                    let out_writer = io::BufWriter::new(fs::OpenOptions::new().write(true).truncate(true).open($path).unwrap());
-                    ini.write_to(out_writer).unwrap();
+                    let mut out_writer = io::BufWriter::new(fs::OpenOptions::new().write(true).truncate(true).open($path).unwrap());
+                    ini.write_to(&mut out_writer).unwrap();
+                    out_writer.flush().unwrap();
                     println!("{}: OK", $name);
                 }};
             }

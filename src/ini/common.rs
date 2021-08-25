@@ -40,8 +40,12 @@ impl<'a> IdStringParam<'a> {
         }
     }
 
-    pub fn new_owned(s: &'_ str) -> Self {
+    pub fn new_cloned(s: &'_ str) -> Self {
         IdStringParam(StrValue::Owned(s.to_string()))
+    }
+
+    pub fn new_owned(s: String) -> Self {
+        IdStringParam(StrValue::Owned(s))
     }
 }
 
