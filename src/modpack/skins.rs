@@ -5,10 +5,8 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::{read_to_string_buf};
-use crate::ini;
+use crate::ini::{self, resolve_source_path};
 use crate::building_def;
-
-use super::resolve_source_path;
 
 
 pub const BUILDING_SKINS: &str = "building.skins";
@@ -29,12 +27,13 @@ pub type Skins = Vec<(PathBuf, Option<PathBuf>)>;
 
 
 pub fn read_skins(path: &Path, buf: &mut String) -> Result<Skins, Error> {
+    use ini::common::IdStringParam;
     lazy_static! {
         static ref RX_SKIN: Regex = Regex::new(r"(?s)^([^\s]+)(\s+([^\s]+))?$").unwrap();
         static ref RX_LINES: Regex = Regex::new(r"(?s)(\s*\r?\n)+").unwrap();
     }
 
-    buf.truncate(0);
+    buf.clear();
     read_to_string_buf(path, buf).map_err(Error::SkinsFileRead)?;
     let mut result = Skins::with_capacity(16);
 
@@ -43,8 +42,8 @@ pub fn read_skins(path: &Path, buf: &mut String) -> Result<Skins, Error> {
             match RX_SKIN.captures(line) {
                 Some(cap) => {
                     let root = path.parent().unwrap();
-                    let mtl = resolve_source_path(root, cap.get(1).unwrap().as_str()).into_path_buf();
-                    let mtl_e = cap.get(3).map(|x| resolve_source_path(root, x.as_str()).into_path_buf());
+                    let mtl = resolve_source_path(root, &IdStringParam::new_borrowed(cap.get(1).unwrap().as_str()));
+                    let mtl_e = cap.get(3).map(|x| resolve_source_path(root, &IdStringParam::new_borrowed(x.as_str())));
                     result.push((mtl, mtl_e));
                 },
                 None => return Err(Error::SkinsFileParse(line.to_string()))
@@ -61,7 +60,7 @@ pub fn validate_skins(root: &Path, skins: &Skins, used_submaterials: &[&str], bu
 
     macro_rules! check_mtl {
         ($mtl_path:ident) => {
-            buf.truncate(0);
+            buf.clear();
             read_to_string_buf($mtl_path, buf).map_err(Error::MtlRead)?;
             let mtl = ini::parse_mtl(buf).map_err(|e| Error::MtlParse(
                 $mtl_path.clone(), 
@@ -70,7 +69,7 @@ pub fn validate_skins(root: &Path, skins: &Skins, used_submaterials: &[&str], bu
 
             building_def::push_mtl_errors(&mtl, used_submaterials, &mut validation_errors, $mtl_path.display());
 
-            for tx in mtl.get_texture_paths(|p| resolve_source_path(root, p).into_path_buf()) {
+            for tx in mtl.get_texture_paths(|p| resolve_source_path(root, p)) {
                 if !tx.exists() {
                     return Err(Error::TexturePathInvalid(tx));
                 }

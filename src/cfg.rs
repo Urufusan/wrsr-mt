@@ -246,10 +246,10 @@ lazy_static! {
 
         let m = App::new("wrsr-mt")
             .author("kromgart@gmail.com")
-            .version("0.4")
+            .version("0.5")
             .about("Modding tools for \"Workers & Resources: Soviet Rebuplic\"")
             .long_about("Modding tools for \"Workers & Resources: Soviet Rebuplic\"\n\
-                         homepage: https://github.com/Kromgart/wrsr-mt")
+                         Homepage: https://github.com/Kromgart/wrsr-mt")
             .arg(
                 Arg::with_name("stock")
                     .long("stock")

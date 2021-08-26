@@ -4,7 +4,7 @@ use std::fmt::{Display, Formatter, Write};
 use std::io::Error as IOErr;
 use std::collections::HashMap;
 
-use crate::{read_to_string_buf, normalize_join};
+use crate::{read_to_string_buf};
 use crate::cfg::APP_SETTINGS;
 use crate::nmf::NmfInfo;
 use crate::ini::{self,
@@ -14,10 +14,10 @@ use crate::ini::{self,
                  BuildingToken as BT,
                  RenderToken as RT,
                  MaterialToken as MT,
+                 normalize_join,
+                 common::IdStringParam,
                  };
 
-
-use normpath::{BasePathBuf};
 
 
 #[derive(Debug, Clone)]
@@ -93,15 +93,15 @@ impl<T> BuildingDef<T> {
         render: T,
         render_root: &Path, 
         render_ini: RenderIni, 
-        render_path_resolver: fn(&Path, &str) -> BasePathBuf,
-        mtl_path_resolver:    fn(&Path, &str) -> BasePathBuf) -> Result<Self, BuildingError> 
+        render_path_resolver: fn(&Path, &IdStringParam) -> PathBuf,
+        mtl_path_resolver:    fn(&Path, &IdStringParam) -> PathBuf) -> Result<Self, BuildingError> 
     {
         macro_rules! get_render_value {
             ($p:pat, $s:ident) => {{
                 let mut res = None;
                 for t in render_ini.tokens() {
                     if let $p = t {
-                        res = Some(render_path_resolver(render_root, $s.as_str()).into_path_buf());
+                        res = Some(render_path_resolver(render_root, $s));
                         break;
                     }
                 }
@@ -226,7 +226,7 @@ impl StockBuildingDef {
             key.to_string(), 
             APP_SETTINGS.path_stock.as_path(), 
             render_ini, 
-            |_, tail| APP_SETTINGS.path_stock.join(tail),
+            |_, tail| ini::resolve_stock_path(tail),
             normalize_join)?;
 
         result.data.image_gui = {
@@ -244,7 +244,7 @@ impl StockBuildingDef {
 
 
 impl ModBuildingDef {
-    pub fn from_render_path(building_ini: &Path, renderconfig: &Path, path_resolver: fn(&Path, &str) -> BasePathBuf, validate: bool) -> Result<Self, BuildingError> {
+    pub fn from_render_path(building_ini: &Path, renderconfig: &Path, path_resolver: fn(&Path, &IdStringParam) -> PathBuf, validate: bool) -> Result<Self, BuildingError> {
         let render_root = renderconfig.parent().expect(&format!("Cannot get render root from {}", renderconfig.display()));
 
         let render_buf = fs::read_to_string(renderconfig).map_err(|e| BuildingError::FileIO(renderconfig.to_path_buf(), e.to_string()))?;
@@ -377,12 +377,12 @@ fn concat_parse_errors(errors: Vec<(&str, String)>) -> String {
 
 
 fn push_textures<F>(mtl_path: &Path, textures: &mut Vec<PathBuf>, mtl_path_resolver: F) -> Result<(), BuildingError>
-where F: Fn(&Path, &str) -> BasePathBuf 
+where F: Fn(&Path, &IdStringParam) -> PathBuf 
 {
     let mtl_root = mtl_path.parent().expect(&format!("Cannot get mtl root from {}", mtl_path.display()));
     let mtl_buf = fs::read_to_string(mtl_path).map_err(|e| BuildingError::FileIO(mtl_path.to_path_buf(), e.to_string()))?;
     let mtl = ini::parse_mtl(&mtl_buf).map_err(|e| BuildingError::Parse(mtl_path.to_path_buf(), concat_parse_errors(e)))?;
-    for tx_path in mtl.get_texture_paths(|p| mtl_path_resolver(mtl_root, p).into_path_buf()) {
+    for tx_path in mtl.get_texture_paths(|p| mtl_path_resolver(mtl_root, p)) {
         if textures.iter().all(|x| *x != tx_path) {
             textures.push(tx_path);
         }

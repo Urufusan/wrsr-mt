@@ -40,6 +40,10 @@ impl<'a> IdStringParam<'a> {
         }
     }
 
+    pub fn new_borrowed(s: &'a str) -> Self {
+        IdStringParam(StrValue::Borrowed(s))
+    }
+
     pub fn new_cloned(s: &'_ str) -> Self {
         IdStringParam(StrValue::Owned(s.to_string()))
     }

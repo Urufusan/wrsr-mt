@@ -10,11 +10,12 @@ use lazy_static::lazy_static;
 
 mod skins;
 
-use crate::{read_to_buf, read_to_string_buf, normalize_join};
+use crate::{read_to_buf, read_to_string_buf};
 use crate::cfg::{AppSettings, APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
 use crate::building_def::{ModBuildingDef, StockBuildingDef, DefData, BuildingError as DefError, StockBuildingsMap, fetch_stock_with_ini, fetch_stock_building};
 use crate::nmf;
-use crate::ini;
+use crate::ini::{self, resolve_source_path, resolve_stock_path};
+use crate::ini::common::IdStringParam;
 
 use skins::{Skins, Error as SkinsError};
 
@@ -189,33 +190,50 @@ pub const WORKSHOPCONFIG: &'static str = "workshopconfig.ini";
 
 pub fn install(sources: Vec<BuildingSource>, target: &Path, log_file: &mut BufWriter<fs::File>, stock_map: &mut StockBuildingsMap) {
     
+    let dds_root = target.join("dds");
+    fs::create_dir_all(&dds_root).unwrap();
+    let nmf_root = target.join("nmf");
+    fs::create_dir_all(&nmf_root).unwrap();
+
     let mut pathbuf = target.to_path_buf();
     let mut assets_map = AssetsMap::with_capacity(10000);
     let mut str_buf = String::with_capacity(16 * 1024);
     let mut byte_buf = Vec::<u8>::with_capacity(32 * 1024 * 1024);
+    let mut skins_buf = Vec::<(usize, usize, &PathBuf, Option<&PathBuf>)>::with_capacity(AppSettings::MAX_SKINS_IN_MOD);
 
     let mut src_iter = sources.iter();
-    for mod_id in AppSettings::MOD_IDS_START .. AppSettings::MOD_IDS_END {
-        str_buf.truncate(0);
+    let mut mod_id_iter = (AppSettings::MOD_IDS_START .. AppSettings::MOD_IDS_END).into_iter();
+    while let Some(mod_id) = mod_id_iter.next() {
+        str_buf.clear();
         write!(str_buf, "{}", mod_id).unwrap();
         pathbuf.push(&str_buf);
         for bld_id in 0 .. AppSettings::MAX_BUILDINGS_IN_MOD {
             if let Some(src) = src_iter.next() {
-                str_buf.truncate(0);
+                str_buf.clear();
                 write!(str_buf, "{:0>2}", bld_id).unwrap();
                 writeln!(log_file, "{}/{} {}", mod_id, &str_buf, src.source_dir.display()).unwrap();
                 pathbuf.push(&str_buf);
 
                 fs::create_dir_all(&pathbuf).unwrap();
 
-                install_building(&src.def, &pathbuf, stock_map, &mut assets_map, &mut str_buf, &mut byte_buf).unwrap();
-                // TODO: SKINS
+                install_building(&src.def, &pathbuf, &dds_root, &nmf_root, stock_map, &mut assets_map, &mut str_buf, &mut byte_buf).unwrap();
+                for (skin, skin_e) in src.skins.iter() {
+                    skins_buf.push((mod_id, bld_id, skin, skin_e.as_ref()));
+                    if skins_buf.len() == AppSettings::MAX_SKINS_IN_MOD {
+                        let skin_mod_id = write_skins_mod(target, &mut mod_id_iter, &skins_buf[..], &dds_root, &mut assets_map, &mut str_buf, &mut byte_buf);
+                        skins_buf.clear();
+                        writeln!(log_file, "{} <SKINS>", skin_mod_id).unwrap();
+                    }
+                }
 
                 pathbuf.pop();
             } else {
                 pathbuf.push(WORKSHOPCONFIG);
                 write_workshop_ini_buildings(pathbuf.as_path(), mod_id, bld_id, &mut str_buf);
-                pathbuf.pop();
+                if !skins_buf.is_empty() {
+                    let skin_mod_id = write_skins_mod(target, &mut mod_id_iter, &skins_buf[..], &dds_root, &mut assets_map, &mut str_buf, &mut byte_buf);
+                    writeln!(log_file, "{} <SKINS>", skin_mod_id).unwrap();
+                }
                 return;
             }
         }
@@ -227,12 +245,70 @@ pub fn install(sources: Vec<BuildingSource>, target: &Path, log_file: &mut BufWr
     }
 }
 
+#[must_use]
+fn write_skins_mod(target: &Path, 
+                   mod_id_iter: &mut impl Iterator<Item = usize>, 
+                   skins: &[(usize, usize, &PathBuf, Option<&PathBuf>)], 
+                   dds_root: &Path,
+                   assets_map: &mut AssetsMap,
+                   str_buf: &mut String,
+                   byte_buf: &mut Vec<u8>
+                   ) -> usize 
+{
+    let mod_id = mod_id_iter.next().expect("Too many mods");
+    let mut pathbuf = target.to_path_buf();
+
+    str_buf.clear();
+    write!(str_buf, "{}", mod_id).unwrap();
+    pathbuf.push(&str_buf);
+    fs::create_dir(&pathbuf).unwrap();
+
+    let mut config_buf = String::with_capacity(4 * 1024);
+    writeln!(config_buf, 
+        "$ITEM_ID {}\n\
+         $OWNER_ID 12345678901234567\n\
+         $ITEM_TYPE WORKSHOP_ITEMTYPE_BUILDINGSKIN\n\
+         $VISIBILITY 2\n", 
+        mod_id).unwrap();
+
+    for ((m, b, mtl, mtl_e), i) in skins.iter().zip(1..) {
+        str_buf.clear();
+        write!(str_buf, "{:0>2}.mtl", i).unwrap();
+        write!(config_buf, "\n$TARGET_BUILDING_SKIN {}/{:0>2} {}", m, b, str_buf).unwrap();
+
+        pathbuf.push(&str_buf);
+        fs::copy(&mtl, &pathbuf).expect("Could not copy skin's mtl file");
+        update_mtl(&pathbuf, &mtl, dds_root, str_buf, byte_buf, assets_map).unwrap();
+        pathbuf.pop();
+
+        if let Some(mtl) = mtl_e {
+            str_buf.clear();
+            write!(str_buf, "{:0>2}_e.mtl", i).unwrap();
+            write!(config_buf, " {}", str_buf).unwrap();
+
+            pathbuf.push(&str_buf);
+            fs::copy(mtl, &pathbuf).expect("Could not copy skin's mtl_e file");
+            update_mtl(&pathbuf, &mtl, dds_root, str_buf, byte_buf, assets_map).unwrap();
+            pathbuf.pop();
+        }
+    }
+
+    writeln!(config_buf, "\n\n$ITEM_NAME \"Automatically generated by wrsr-mt modpack installer\"\
+                            \n$ITEM_DESC \"Automatically generated by wrsr-mt modpack installer\"\
+                          \n\n$END").unwrap();
+
+    pathbuf.push(WORKSHOPCONFIG);
+    fs::write(pathbuf, config_buf).unwrap();
+
+    mod_id
+}
+
 fn write_workshop_ini_buildings(path: &Path, mod_id: usize, count: usize, buf: &mut String) {
     if count == 0 {
         return;
     }
 
-    buf.truncate(0);
+    buf.clear();
     writeln!(buf, 
         "$ITEM_ID {}\n\
          $OWNER_ID 12345678901234567\n\
@@ -253,18 +329,16 @@ fn write_workshop_ini_buildings(path: &Path, mod_id: usize, count: usize, buf: &
 
 fn install_building(src: &SourceType, 
                     destination: &Path, 
+                    dds_root: &Path,
+                    nmf_root: &Path,
                     stock_map: &mut StockBuildingsMap, 
                     assets_map: &mut AssetsMap, 
                     str_buf: &mut String,
                     byte_buf: &mut Vec<u8>) -> Result<(), std::io::Error> {
 
-    str_buf.truncate(0);
-    byte_buf.truncate(0);
+    str_buf.clear();
+    byte_buf.clear();
 
-    let nmf_root = destination.parent().unwrap().parent().unwrap().join("nmf");
-    fs::create_dir_all(&nmf_root)?;
-    let dds_root = destination.parent().unwrap().parent().unwrap().join("dds");
-    fs::create_dir_all(&dds_root)?;
     let new_render_path = destination.join(RENDERCONFIG_INI);
 
     let src_data = match src {
@@ -315,40 +389,10 @@ fn install_building(src: &SourceType,
         };
     }
 
-    macro_rules! update_tx_token {
-        ($token:ident) => {{
-            let mut tx_path = APP_SETTINGS.path_stock.join($token.as_str()).into_path_buf();
-            let tx_token = copy_asset_md5!(&mut tx_path, dds_root, "dds").unwrap();
-            ini::common::IdStringParam::new_owned(tx_token)
-        }};
-        ($token:ident, $mtl_root:expr) => {{
-            let mut tx_path = resolve_source_path($mtl_root, $token.as_str()).into_path_buf();
-            let tx_token = copy_asset_md5!(&mut tx_path, dds_root, "dds").unwrap();
-            ini::common::IdStringParam::new_owned(tx_token)
-        }};
-    }
-
     macro_rules! update_mtl {
-        ($path:expr, $old_mtl_path:expr) => {{
-            let old_mtl_root = $old_mtl_path.parent().unwrap();
-            read_to_string_buf($path, str_buf)?;
-            let mut mtl = ini::parse_mtl(str_buf).expect("Invalid *.mtl");
-            for token_state in mtl.tokens_mut() {
-                token_state.modify(|t| {
-                    use ini::material::Token as MT;
-                    
-                    match t {
-                        MT::Texture(        (i, p)) => Some(MT::TextureMtl(     (*i, update_tx_token!(p)) )),
-                        MT::TextureNoMip(   (i, p)) => Some(MT::TextureNoMipMtl((*i, update_tx_token!(p)) )),
-                        MT::TextureMtl(     (i, p)) => Some(MT::TextureMtl(     (*i, update_tx_token!(p, &old_mtl_root)) )),
-                        MT::TextureNoMipMtl((i, p)) => Some(MT::TextureNoMipMtl((*i, update_tx_token!(p, &old_mtl_root)) )),
-                        _ => None
-                    }
-                });
-            }
-
-            mtl.write_file($path)?;
-        }}
+        ($path:expr, $old_mtl_path:expr) => {
+            update_mtl($path, $old_mtl_path, &dds_root, str_buf, byte_buf, assets_map)
+        }
     }
 
     //-----------------------------------------------------------------
@@ -373,7 +417,6 @@ fn install_building(src: &SourceType,
         for token_state in render_ini.tokens_mut() {
             token_state.modify(|t| {
                 use ini::renderconfig::Token as RT;
-                use ini::common::IdStringParam;
                 
                 match t {
                     RT::Model(_)            => Some(RT::Model(IdStringParam::new_cloned(&model_token))),
@@ -391,9 +434,9 @@ fn install_building(src: &SourceType,
     }
 
     // Copy textures and update *.mtl files
-    update_mtl!(&data.material, src_data.material);
+    update_mtl!(&data.material, &src_data.material)?;
     if let (Some(material_e), Some(src_mtl_e)) = (&data.material_e, &src_data.material_e) {
-        update_mtl!(material_e, src_mtl_e);
+        update_mtl!(material_e, src_mtl_e)?;
     }
 
     Ok(())
@@ -433,17 +476,6 @@ fn get_source_type_from_ref(bld_ini: PathBuf, mut render_ref: BasePathBuf, stock
 }
 
 
-
-fn resolve_source_path(local_root: &Path, tail: &str) -> BasePathBuf {
-    let mut iter = tail.chars();
-    let pfx = iter.next().expect("resolve_source_path called with empty tail");
-    match pfx {
-        '#' => APP_SETTINGS.path_workshop.join(iter.as_str()),
-        '~' => APP_SETTINGS.path_stock.join(iter.as_str()),
-        _   => normalize_join(local_root, tail)
-    }
-}
-
 fn copy_asset_md5(path: &mut PathBuf, assets_root: &Path, asset_type: &'static str, byte_buf: &mut Vec<u8>, assets_map: &mut AssetsMap) -> Result<String, std::io::Error> {
     if let Some(v) = assets_map.get(path) {
         Ok(v.clone())
@@ -462,6 +494,44 @@ fn copy_asset_md5(path: &mut PathBuf, assets_root: &Path, asset_type: &'static s
         Ok(v)
     }
 }
+
+
+#[inline]
+fn update_tx_token<F: Fn(&IdStringParam) -> PathBuf>(
+    token: &IdStringParam, 
+    dds_root: &Path, 
+    path_resolver: F, 
+    byte_buf: &mut Vec<u8>, 
+    assets_map: &mut AssetsMap) -> IdStringParam<'static> 
+{
+    let mut tx_path = path_resolver(token);
+    let tx_token = copy_asset_md5(&mut tx_path, dds_root, "dds", byte_buf, assets_map).unwrap();
+    ini::common::IdStringParam::new_owned(tx_token)
+}
+
+
+// panics on invalid mtl
+fn update_mtl(path: &Path, old_mtl_path: &Path, dds_root: &Path, str_buf: &mut String, byte_buf: &mut Vec<u8>, assets_map: &mut AssetsMap) -> Result<(), std::io::Error> {
+    let old_mtl_root = old_mtl_path.parent().unwrap();
+    read_to_string_buf(path, str_buf)?;
+    let mut mtl = ini::parse_mtl(str_buf).expect("Invalid *.mtl");
+    for token_state in mtl.tokens_mut() {
+        token_state.modify(|t| {
+            use ini::material::Token as MT;
+            
+            match t {
+                MT::Texture(        (i, p)) => Some(MT::TextureMtl(     (*i, update_tx_token(p, dds_root, resolve_stock_path, byte_buf, assets_map)) )),
+                MT::TextureNoMip(   (i, p)) => Some(MT::TextureNoMipMtl((*i, update_tx_token(p, dds_root, resolve_stock_path, byte_buf, assets_map)) )),
+                MT::TextureMtl(     (i, p)) => Some(MT::TextureMtl(     (*i, update_tx_token(p, dds_root, |p| resolve_source_path(&old_mtl_root, p), byte_buf, assets_map) ))),
+                MT::TextureNoMipMtl((i, p)) => Some(MT::TextureNoMipMtl((*i, update_tx_token(p, dds_root, |p| resolve_source_path(&old_mtl_root, p), byte_buf, assets_map) ))), 
+                _ => None
+            }
+        });
+    }
+
+    mtl.write_file(path)
+}
+
 
 impl fmt::Display for BuildingSource {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {

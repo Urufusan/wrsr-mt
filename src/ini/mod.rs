@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::path::Path;
 use std::fmt;
 
 pub mod common;
@@ -9,7 +10,8 @@ pub mod material;
 
 pub mod transform;
 
-use common::ParseError;
+use common::{ParseError, IdStringParam};
+use crate::cfg::APP_SETTINGS;
 
 
 //---------------------------------------------
@@ -157,16 +159,41 @@ pub fn parse_mtl<'a>(src: &'a str) -> Result<MaterialMtl<'a>, Vec<(&'a str, Pars
 use std::path::PathBuf;
 
 impl MaterialMtl<'_> {
-    pub fn get_texture_paths<F: Fn(&str) -> PathBuf>(&self, path_resolver: F) -> Vec<PathBuf> {
-        use crate::cfg::APP_SETTINGS;
+    pub fn get_texture_paths<F: Fn(&IdStringParam<'_>) -> PathBuf>(&self, path_resolver: F) -> Vec<PathBuf> {
         use crate::ini::MaterialToken as MT;
 
         self.tokens().filter_map(|t| match t {
-            MT::Texture((_, s))         => Some(APP_SETTINGS.path_stock.join(s.as_str()).into_path_buf()),
-            MT::TextureNoMip((_, s))    => Some(APP_SETTINGS.path_stock.join(s.as_str()).into_path_buf()),
-            MT::TextureMtl((_, s))      => Some(path_resolver(s.as_str())),
-            MT::TextureNoMipMtl((_, s)) => Some(path_resolver(s.as_str())),
+            MT::Texture((_, s))         => Some(resolve_stock_path(s)),
+            MT::TextureNoMip((_, s))    => Some(resolve_stock_path(s)),
+            MT::TextureMtl((_, s))      => Some(path_resolver(s)),
+            MT::TextureNoMipMtl((_, s)) => Some(path_resolver(s)),
             _ => None
         }).collect()
+    }
+}
+
+
+// Resolving ini tokens as Path
+
+#[inline]
+pub fn normalize_join(root: &Path, tail: &IdStringParam) -> PathBuf {
+    use normpath::PathExt;
+    let mut root = root.normalize_virtually().unwrap();
+    root.push(tail.as_str());
+    root.into_path_buf()
+}
+
+#[inline]
+pub fn resolve_stock_path(token: &IdStringParam<'_>) -> PathBuf {
+    APP_SETTINGS.path_stock.join(token.as_str()).into_path_buf()
+}
+
+pub fn resolve_source_path(local_root: &Path, tail: &IdStringParam) -> PathBuf {
+    let mut iter = tail.as_str().chars();
+    let pfx = iter.next().expect("resolve_source_path called with empty tail");
+    match pfx {
+        '#' => APP_SETTINGS.path_workshop.join(iter.as_str()).into_path_buf(),
+        '~' => APP_SETTINGS.path_stock.join(iter.as_str()).into_path_buf(),
+        _   => normalize_join(local_root, tail)
     }
 }
