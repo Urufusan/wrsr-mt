@@ -153,3 +153,20 @@ pub use material::parse_tokens as parse_material_tokens;
 pub fn parse_mtl<'a>(src: &'a str) -> Result<MaterialMtl<'a>, Vec<(&'a str, ParseError)>> {
     material::parse_tokens_strict(src).map(|tokens| MaterialMtl::from_parts(src, tokens))
 }
+
+use std::path::PathBuf;
+
+impl MaterialMtl<'_> {
+    pub fn get_texture_paths<F: Fn(&str) -> PathBuf>(&self, path_resolver: F) -> Vec<PathBuf> {
+        use crate::cfg::APP_SETTINGS;
+        use crate::ini::MaterialToken as MT;
+
+        self.tokens().filter_map(|t| match t {
+            MT::Texture((_, s))         => Some(APP_SETTINGS.path_stock.join(s.as_str()).into_path_buf()),
+            MT::TextureNoMip((_, s))    => Some(APP_SETTINGS.path_stock.join(s.as_str()).into_path_buf()),
+            MT::TextureMtl((_, s))      => Some(path_resolver(s.as_str())),
+            MT::TextureNoMipMtl((_, s)) => Some(path_resolver(s.as_str())),
+            _ => None
+        }).collect()
+    }
+}

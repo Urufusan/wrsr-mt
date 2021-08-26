@@ -55,7 +55,7 @@ pub enum BuildingError {
     ModelMissing,
     MaterialMissing,
     UnknownStockKey(String),
-    Validation(String),
+    Validation(Vec<String>),
 }
 
 
@@ -140,17 +140,22 @@ impl<T> BuildingDef<T> {
     }
 
 
-    //fn parse_and_validate<'a, D: Display + 'a, F: Fn(&'a T) -> Result<(), D>>(&'a self, render_check: F) -> Result<(), String> {
     // Does not re-parse renderconfig!
     fn parse_and_validate(&self) -> Result<(), BuildingError> {
-        let mut errors = String::with_capacity(0);
+        let mut errors = Vec::<String>::with_capacity(0);
 
         macro_rules! check_path {
-            ($name:expr, $path:expr) => { if !$path.exists() { writeln!(errors, "{} does not exist: {}", $name, $path.display()).unwrap(); }};
+            ($name:expr, $path:expr) => { 
+                if !$path.exists() {
+                    errors.push(format!("{} does not exist: {}", $name, $path.display())); 
+                }
+            };
         }
 
         macro_rules! check_popt {
-            ($name:expr, $path:expr) => { $path.as_ref().map(|p| check_path!($name, p)); };
+            ($name:expr, $path:expr) => { 
+                $path.as_ref().map(|p| check_path!($name, p)); 
+            };
         }
 
         check_path!("building.ini",     &self.data.building_ini);
@@ -168,7 +173,7 @@ impl<T> BuildingDef<T> {
         let model = match NmfInfo::from_path(&self.data.model) {
             Ok(model) => Some(model),
             Err(e) => { 
-                writeln!(errors, "Cannot load model nmf: {:?}", e).unwrap();
+                errors.push(format!("Cannot load model nmf: {:?}", e));
                 None
             }
         };
@@ -176,25 +181,27 @@ impl<T> BuildingDef<T> {
         let mut str_buf = String::with_capacity(0);
 
         if let Some(model) = &model {
+            let sm_usage = model.get_used_sumbaterials();
+
             macro_rules! push_errors {
-                ($path:expr, $parser:expr, $pusher: ident, $pfx:expr) => {
+                ($path:expr, $parser:expr, $model_data:expr, $pusher:ident, $pfx:expr) => {
                     let read_res = read_to_string_buf(&$path, &mut str_buf);
                     match read_res {
                         Ok(()) => match $parser(&str_buf) {
                             Ok(ini) => {
-                                $pusher(&ini, model, &mut errors, $pfx)
+                                $pusher(&ini, $model_data, &mut errors, $pfx)
                             },
-                            Err(e) => writeln!(errors, "Cannot parse file {}: {:#?}", $path.display(), e).unwrap()
+                            Err(e) => errors.push(format!("Cannot parse file {}: {:#?}", $path.display(), e))
                         },
-                        Err(e) => writeln!(errors, "Cannot read file {}: {:?}", $path.display(), e).unwrap()
+                        Err(e) => errors.push(format!("Cannot read file {}: {:?}", $path.display(), e))
                     };
                 };
             }
 
-            push_errors!(self.data.building_ini, ini::parse_building_ini, push_buildingini_errors, "building.ini");
-            push_errors!(self.data.material,     ini::parse_mtl,          push_mtl_errors,         "material");
+            push_errors!(self.data.building_ini, ini::parse_building_ini, &model,        push_buildingini_errors, "building.ini");
+            push_errors!(self.data.material,     ini::parse_mtl,          &sm_usage[..], push_mtl_errors,         "material");
             if let Some(material_e) = &self.data.material_e {
-                push_errors!(material_e,         ini::parse_mtl,          push_mtl_errors,         "emissive material");
+                push_errors!(material_e,         ini::parse_mtl,          &sm_usage[..], push_mtl_errors,         "emissive material");
             }
         }
 
@@ -315,12 +322,12 @@ impl ModBuildingDef {
 }
 
 
-fn push_buildingini_errors(building_ini: &BuildingIni, model: &NmfInfo, errors: &mut String, pfx: &'static str) {
+fn push_buildingini_errors(building_ini: &BuildingIni, model: &NmfInfo, errors: &mut Vec<String>, pfx: &'static str) {
     for t in building_ini.tokens() {
         macro_rules! check_model_node {
             ($node:ident, $cmp:ident) => {
                 if model.objects.iter().all(|o| !o.name.as_str().$cmp($node.as_str())) {
-                    writeln!(errors, "Error in {}: invalid token '{}', matching node was not found in the model nmf", pfx, t).unwrap();
+                    errors.push(format!("Error in {}: invalid token '{}', matching node was not found in the model nmf", pfx, t));
                 }
             };
         }
@@ -337,16 +344,12 @@ fn push_buildingini_errors(building_ini: &BuildingIni, model: &NmfInfo, errors: 
     }
 }
 
-fn push_mtl_errors(mtl: &MaterialMtl, model: &NmfInfo, errors: &mut String, pfx: &'static str) {
-    let usage = model.get_submaterials_usage();
-
+pub fn push_mtl_errors<P: Display>(mtl: &MaterialMtl, used_sumbaterials: &[&str], errors: &mut Vec<String>, pfx: P) {
     // For now there is only 1 hard rule:
     // "all submaterials that are used by objects in NMF must have a token in mtl file"
     // other checks could be added later
 
-    let used_by_objects = usage.iter().filter(|(_, i)| *i > 0);
-
-    'obj_iter: for (obj_sm, _) in used_by_objects {
+    'obj_iter: for obj_sm in used_sumbaterials {
         for t in mtl.tokens() {
             match t {
                 MT::Submaterial(mtl_sm) => {
@@ -358,7 +361,7 @@ fn push_mtl_errors(mtl: &MaterialMtl, model: &NmfInfo, errors: &mut String, pfx:
             }
         }
 
-        writeln!(errors, "Error in {}: NMF uses submaterial '{}', but the MTL file has no corresponding token", pfx, obj_sm).unwrap();
+        errors.push(format!("Error in {}: NMF uses submaterial '{}', but the MTL file has no corresponding token", pfx, obj_sm));
     }
 }
 
@@ -379,20 +382,9 @@ where F: Fn(&Path, &str) -> BasePathBuf
     let mtl_root = mtl_path.parent().expect(&format!("Cannot get mtl root from {}", mtl_path.display()));
     let mtl_buf = fs::read_to_string(mtl_path).map_err(|e| BuildingError::FileIO(mtl_path.to_path_buf(), e.to_string()))?;
     let mtl = ini::parse_mtl(&mtl_buf).map_err(|e| BuildingError::Parse(mtl_path.to_path_buf(), concat_parse_errors(e)))?;
-    for t in mtl.tokens() {
-        let tx_path = match t {
-            MT::Texture((_, s))         => Some(APP_SETTINGS.path_stock.join(s.as_str())),
-            MT::TextureNoMip((_, s))    => Some(APP_SETTINGS.path_stock.join(s.as_str())),
-            MT::TextureMtl((_, s))      => Some(mtl_path_resolver(mtl_root, s.as_str())),
-            MT::TextureNoMipMtl((_, s)) => Some(mtl_path_resolver(mtl_root, s.as_str())),
-            _ => None
-        };
-
-        if let Some(tx_path) = tx_path {
-            let tx_path = tx_path.into_path_buf();
-            if textures.iter().all(|x| *x != tx_path) {
-                textures.push(tx_path);
-            }
+    for tx_path in mtl.get_texture_paths(|p| mtl_path_resolver(mtl_root, p).into_path_buf()) {
+        if textures.iter().all(|x| *x != tx_path) {
+            textures.push(tx_path);
         }
     }
 
@@ -489,7 +481,7 @@ impl Display for BuildingError {
             BuildingError::ModelMissing       => write!(f, "Model is missing"),
             BuildingError::MaterialMissing    => write!(f, "Material is missing"),
             BuildingError::UnknownStockKey(k) => write!(f, "Unknown stock building key '{}'", k),
-            BuildingError::Validation(e)      => write!(f, "Validation failed: {}", e),
+            BuildingError::Validation(e)      => write!(f, "Validation failed: {:#?}", e),
         }
     }
 }

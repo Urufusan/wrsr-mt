@@ -213,6 +213,13 @@ impl NmfInfo {
 
         usage
     }
+
+    pub fn get_used_sumbaterials(&self) -> Vec<&str> {
+        self.get_submaterials_usage()
+            .into_iter()
+            .filter_map(|(s, i)| if i > 0 { Some(s) } else { None })
+            .collect()
+    }
 }
 
 

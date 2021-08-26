@@ -8,9 +8,15 @@ use regex::Regex;
 use normpath::{BasePathBuf, PathExt};
 use lazy_static::lazy_static;
 
-use crate::building_def::{ModBuildingDef, StockBuildingDef, DefData, BuildingError as DefError, StockBuildingsMap, fetch_stock_with_ini, fetch_stock_building};
-use crate::cfg::{AppSettings, APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
+mod skins;
+
 use crate::{read_to_buf, read_to_string_buf, normalize_join};
+use crate::cfg::{AppSettings, APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
+use crate::building_def::{ModBuildingDef, StockBuildingDef, DefData, BuildingError as DefError, StockBuildingsMap, fetch_stock_with_ini, fetch_stock_building};
+use crate::nmf;
+use crate::ini;
+
+use skins::{Skins, Error as SkinsError};
 
 
 pub enum SourceType {
@@ -34,21 +40,20 @@ pub struct BuildingSource {
     actions: Option<()>,
 }
 
-type Skins = Vec<(PathBuf, Option<PathBuf>)>;
 
 #[derive(Debug)]
-pub enum SourceError{
+pub enum SourceError {
     NoRenderconfig,
     MultiRenderconfig,
     Def(DefError),
     RefRead(std::io::Error),
     RefParse,
-    Skins(String),
+    Skins(SkinsError),
+    Nmf(nmf::Error),
 }
 
 const RENDERCONFIG_SOURCE: &str = "renderconfig.source";
 const RENDERCONFIG_REF: &str = "renderconfig.ref";
-const BUILDING_SKINS: &str = "building.skins";
 
 pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -> Result<(Vec::<BuildingSource>, usize), usize> {
     let mut result = Vec::<BuildingSource>::with_capacity(10000);
@@ -95,9 +100,9 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
                 // NOTE: debug
                 //println!("{}: {}", path.strip_prefix(source_dir).unwrap().display(), def);
 
-                path.push(BUILDING_SKINS);
+                path.push(skins::BUILDING_SKINS);
                 let skins = if path.exists() {
-                    read_skins(path.as_path(), &mut str_buf)
+                    skins::read_skins(path.as_path(), &mut str_buf).map_err(SourceError::Skins)
                 } else { 
                     Ok(Skins::with_capacity(0))
                 };
@@ -115,9 +120,18 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
                 // TODO: check if skins cover active submaterials from the main model
                 //println!("skins: {:#?}", bs.skins);
 
-                validate_skins(&path, &bs.skins, &bs.def.data().model)
-                // TODO: check if actions are applicable (obj deletion?)
-                .and_then(|_| Ok(bs))
+                nmf::NmfInfo::from_path(bs.def.data().model.as_path())
+                    .map_err(SourceError::Nmf)
+                    .and_then(|nmf_info| {
+                        let sm_use = nmf_info.get_used_sumbaterials();
+
+                        skins::validate_skins(&path, &bs.skins, &sm_use[..], &mut str_buf)
+                        .map_err(SourceError::Skins)
+                        .and_then(|_| { 
+                            // TODO: check if actions are applicable (obj deletion?)
+                            Ok(bs) 
+                        })
+                    })
             });
 
             match building_source {
@@ -159,74 +173,6 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
     }
 }
 
-fn read_skins(path: &Path, buf: &mut String) -> Result<Skins, SourceError> {
-    lazy_static! {
-        static ref RX_SKIN: Regex = Regex::new(r"(?s)^([^\s]+)(\s+([^\s]+))?$").unwrap();
-        static ref RX_LINES: Regex = Regex::new(r"(?s)(\s*\r?\n)+").unwrap();
-    }
-
-    buf.truncate(0);
-    read_to_string_buf(path, buf).map_err(|e| SourceError::Skins(format!("Could not read skins: {:?}", e)))?;
-    let mut result = Skins::with_capacity(0);
-    result.reserve(16);
-
-    for line in RX_LINES.split(&buf) {
-        if !line.is_empty() {
-            match RX_SKIN.captures(line) {
-                Some(cap) => {
-                    let root = path.parent().unwrap();
-                    let mtl = resolve_source_path(root, cap.get(1).unwrap().as_str()).into_path_buf();
-                    if !mtl.exists() {
-                        return Err(SourceError::Skins(format!("Skin refers to mtl that does not exist: {}", mtl.display())))
-                    }
-
-                    let mtl_e = cap.get(3).map(|x| {
-                        let mtl_e = resolve_source_path(root, x.as_str()).into_path_buf();
-                        if mtl_e.exists() {
-                            Ok(mtl_e)
-                        } else {
-                            Err(SourceError::Skins(format!("Skin refers to mtl that does not exist: {}", mtl_e.display())))
-                        }
-                    }).transpose()?;
-
-                    result.push((mtl, mtl_e));
-                },
-                None => return Err(SourceError::Skins(format!("Could not parse skins: non-empty line failed to match '{}'", line)))
-            }
-        }
-    }
-
-    Ok(result)
-}
-
-fn validate_skins(root: &Path, skins: &Skins, model: &Path) -> Result<(), SourceError> {
-    // TODO: subj
-    
-    /*let usage = model.get_submaterials_usage();
-
-    // For now there is only 1 hard rule:
-    // "all submaterials that are used by objects in NMF must have a token in mtl file"
-    // other checks could be added later
-
-    let used_by_objects = usage.iter().filter(|(_, i)| *i > 0);
-
-    'obj_iter: for (obj_sm, _) in used_by_objects {
-        for t in mtl.tokens() {
-            match t {
-                MT::Submaterial(mtl_sm) => {
-                    if *obj_sm == mtl_sm.as_str() {
-                        continue 'obj_iter;
-                    }
-                },
-                _ => {}
-            }
-        }
-
-        writeln!(errors, "Error in {}: NMF uses submaterial '{}', but the MTL file has no corresponding token", pfx, obj_sm).unwrap();
-    }*/
-
-    todo!();
-}
 
 fn read_actions(_path: &mut PathBuf) -> Result<Option<()>, SourceError> {
     //const BUILDING_ACTIONS: &str = "building.skins";
@@ -311,7 +257,6 @@ fn install_building(src: &SourceType,
                     assets_map: &mut AssetsMap, 
                     str_buf: &mut String,
                     byte_buf: &mut Vec<u8>) -> Result<(), std::io::Error> {
-    use crate::ini;
 
     str_buf.truncate(0);
     byte_buf.truncate(0);
@@ -422,13 +367,12 @@ fn install_building(src: &SourceType,
         let model_e_token:    Option<String> = copy_nmf_md5_opt!(model_e)?;
 
         // Update renderconfig.ini
-        use ini::{renderconfig, parse_renderconfig_ini};
 
         read_to_string_buf(&new_render_path, str_buf)?;
-        let mut render_ini = parse_renderconfig_ini(str_buf).expect("Invalid building renderconfig");
+        let mut render_ini = ini::parse_renderconfig_ini(str_buf).expect("Invalid building renderconfig");
         for token_state in render_ini.tokens_mut() {
             token_state.modify(|t| {
-                use renderconfig::Token as RT;
+                use ini::renderconfig::Token as RT;
                 use ini::common::IdStringParam;
                 
                 match t {
