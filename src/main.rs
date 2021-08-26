@@ -21,6 +21,7 @@ use cfg::{AppSettings, APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
 
 
 fn main() {
+    //modpack::make_relative_token(&p_from, &p_to));
 
     match &APP_SETTINGS.command {
         cfg::AppCommand::Modpack(cmd) => {

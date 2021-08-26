@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{Write, BufWriter};
+use std::io::{Write, BufWriter, Error as IOErr};
 use std::path::{Path, PathBuf};
 use std::fmt::{self, Write as FmtWrite};
 
@@ -47,7 +47,7 @@ pub enum SourceError {
     NoRenderconfig,
     MultiRenderconfig,
     Def(DefError),
-    RefRead(std::io::Error),
+    RefRead(IOErr),
     RefParse,
     Skins(SkinsError),
     Nmf(nmf::Error),
@@ -181,7 +181,7 @@ fn read_actions(_path: &mut PathBuf) -> Result<Option<()>, SourceError> {
 }
 
 
-type AssetsMap = std::collections::HashMap::<PathBuf, String>;
+type AssetsMap = ahash::AHashMap::<PathBuf, PathBuf>;
 
 pub const MODPACK_LOG: &'static str = "modpack.log";
 pub const MATERIAL_MTL: &'static str = "material.mtl";
@@ -278,7 +278,7 @@ fn write_skins_mod(target: &Path,
 
         pathbuf.push(&str_buf);
         fs::copy(&mtl, &pathbuf).expect("Could not copy skin's mtl file");
-        update_mtl(&pathbuf, &mtl, dds_root, str_buf, byte_buf, assets_map).unwrap();
+        update_mtl(&pathbuf, &mtl, dds_root, assets_map, str_buf, byte_buf).unwrap();
         pathbuf.pop();
 
         if let Some(mtl) = mtl_e {
@@ -288,7 +288,7 @@ fn write_skins_mod(target: &Path,
 
             pathbuf.push(&str_buf);
             fs::copy(mtl, &pathbuf).expect("Could not copy skin's mtl_e file");
-            update_mtl(&pathbuf, &mtl, dds_root, str_buf, byte_buf, assets_map).unwrap();
+            update_mtl(&pathbuf, &mtl, dds_root, assets_map, str_buf, byte_buf).unwrap();
             pathbuf.pop();
         }
     }
@@ -334,7 +334,7 @@ fn install_building(src: &SourceType,
                     stock_map: &mut StockBuildingsMap, 
                     assets_map: &mut AssetsMap, 
                     str_buf: &mut String,
-                    byte_buf: &mut Vec<u8>) -> Result<(), std::io::Error> {
+                    byte_buf: &mut Vec<u8>) -> Result<(), IOErr> {
 
     str_buf.clear();
     byte_buf.clear();
@@ -375,23 +375,25 @@ fn install_building(src: &SourceType,
         }
     }
 
-    macro_rules! copy_asset_md5 {
-        ($path:expr, $assets_root:ident, $asset_type:expr) => { 
-            copy_asset_md5($path, &$assets_root, $asset_type, byte_buf, assets_map)
-        }
+    macro_rules! copy_nmf_md5_token {
+        ($nmf_path:expr) => {{
+            let new_nmf_path = copy_asset_md5($nmf_path, nmf_root, byte_buf, assets_map)?;
+            $nmf_path.push(new_nmf_path);
+            Result::<String, IOErr>::Ok(make_relative_token(&new_render_path, $nmf_path).expect("Could not construct relative nmf token"))
+        }}
     }
     
-    macro_rules! copy_nmf_md5_opt { 
-        ($fld:ident) => { 
-            if let Some(path) = data.$fld.as_mut() {
-                Some(copy_asset_md5!(path, nmf_root, "nmf")).transpose()
+    macro_rules! copy_nmf_md5_token_opt { 
+        ($nmf_path:expr) => { 
+            if let Some(path) = $nmf_path.as_mut() {
+                Some(copy_nmf_md5_token!(path)).transpose()
             } else { Ok(None) }
         };
     }
 
     macro_rules! update_mtl {
-        ($path:expr, $old_mtl_path:expr) => {
-            update_mtl($path, $old_mtl_path, &dds_root, str_buf, byte_buf, assets_map)
+        ($mtl_path:expr, $old_mtl_path:expr) => {
+            update_mtl($mtl_path, $old_mtl_path, &dds_root, assets_map, str_buf, byte_buf)
         }
     }
 
@@ -405,10 +407,10 @@ fn install_building(src: &SourceType,
     
     // UPDATE renderconfig tokens
     {   
-        let model_token:      String         = copy_asset_md5!(&mut data.model, nmf_root, "nmf")?;
-        let model_lod_token:  Option<String> = copy_nmf_md5_opt!(model_lod)?;
-        let model_lod2_token: Option<String> = copy_nmf_md5_opt!(model_lod2)?;
-        let model_e_token:    Option<String> = copy_nmf_md5_opt!(model_e)?;
+        let model_token:      String         = copy_nmf_md5_token!(&mut data.model)?;
+        let model_lod_token:  Option<String> = copy_nmf_md5_token_opt!(data.model_lod)?;
+        let model_lod2_token: Option<String> = copy_nmf_md5_token_opt!(data.model_lod2)?;
+        let model_e_token:    Option<String> = copy_nmf_md5_token_opt!(data.model_e)?;
 
         // Update renderconfig.ini
 
@@ -476,62 +478,98 @@ fn get_source_type_from_ref(bld_ini: PathBuf, mut render_ref: BasePathBuf, stock
 }
 
 
-fn copy_asset_md5(path: &mut PathBuf, assets_root: &Path, asset_type: &'static str, byte_buf: &mut Vec<u8>, assets_map: &mut AssetsMap) -> Result<String, std::io::Error> {
-    if let Some(v) = assets_map.get(path) {
-        Ok(v.clone())
-    } else {
-        let new_key = path.to_path_buf();
-        read_to_buf(&path, byte_buf)?;
-        let asset_md5name = format!("{:x}.{}", md5::compute(byte_buf.as_mut_slice()), asset_type);
-        path.push(&assets_root);
-        path.push(&asset_md5name);
-        if !path.exists() {
-            fs::write(&path, byte_buf.as_slice())?;
+fn copy_asset_md5<'map>(asset_path: &Path, assets_root: &Path, byte_buf: &mut Vec<u8>, assets_map: &'map mut AssetsMap) -> Result<&'map Path, IOErr> {
+
+    if !assets_map.contains_key(asset_path) {
+        let file_ext = asset_path.extension()
+            .ok_or_else(|| IOErr::new(std::io::ErrorKind::Other, "Asset has no extension"))?
+            .to_string_lossy();
+
+        read_to_buf(asset_path, byte_buf)?;
+        let asset_md5name = format!("{:x}.{}", md5::compute(byte_buf.as_mut_slice()), file_ext);
+
+        let new_key = asset_path.to_path_buf();
+        let new_val = assets_root.join(&asset_md5name);
+
+        if !new_val.exists() {
+            fs::write(&new_val, byte_buf.as_slice())?;
         }
 
-        let v = format!("../../{}/{}", asset_type, asset_md5name);
-        assets_map.insert(new_key, v.clone());
-        Ok(v)
+        assets_map.insert(new_key, new_val);
     }
-}
 
-
-#[inline]
-fn update_tx_token<F: Fn(&IdStringParam) -> PathBuf>(
-    token: &IdStringParam, 
-    dds_root: &Path, 
-    path_resolver: F, 
-    byte_buf: &mut Vec<u8>, 
-    assets_map: &mut AssetsMap) -> IdStringParam<'static> 
-{
-    let mut tx_path = path_resolver(token);
-    let tx_token = copy_asset_md5(&mut tx_path, dds_root, "dds", byte_buf, assets_map).unwrap();
-    ini::common::IdStringParam::new_owned(tx_token)
+    let v = assets_map.get(asset_path).expect("HasMap 'get' failed right after insertion").as_path();
+    Ok(v)
 }
 
 
 // panics on invalid mtl
-fn update_mtl(path: &Path, old_mtl_path: &Path, dds_root: &Path, str_buf: &mut String, byte_buf: &mut Vec<u8>, assets_map: &mut AssetsMap) -> Result<(), std::io::Error> {
+fn update_mtl(mtl_path: &Path, 
+              old_mtl_path: &Path, 
+              dds_root: &Path, 
+              assets_map: &mut AssetsMap,
+              str_buf: &mut String, 
+              byte_buf: &mut Vec<u8>
+              ) -> Result<(), IOErr> {
     let old_mtl_root = old_mtl_path.parent().unwrap();
-    read_to_string_buf(path, str_buf)?;
+    read_to_string_buf(mtl_path, str_buf)?;
     let mut mtl = ini::parse_mtl(str_buf).expect("Invalid *.mtl");
+
+    macro_rules! update_tx_token {
+        ($token:ident, $path_resolver:expr) => {{
+            let src_tx_path = $path_resolver($token);
+            let new_tx_path = copy_asset_md5(&src_tx_path, dds_root, byte_buf, assets_map).expect("Could not copy texture when updating mtl");
+            let tx_token = make_relative_token(mtl_path, &new_tx_path).expect("Could not construct relative texture token");
+            ini::common::IdStringParam::new_owned(tx_token)
+        }}
+    }
+
+
     for token_state in mtl.tokens_mut() {
         token_state.modify(|t| {
             use ini::material::Token as MT;
             
             match t {
-                MT::Texture(        (i, p)) => Some(MT::TextureMtl(     (*i, update_tx_token(p, dds_root, resolve_stock_path, byte_buf, assets_map)) )),
-                MT::TextureNoMip(   (i, p)) => Some(MT::TextureNoMipMtl((*i, update_tx_token(p, dds_root, resolve_stock_path, byte_buf, assets_map)) )),
-                MT::TextureMtl(     (i, p)) => Some(MT::TextureMtl(     (*i, update_tx_token(p, dds_root, |p| resolve_source_path(&old_mtl_root, p), byte_buf, assets_map) ))),
-                MT::TextureNoMipMtl((i, p)) => Some(MT::TextureNoMipMtl((*i, update_tx_token(p, dds_root, |p| resolve_source_path(&old_mtl_root, p), byte_buf, assets_map) ))), 
+                MT::Texture(        (i, p)) => Some(MT::TextureMtl(     (*i, update_tx_token!(p, resolve_stock_path)) )),
+                MT::TextureNoMip(   (i, p)) => Some(MT::TextureNoMipMtl((*i, update_tx_token!(p, resolve_stock_path)) )),
+                MT::TextureMtl(     (i, p)) => Some(MT::TextureMtl(     (*i, update_tx_token!(p, |p| resolve_source_path(&old_mtl_root, p)) ))),
+                MT::TextureNoMipMtl((i, p)) => Some(MT::TextureNoMipMtl((*i, update_tx_token!(p, |p| resolve_source_path(&old_mtl_root, p)) ))), 
                 _ => None
             }
         });
     }
 
-    mtl.write_file(path)
+    mtl.write_file(mtl_path)
 }
 
+pub fn make_relative_token(path_from: &Path, path_to: &Path) -> Option<String> {
+
+    let mut iter_from = path_from.parent()?.components();
+    let mut iter_to = path_to.parent()?.components();
+
+    while let (Some(c_from), Some(c_to)) = (iter_from.next(), iter_to.next()) {
+        if c_from != c_to {
+            let mut new_token = String::with_capacity(128);
+            new_token.push_str("../");
+            for _ in iter_from {
+                new_token.push_str("../");
+            }
+
+            new_token.push_str(&c_to.as_os_str().to_string_lossy());
+            new_token.push_str("/");
+            for c in iter_to {
+                new_token.push_str(&c.as_os_str().to_string_lossy());
+                new_token.push_str("/");
+            }
+
+            new_token.push_str(&path_to.file_name()?.to_string_lossy());
+
+            return Some(new_token);
+        }
+    }
+
+    None
+}
 
 impl fmt::Display for BuildingSource {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
