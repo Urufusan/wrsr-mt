@@ -226,17 +226,20 @@ impl NmfInfo {
 impl NmfBuf<ObjectFull> {
 
     pub fn write_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
-        let path: &Path = path.as_ref();
-        
         let f_out = fs::OpenOptions::new()
                         .write(true)
                         .create(true)
                         .truncate(true)
-                        .open(path)
+                        .open(path.as_ref())
                         .map_err(Error::FileIO)?;
 
         let mut wr = io::BufWriter::new(f_out);
 
+        self.write_to(&mut wr)?;
+        wr.flush().map_err(Error::FileIO)
+    }
+
+    pub fn write_to<W: Write + Seek>(&self, mut wr: W) -> Result<(), Error> {
         self.nmf_type.write_bytes(&mut wr).map_err(Error::FileIO)?;
         write_num_u32(self.submaterials.len(), &mut wr)?;
         write_num_u32(self.objects.len(), &mut wr)?;
@@ -252,9 +255,7 @@ impl NmfBuf<ObjectFull> {
 
         let len = wr.stream_position().map_err(Error::FileIO)?;
         wr.seek(io::SeekFrom::Start(16)).map_err(Error::FileIO)?;
-        write_num_u32(len, &mut wr)?;
-
-        wr.flush().map_err(Error::FileIO)
+        write_num_u32(len, &mut wr)
     }
 }
 

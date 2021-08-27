@@ -9,8 +9,6 @@ use crate::ini::{self, resolve_source_path};
 use crate::building_def;
 
 
-pub const BUILDING_SKINS: &str = "building.skins";
-
 
 #[derive(Debug)]
 pub enum Error {
@@ -55,7 +53,7 @@ pub fn read_skins(path: &Path, buf: &mut String) -> Result<Skins, Error> {
 }
 
 
-pub fn validate_skins(root: &Path, skins: &Skins, used_submaterials: &[&str], buf: &mut String) -> Result<(), Error> {
+pub fn validate(skins: &Skins, root: &Path, used_submaterials: &[&str], buf: &mut String) -> Result<(), Error> {
     let mut validation_errors = Vec::with_capacity(0);
 
     macro_rules! check_mtl {

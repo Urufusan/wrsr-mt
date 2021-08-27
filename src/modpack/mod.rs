@@ -9,6 +9,7 @@ use normpath::{BasePathBuf, PathExt};
 use lazy_static::lazy_static;
 
 mod skins;
+mod actions;
 
 use crate::{read_to_buf, read_to_string_buf};
 use crate::cfg::{AppSettings, APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
@@ -18,6 +19,7 @@ use crate::ini::{self, resolve_source_path, resolve_stock_path};
 use crate::ini::common::IdStringParam;
 
 use skins::{Skins, Error as SkinsError};
+use actions::{ModActions, Error as ActionsError};
 
 
 pub enum SourceType {
@@ -38,11 +40,10 @@ pub struct BuildingSource {
     source_dir: PathBuf,
     def: SourceType,
     skins: Skins,
-    actions: Option<()>,
+    actions: Option<ModActions>,
 }
 
 
-#[derive(Debug)]
 pub enum SourceError {
     NoRenderconfig,
     MultiRenderconfig,
@@ -50,11 +51,21 @@ pub enum SourceError {
     RefRead(IOErr),
     RefParse,
     Skins(SkinsError),
+    Actions(ActionsError),
     Nmf(nmf::Error),
 }
 
+pub const MODPACK_LOG:     &str = "modpack.log";
+
 const RENDERCONFIG_SOURCE: &str = "renderconfig.source";
-const RENDERCONFIG_REF: &str = "renderconfig.ref";
+const RENDERCONFIG_REF:    &str = "renderconfig.ref";
+const BUILDING_SKINS:      &str = "building.skins";
+const BUILDING_ACTIONS:    &str = "building.actions";
+
+const MATERIAL_MTL:        &str = "material.mtl";
+const MATERIAL_E_MTL:      &str = "material_e.mtl";
+const WORKSHOPCONFIG:      &str = "workshopconfig.ini";
+
 
 pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -> Result<(Vec::<BuildingSource>, usize), usize> {
     let mut result = Vec::<BuildingSource>::with_capacity(10000);
@@ -101,7 +112,7 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
                 // NOTE: debug
                 //println!("{}: {}", path.strip_prefix(source_dir).unwrap().display(), def);
 
-                path.push(skins::BUILDING_SKINS);
+                path.push(BUILDING_SKINS);
                 let skins = if path.exists() {
                     skins::read_skins(path.as_path(), &mut str_buf).map_err(SourceError::Skins)
                 } else { 
@@ -111,27 +122,37 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
 
                 skins.and_then(|skins| {
                     skins_count += skins.len();
-                    read_actions(&mut path).and_then(|actions| {
+                    path.push(BUILDING_ACTIONS);
+                    let actions = if path.exists() {
+                        actions::read_actions(&mut path, &mut str_buf).map(Some).map_err(SourceError::Actions)
+                    } else {
+                        Ok(None)
+                    };
+                    path.pop();
+
+                    actions.and_then(|actions| {
+                        // NOTE: debug
+                        //println!("skins:\n{:#?}", bs.skins);
+                        //println!("actions:\n{:?}", actions);
                         Ok(BuildingSource { source_dir: path.clone(), def, skins, actions })
                     })
                 })
             });
 
+            // VALIDATIONS
             let building_source = building_source.and_then(|bs| {
-                // TODO: check if skins cover active submaterials from the main model
-                //println!("skins: {:#?}", bs.skins);
-
                 nmf::NmfInfo::from_path(bs.def.data().model.as_path())
                     .map_err(SourceError::Nmf)
                     .and_then(|nmf_info| {
                         let sm_use = nmf_info.get_used_sumbaterials();
 
-                        skins::validate_skins(&path, &bs.skins, &sm_use[..], &mut str_buf)
-                        .map_err(SourceError::Skins)
-                        .and_then(|_| { 
-                            // TODO: check if actions are applicable (obj deletion?)
-                            Ok(bs) 
-                        })
+                        skins::validate(&bs.skins, &path, &sm_use[..], &mut str_buf).map_err(SourceError::Skins)
+                            .and_then(|_| match &bs.actions {
+                                None => Ok(()),
+                                Some(a) => a.validate(nmf_info.objects.iter().map(|o| o.name.as_str()))
+                                            .map_err(SourceError::Actions)
+                             })
+                            .and_then(|_| Ok(bs))
                     })
             });
 
@@ -140,7 +161,7 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
                     println!("{}: OK", path.strip_prefix(source_dir).expect("Impossible: could not strip root prefix").display());
                     result.push(bs)
                 },
-                Err(e) => log_err!(format!("{:?}", e))
+                Err(e) => log_err!(e)
             }
         } else {
             // try to push sub-dirs to backlog
@@ -175,18 +196,9 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
 }
 
 
-fn read_actions(_path: &mut PathBuf) -> Result<Option<()>, SourceError> {
-    //const BUILDING_ACTIONS: &str = "building.skins";
-    Ok(Some(()))
-}
 
 
 type AssetsMap = ahash::AHashMap::<PathBuf, PathBuf>;
-
-pub const MODPACK_LOG: &'static str = "modpack.log";
-pub const MATERIAL_MTL: &'static str = "material.mtl";
-pub const MATERIAL_E_MTL: &'static str = "material_e.mtl";
-pub const WORKSHOPCONFIG: &'static str = "workshopconfig.ini";
 
 pub fn install(sources: Vec<BuildingSource>, target: &Path, log_file: &mut BufWriter<fs::File>, stock_map: &mut StockBuildingsMap) {
     
@@ -216,7 +228,7 @@ pub fn install(sources: Vec<BuildingSource>, target: &Path, log_file: &mut BufWr
 
                 fs::create_dir_all(&pathbuf).unwrap();
 
-                install_building(&src.def, &pathbuf, &dds_root, &nmf_root, stock_map, &mut assets_map, &mut str_buf, &mut byte_buf).unwrap();
+                install_building(&src.def, &src.actions, &pathbuf, &dds_root, &nmf_root, stock_map, &mut assets_map, &mut str_buf, &mut byte_buf).unwrap();
                 for (skin, skin_e) in src.skins.iter() {
                     skins_buf.push((mod_id, bld_id, skin, skin_e.as_ref()));
                     if skins_buf.len() == AppSettings::MAX_SKINS_IN_MOD {
@@ -328,6 +340,7 @@ fn write_workshop_ini_buildings(path: &Path, mod_id: usize, count: usize, buf: &
 }
 
 fn install_building(src: &SourceType, 
+                    actions: &Option<actions::ModActions>,
                     destination: &Path, 
                     dds_root: &Path,
                     nmf_root: &Path,
@@ -375,18 +388,22 @@ fn install_building(src: &SourceType,
         }
     }
 
-    macro_rules! copy_nmf_md5_token {
+    macro_rules! copy_nmf_token {
         ($nmf_path:expr) => {{
-            let new_nmf_path = copy_asset_md5($nmf_path, nmf_root, byte_buf, assets_map)?;
-            $nmf_path.push(new_nmf_path);
-            Result::<String, IOErr>::Ok(make_relative_token(&new_render_path, $nmf_path).expect("Could not construct relative nmf token"))
+            let nmf_path = $nmf_path;
+            match actions {
+                None          => nmf_path.push(copy_asset_md5(nmf_path, nmf_root, byte_buf, assets_map)?),
+                Some(actions) => nmf_path.push(copy_nmf_with_actions(nmf_path, nmf_root, byte_buf, actions)?)
+            };
+
+            Result::<String, IOErr>::Ok(make_relative_token(&new_render_path, nmf_path).expect("Could not construct relative nmf token"))
         }}
     }
     
-    macro_rules! copy_nmf_md5_token_opt { 
+    macro_rules! copy_nmf_token_opt { 
         ($nmf_path:expr) => { 
             if let Some(path) = $nmf_path.as_mut() {
-                Some(copy_nmf_md5_token!(path)).transpose()
+                Some(copy_nmf_token!(path)).transpose()
             } else { Ok(None) }
         };
     }
@@ -399,18 +416,17 @@ fn install_building(src: &SourceType,
 
     //-----------------------------------------------------------------
 
-
     copy_fld!(src_data.building_ini, data.building_ini, BUILDING_INI);
     copy_fld!(src_data.material,     data.material,     MATERIAL_MTL);
     copy_fld_opt!(material_e, MATERIAL_E_MTL); 
     copy_fld_opt!(image_gui, "imagegui.png"); 
     
-    // UPDATE renderconfig tokens
+    // Update config files
     {   
-        let model_token:      String         = copy_nmf_md5_token!(&mut data.model)?;
-        let model_lod_token:  Option<String> = copy_nmf_md5_token_opt!(data.model_lod)?;
-        let model_lod2_token: Option<String> = copy_nmf_md5_token_opt!(data.model_lod2)?;
-        let model_e_token:    Option<String> = copy_nmf_md5_token_opt!(data.model_e)?;
+        let model_token:      String         = copy_nmf_token!(&mut data.model)?;
+        let model_lod_token:  Option<String> = copy_nmf_token_opt!(data.model_lod)?;
+        let model_lod2_token: Option<String> = copy_nmf_token_opt!(data.model_lod2)?;
+        let model_e_token:    Option<String> = copy_nmf_token_opt!(data.model_e)?;
 
         // Update renderconfig.ini
 
@@ -432,7 +448,32 @@ fn install_building(src: &SourceType,
             });
         }
 
+        // Apply actions to renderconfig
+        if let Some(actions) = actions {
+            if let Some(factor) = actions.scale {
+                ini::transform::scale_render(&mut render_ini, factor)
+            }
+
+            if actions.mirror {
+                ini::transform::mirror_z_render(&mut render_ini)
+            }
+        }
+
         render_ini.write_file(new_render_path)?;
+
+        // Apply actions to building.ini
+        read_to_string_buf(&data.building_ini, str_buf)?;
+        let mut bld_ini = ini::parse_building_ini(str_buf).expect("Invalid building ini");
+        if let Some(actions) = actions {
+            if let Some(factor) = actions.scale {
+                ini::transform::scale_building(&mut bld_ini, factor)
+            }
+
+            if actions.mirror {
+                ini::transform::mirror_z_building(&mut bld_ini)
+            }
+        }
+        bld_ini.write_file(&data.building_ini)?;
     }
 
     // Copy textures and update *.mtl files
@@ -480,6 +521,7 @@ fn get_source_type_from_ref(bld_ini: PathBuf, mut render_ref: BasePathBuf, stock
 
 fn copy_asset_md5<'map>(asset_path: &Path, assets_root: &Path, byte_buf: &mut Vec<u8>, assets_map: &'map mut AssetsMap) -> Result<&'map Path, IOErr> {
 
+    // TODO: update this when borrowchecker is made less stupid
     if !assets_map.contains_key(asset_path) {
         let file_ext = asset_path.extension()
             .ok_or_else(|| IOErr::new(std::io::ErrorKind::Other, "Asset has no extension"))?
@@ -500,6 +542,37 @@ fn copy_asset_md5<'map>(asset_path: &Path, assets_root: &Path, byte_buf: &mut Ve
 
     let v = assets_map.get(asset_path).expect("HasMap 'get' failed right after insertion").as_path();
     Ok(v)
+}
+
+
+fn copy_nmf_with_actions(asset_path: &Path, assets_root: &Path, byte_buf: &mut Vec<u8>, actions: &ModActions) -> Result<PathBuf, IOErr> {
+    let mut model = nmf::NmfBufFull::from_path(asset_path).expect(&format!("Could not read NMF at {}", asset_path.display()));
+    for obj in model.objects.iter_mut() {
+        if let Some(factor) = actions.scale {
+            obj.scale(factor);
+        }
+
+        if actions.mirror {
+            obj.mirror_z();
+        }
+
+        if let Some(obj_act) = &actions.objects {
+            todo!()
+        }
+    }
+
+    byte_buf.clear();
+    let mut cursor = std::io::Cursor::new(byte_buf);
+    model.write_to(&mut cursor).expect("Failed to write modified NMF into memory buffer");
+    let byte_buf = cursor.into_inner();
+    let asset_md5name = format!("{:x}.nmf", md5::compute(byte_buf.as_slice()));
+    let new_file = assets_root.join(asset_md5name);
+
+    if !new_file.exists() {
+        fs::write(&new_file, byte_buf)?;
+    }
+
+    Ok(new_file)
 }
 
 
@@ -584,6 +657,22 @@ impl fmt::Display for SourceType {
         match self {
             SourceType::Mod(def)   => write!(f, "mod {}", def),
             SourceType::Stock(def) => write!(f, "stock {}", def),
+        }
+    }
+}
+
+impl fmt::Display for SourceError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        use SourceError as E;
+        match self {
+            E::NoRenderconfig    => write!(f, "Building source is missing one of renderconfig.source or renderconfig.ref"),
+            E::MultiRenderconfig => write!(f, "Building source has both renderconfig.source and renderconfig.ref. Only one is required."),
+            E::Def(e)            => write!(f, "BuildingDef error: {}", e),
+            E::RefRead(e)        => write!(f, "Error reading building reference: {}", e),
+            E::RefParse          => write!(f, "Cannot parse building reference"),
+            E::Skins(e)          => write!(f, "Skins error: {:?}", e),
+            E::Actions(e)        => write!(f, "Actions error: {:?}", e),
+            E::Nmf(e)            => write!(f, "Nmf error: {:?}", e),
         }
     }
 }
