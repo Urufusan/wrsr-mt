@@ -5,7 +5,8 @@ use std::str::FromStr;
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use crate::{read_to_string_buf};
+use crate::read_to_string_buf;
+use crate::ini;
 
 
 #[derive(Debug)]
@@ -102,7 +103,7 @@ pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions,
 
 
 impl ModActions {
-    pub fn validate<'a>(&self, nmf_objects: impl Iterator<Item = &'a str> + Clone) -> Result<(), Error> {
+    pub fn validate<'a>(&self, bld_ini: &Path, nmf_objects: impl Iterator<Item = &'a str> + Clone, str_buf: &mut String) -> Result<(), Error> {
         match &self.objects {
             None => {
                 if self.scale.is_some() || self.mirror {
@@ -113,17 +114,55 @@ impl ModActions {
             },
             Some(act) => {
                 use ObjectActions as OA;
+                let mut errors = Vec::with_capacity(0);
+
+                // TODO: This mess with building.ini is (probably) temporary here. 
+                //       Ideally this should be removed  when the ini can cleaned
+                //       from removed nodes automatically. 
+
+                read_to_string_buf(&bld_ini, str_buf).map_err(Error::FileRead)?;
+                let bld_ini = ini::parse_building_ini(str_buf).unwrap();
+                let (used_nodes, used_keywords) = bld_ini.get_used_building_nodes();
+
                 let (verb, names) = match act {
-                    OA::Keep(objs)   => (OA::VERB_KEEP, objs),
-                    OA::Remove(objs) => (OA::VERB_REMOVE, objs),
+                    OA::Keep(kept) => { 
+                        for used in used_nodes.iter() {
+                            if kept.iter().all(|k| k != used) {
+                                errors.push(format!("Object '{}' is used in the building.ini, but is not present in the actions' KEEP list. Update the ini file accordingly", used));
+                            }
+                        }
+
+                        for used in used_keywords.iter() {
+                            if kept.iter().all(|k| !(k.starts_with(used))) {
+                                errors.push(format!("Object keyword '${}' is used in the building.ini, but is not present in the actions' KEEP list. Update the ini file accordingly", used));
+                            }
+                        }
+
+                        (OA::VERB_KEEP, kept)
+                    },
+                    OA::Remove(remd) => {
+                        for used in used_nodes.iter() {
+                            if remd.iter().any(|r| r == used) {
+                                errors.push(format!("Object '{}' is used in the building.ini, but is also present in the actions' REMOVE list. Update the ini file accordingly", used));
+                            }
+                        }
+
+                        if !used_keywords.is_empty() {
+                            errors.push(format!("$COST_WORK_BUILDING_KEYWORD is used in the building.ini. OBJECTS REMOVE action is not supported in this case. Update the ini file accordingly, or use OBJECTS KEEP instead"));
+                        }
+
+                        (OA::VERB_REMOVE, remd)
+                    }
                 };
 
-                let mut errors = Vec::with_capacity(0);
+                // --------------- TEMPORARY END --------------------
+
+
 
                 for name in names.iter() {
                     let mut obj_iter = nmf_objects.clone();
                     if !obj_iter.any(|o| o == name) {
-                        errors.push(format!("Cannot {} object '{}' in the NMF, because it was not found", verb, name));
+                        errors.push(format!("Cannot {} object '{}' in the NMF, because such object does not exist", verb, name));
                     }
                 }
 

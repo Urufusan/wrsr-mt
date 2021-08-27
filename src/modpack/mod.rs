@@ -149,7 +149,7 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
                         skins::validate(&bs.skins, &path, &sm_use[..], &mut str_buf).map_err(SourceError::Skins)
                             .and_then(|_| match &bs.actions {
                                 None => Ok(()),
-                                Some(a) => a.validate(nmf_info.objects.iter().map(|o| o.name.as_str()))
+                                Some(a) => a.validate(&bs.def.data().building_ini, nmf_info.objects.iter().map(|o| o.name.as_str()), &mut str_buf)
                                             .map_err(SourceError::Actions)
                              })
                             .and_then(|_| Ok(bs))
@@ -547,6 +547,27 @@ fn copy_asset_md5<'map>(asset_path: &Path, assets_root: &Path, byte_buf: &mut Ve
 
 fn copy_nmf_with_actions(asset_path: &Path, assets_root: &Path, byte_buf: &mut Vec<u8>, actions: &ModActions) -> Result<PathBuf, IOErr> {
     let mut model = nmf::NmfBufFull::from_path(asset_path).expect(&format!("Could not read NMF at {}", asset_path.display()));
+
+    if let Some(obj_act) = &actions.objects {
+        let mut tmp_objects = Vec::<nmf::ObjectFull>::with_capacity(model.objects.len());
+        std::mem::swap(&mut tmp_objects, &mut model.objects);
+
+        match obj_act {
+            actions::ObjectActions::Keep(kept) =>
+                for o in tmp_objects.drain(..) {
+                    if kept.iter().any(|k| k == o.name()) {
+                        model.objects.push(o);
+                    }
+                },
+            actions::ObjectActions::Remove(remd) =>
+                for o in tmp_objects.drain(..) {
+                    if remd.iter().all(|r| r != o.name()) {
+                        model.objects.push(o);
+                    }
+                },
+        }
+    }
+
     for obj in model.objects.iter_mut() {
         if let Some(factor) = actions.scale {
             obj.scale(factor);
@@ -554,10 +575,6 @@ fn copy_nmf_with_actions(asset_path: &Path, assets_root: &Path, byte_buf: &mut V
 
         if actions.mirror {
             obj.mirror_z();
-        }
-
-        if let Some(obj_act) = &actions.objects {
-            todo!()
         }
     }
 

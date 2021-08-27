@@ -138,6 +138,40 @@ pub fn parse_building_ini<'a>(src: &'a str) -> Result<BuildingIni<'a>, Vec<(&'a 
     building::parse_tokens_strict(src).map(|tokens| BuildingIni::from_parts(src, tokens))
 }
 
+impl BuildingIni<'_> {
+    pub fn get_used_building_nodes(&self) -> (Vec<&str>, Vec<&str>) {
+        let mut res_ids = Vec::with_capacity(64);
+        let mut res_keys = Vec::with_capacity(16);
+
+        macro_rules! push_node_id {
+            ($node:ident) => {{
+                let node = $node.as_str();
+                if res_ids.iter().all(|i| i != &node) {
+                    res_ids.push(node);
+                }
+            }};
+        }
+
+        for t in self.tokens() {
+            use building::Token as BT;
+            match t {
+                BT::StorageLivingAuto(id)          => push_node_id!(id),
+                BT::CostWorkBuildingNode(id)       => push_node_id!(id),
+                BT::CostWorkVehicleStationNode(id) => push_node_id!(id),
+                BT::CostWorkBuildingKeyword(key)   => {
+                    let key = key.as_str();
+                    if res_keys.iter().all(|k| k != &key) {
+                        res_keys.push(key);
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        (res_ids, res_keys)
+    }
+}
+
 
 pub type RenderToken<'a> = renderconfig::Token<'a>;
 pub type RenderIni<'a> = IniFile<'a, RenderToken<'a>>;
