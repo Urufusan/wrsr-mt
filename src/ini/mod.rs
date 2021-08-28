@@ -76,7 +76,7 @@ impl<'a, T> IniFile<'a, T> where T: IniToken {
         }
     }
 
-    pub fn tokens(&self) -> impl Iterator<Item = &T> {
+    pub fn tokens(&self) -> impl Iterator<Item = &T> + Clone {
         self.tokens.iter().map(|(_, t)| t.token())
     }
 
@@ -130,6 +130,9 @@ impl<'a, T> IniFile<'a, T> where T: IniToken {
 }
 
 
+// --------------------- BUILDING.INI ---------------------------------
+
+
 pub type BuildingToken<'a> = building::Token<'a>;
 pub type BuildingIni<'a> = IniFile<'a, BuildingToken<'a>>;
 pub use building::parse_tokens as parse_building_tokens;
@@ -138,39 +141,28 @@ pub fn parse_building_ini<'a>(src: &'a str) -> Result<BuildingIni<'a>, Vec<(&'a 
     building::parse_tokens_strict(src).map(|tokens| BuildingIni::from_parts(src, tokens))
 }
 
+
+pub enum BuildingNodeRef<'a> {
+    Exact(&'a str),
+    Keyword(&'a str)
+}
+
+
 impl BuildingIni<'_> {
-    pub fn get_used_building_nodes(&self) -> (Vec<&str>, Vec<&str>) {
-        let mut res_ids = Vec::with_capacity(64);
-        let mut res_keys = Vec::with_capacity(16);
 
-        macro_rules! push_node_id {
-            ($node:ident) => {{
-                let node = $node.as_str();
-                if res_ids.iter().all(|i| i != &node) {
-                    res_ids.push(node);
-                }
-            }};
-        }
-
-        for t in self.tokens() {
-            use building::Token as BT;
-            match t {
-                BT::StorageLivingAuto(id)          => push_node_id!(id),
-                BT::CostWorkBuildingNode(id)       => push_node_id!(id),
-                BT::CostWorkVehicleStationNode(id) => push_node_id!(id),
-                BT::CostWorkBuildingKeyword(key)   => {
-                    let key = key.as_str();
-                    if res_keys.iter().all(|k| k != &key) {
-                        res_keys.push(key);
-                    }
-                },
-                _ => {}
-            }
-        }
-
-        (res_ids, res_keys)
+    pub fn get_model_refs(&self) -> impl Iterator<Item = BuildingNodeRef> {
+        self.tokens().filter_map(|t| match t {
+            BuildingToken::StorageLivingAuto(id)          => Some(BuildingNodeRef::Exact(id.as_str())),
+            BuildingToken::CostWorkBuildingNode(id)       => Some(BuildingNodeRef::Exact(id.as_str())),
+            BuildingToken::CostWorkVehicleStationNode(id) => Some(BuildingNodeRef::Exact(id.as_str())),
+            BuildingToken::CostWorkBuildingKeyword(key)   => Some(BuildingNodeRef::Keyword(key.as_str())),
+            _ => None
+        })
     }
 }
+
+
+// --------------------- RENDERCONFIG.INI ---------------------------------
 
 
 pub type RenderToken<'a> = renderconfig::Token<'a>;
@@ -181,6 +173,7 @@ pub fn parse_renderconfig_ini<'a>(src: &'a str) -> Result<RenderIni<'a>, Vec<(&'
     renderconfig::parse_tokens_strict(src).map(|tokens| RenderIni::from_parts(src, tokens))
 }
 
+// --------------------- MATERIALS (*.mtl) --------------------------------
 
 pub type MaterialToken<'a> = material::Token<'a>;
 pub type MaterialMtl<'a> = IniFile<'a, MaterialToken<'a>>;

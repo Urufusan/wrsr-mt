@@ -6,10 +6,9 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::read_to_string_buf;
-use crate::ini;
+use crate::{ini, nmf};
 
 
-#[derive(Debug)]
 pub enum Error {
     FileRead(IOErr),
     FileParse(String),
@@ -21,17 +20,18 @@ pub enum Error {
 pub struct ModActions {
     pub scale: Option<f64>,
     pub mirror: bool,
-    pub objects: Option<ObjectActions>
+    pub objects: Option<(ObjectVerb, Vec<String>)>,
+    pub rename_sm: Vec<(String, String)>,
 }
 
 
 #[derive(Debug)]
-pub enum ObjectActions {
-    Remove(Vec<String>),
-    Keep(Vec<String>),
+pub enum ObjectVerb {
+    Remove,
+    Keep,
 }
 
-impl ObjectActions {
+impl ObjectVerb {
     const VERB_KEEP:   &'static str = "KEEP";
     const VERB_REMOVE: &'static str = "REMOVE";
 }
@@ -45,6 +45,8 @@ pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions,
         static ref RX_MIRROR:  Regex = Regex::new(r"(?s)^MIRROR\s*$").unwrap();
         static ref RX_OBJECTS: Regex = Regex::new(r"(?s)^OBJECTS\s+([A-Z]+)(.+)").unwrap();
         static ref RX_NAMES:   Regex = Regex::new(r"(?s)\s+([^\s]+)").unwrap();
+
+        static ref RX_SUBMAT:  Regex = Regex::new(r"(?s)^SUBMATERIAL_RENAME\s+([^\s]+)\s+([^\s]+)").unwrap();
     }
 
     buf.clear();
@@ -53,6 +55,7 @@ pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions,
     let mut scale = None;
     let mut mirror = false;
     let mut objects = None;
+    let mut rename_sm = Vec::with_capacity(0);
 
     for token in RX_TOKENS.split(&buf) {
         if token.is_empty() {
@@ -87,100 +90,155 @@ pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions,
                 return Err(Error::FileParse("Could not parse object action: no object names were specified".to_string()));
             }
 
-            match verb {
-                ObjectActions::VERB_KEEP   => { objects = Some(ObjectActions::Keep(names)) },
-                ObjectActions::VERB_REMOVE => { objects = Some(ObjectActions::Remove(names)) },
+            let verb = match verb {
+                ObjectVerb::VERB_KEEP   => ObjectVerb::Keep,
+                ObjectVerb::VERB_REMOVE => ObjectVerb::Remove,
                 _ => { return Err(Error::FileParse(format!("Could not parse objects action verb: [{}]", verb))) }
-            }
+            };
+
+            objects = Some((verb, names));
+        } else if let Some(cap) = RX_SUBMAT.captures(token) {
+            let from_name = cap[1].to_string();
+            let to_name = cap[2].to_string();
+
+            rename_sm.push((from_name, to_name));
         } else {
             return Err(Error::FileParse(format!("Unknown token: [{}]", token)))
         }
 
     }
 
-    Ok(ModActions { scale, mirror, objects })
+    Ok(ModActions { scale, mirror, objects, rename_sm })
 }
 
 
 impl ModActions {
-    pub fn validate<'a>(&self, bld_ini: &Path, nmf_objects: impl Iterator<Item = &'a str> + Clone, str_buf: &mut String) -> Result<(), Error> {
-        match &self.objects {
-            None => {
-                if self.scale.is_some() || self.mirror {
-                    Ok(())
-                } else {
-                    Err(Error::Validation(vec!["Empty ModActions".to_string()]))
-                }
-            },
-            Some(act) => {
-                use ObjectActions as OA;
-                let mut errors = Vec::with_capacity(0);
+    pub fn apply_to(&self, nmf: &mut nmf::NmfInfo) {
+        if let Some((verb, names)) = &self.objects {
+            let mut new_objs = Vec::with_capacity(nmf.objects.len());
 
-                // TODO: This mess with building.ini is (probably) temporary here. 
-                //       Ideally this should be removed  when the ini can cleaned
-                //       from removed nodes automatically. 
-
-                read_to_string_buf(&bld_ini, str_buf).map_err(Error::FileRead)?;
-                let bld_ini = ini::parse_building_ini(str_buf).unwrap();
-                let (used_nodes, used_keywords) = bld_ini.get_used_building_nodes();
-
-                let (verb, names) = match act {
-                    OA::Keep(kept) => { 
-                        for used in used_nodes.iter() {
-                            if kept.iter().all(|k| k != used) {
-                                errors.push(format!("Object '{}' is used in the building.ini, but is not present in the actions' KEEP list. Update the ini file accordingly", used));
-                            }
-                        }
-
-                        for used in used_keywords.iter() {
-                            if kept.iter().all(|k| !(k.starts_with(used))) {
-                                errors.push(format!("Object keyword '${}' is used in the building.ini, but is not present in the actions' KEEP list. Update the ini file accordingly", used));
-                            }
-                        }
-
-                        (OA::VERB_KEEP, kept)
-                    },
-                    OA::Remove(remd) => {
-                        for used in used_nodes.iter() {
-                            if remd.iter().any(|r| r == used) {
-                                errors.push(format!("Object '{}' is used in the building.ini, but is also present in the actions' REMOVE list. Update the ini file accordingly", used));
-                            }
-                        }
-
-                        if !used_keywords.is_empty() {
-                            errors.push(format!("$COST_WORK_BUILDING_KEYWORD is used in the building.ini. OBJECTS REMOVE action is not supported in this case. Update the ini file accordingly, or use OBJECTS KEEP instead"));
-                        }
-
-                        (OA::VERB_REMOVE, remd)
-                    }
+            for o in nmf.objects.drain(..) {
+                let keep = match verb {
+                    ObjectVerb::Keep   => names.iter().any(|n| n == o.name.as_str()),
+                    ObjectVerb::Remove => names.iter().all(|n| n != o.name.as_str())
                 };
 
-                // --------------- TEMPORARY END --------------------
-
-
-
-                for name in names.iter() {
-                    let mut obj_iter = nmf_objects.clone();
-                    if !obj_iter.any(|o| o == name) {
-                        errors.push(format!("Cannot {} object '{}' in the NMF, because such object does not exist", verb, name));
-                    }
-                }
-
-                if errors.is_empty() {
-                    if names.len() == nmf_objects.count() {
-                        match act {
-                            OA::Remove(_) => errors.push(format!("Possible attempt to remove all objects. Review the actions file.")),
-                            OA::Keep(_)   => errors.push(format!("Possible attempt to keep all objects. Review the actions file."))
-                        }
-
-                        Err(Error::Validation(errors))
-                    } else {
-                        Ok(())
-                    }
-                } else {
-                    Err(Error::Validation(errors))
+                if keep { 
+                    new_objs.push(o);
                 }
             }
+
+            nmf.objects = new_objs;
+        }
+
+        for (old_name, new_name) in self.rename_sm.iter() {
+            for sm in nmf.submaterials.iter_mut() {
+                if sm.as_str() == old_name {
+                    sm.push_str(&new_name);
+                }
+            }
+        }
+    }
+
+    pub fn validate<'a>(&self, bld_ini: &Path, nmf_info: &nmf::NmfInfo, str_buf: &mut String) -> Result<(), Error> {
+        if self.scale.is_none() && !self.mirror && self.objects.is_none() && self.rename_sm.is_empty() {
+            return Err(Error::Validation(vec!["Empty ModActions".to_string()]));
+        }
+
+        let mut errors = Vec::with_capacity(0);
+
+        if let Some((verb, names)) = &self.objects {
+            use ini::BuildingNodeRef as REF;
+
+            // TODO: This mess with building.ini cheks is temporary here (I hope). 
+            //       Ideally this should be removed  when the ini can cleansed
+            //       from removed nodes automatically. 
+
+            read_to_string_buf(&bld_ini, str_buf).map_err(Error::FileRead)?;
+            let bld_ini = ini::parse_building_ini(str_buf).unwrap();
+            let model_refs = bld_ini.get_model_refs();
+
+            match verb {
+                ObjectVerb::Keep => { 
+                    for mref in model_refs {
+                        match mref {
+                            REF::Exact(node)  => if names.iter().all(|kept| kept != node) {
+                                errors.push(format!("building.ini refers to model node '{}', but this node is not present in the actions' KEEP list", node));
+                            },
+                            REF::Keyword(key) => if names.iter().all(|kept| !(kept.starts_with(key))) {
+                                errors.push(format!("Node-referring keyword '${}' is used in the building.ini, but is not present in the actions' KEEP list", key));
+                            }
+                        }
+                    }
+                },
+                ObjectVerb::Remove => {
+                    for mref in model_refs {
+                        match mref {
+                            REF::Exact(node)  => if names.iter().any(|remd| remd == node) {
+                                errors.push(format!("building.ini refers to model node '{}', but this node is present in actions' REMOVE list", node));
+                            },
+                            REF::Keyword(key) => {
+                                errors.push(format!("Node-referring keyword '{}' is used in the building.ini. OBJECTS REMOVE action is not supported in this case.", key));
+                            }
+                        }
+                    }
+                }
+            }
+
+            for name in names.iter() {
+                if nmf_info.object_names().all(|o| o != name) {
+                    errors.push(format!("Cannot {} object '{}' in the NMF, because such object does not exist", verb, name));
+                }
+            }
+
+            if names.len() == nmf_info.objects.len() {
+                match verb {
+                    ObjectVerb::Remove => errors.push(format!("Possible attempt to remove all objects. Entries count equals nmf objects count.")),
+                    ObjectVerb::Keep   => errors.push(format!("Possible attempt to keep all objects. Entries count equals nmf objects count."))
+                }
+            }
+
+        } //------------- objects end
+
+        for (r, _) in self.rename_sm.iter() {
+            if nmf_info.submaterials.iter().all(|sm| sm.as_str() != r) {
+                errors.push(format!("Cannot rename submaterial '{}' in the NMF, because such submaterial does not exist", r));
+            }
+        }
+
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::Validation(errors))
+        }
+    }
+}
+
+use std::fmt;
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Error::FileRead(e)   => write!(f, "Could not read file: {}", e),
+            Error::FileParse(e)  => write!(f, "Could not parse file: {}", e),
+            Error::Validation(e) => {
+                writeln!(f, "Validation failed: ")?;
+                for i in e.iter() {
+                    writeln!(f, "    {}", i)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+
+impl fmt::Display for ObjectVerb {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            ObjectVerb::Keep   => write!(f, "{}", ObjectVerb::VERB_KEEP),
+            ObjectVerb::Remove => write!(f, "{}", ObjectVerb::VERB_REMOVE)
         }
     }
 }

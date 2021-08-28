@@ -27,20 +27,13 @@ fn main() {
         cfg::AppCommand::Modpack(cmd) => {
             print_dirs();
 
-            let stock_defs_buf = {
-                let stock_ini = APP_SETTINGS.path_stock.join("buildings/buildingtypes.ini");
-                println!("Parsing stock buildings at {}", stock_ini.as_path().display());
-                fs::read_to_string(stock_ini).expect("Could not read stock buildings ini")
-            };
-            let mut stock_defs = building_def::StockBuilding::parse_map(&stock_defs_buf);
-
             match cmd {
                 cfg::ModpackCommand::Install(cfg::ModpackInstallCommand { source, destination }) => {
                     println!("Installing from source: {}", source.display());
                     assert!(source.exists(), "Modpack source directory does not exist!");
                     println!("Reading modpack sources...");
 
-                    match modpack::read_validate_sources(source.as_path(), &mut stock_defs) {
+                    match modpack::read_validate_sources(source.as_path()) {
                         Ok((buildings, skins_count)) => {
                             println!("Found {} buildings, {} skins", buildings.len(), skins_count);
                             let max_buildings = AppSettings::MAX_BUILDINGS - (skins_count / AppSettings::MAX_SKINS_IN_MOD + 1) * AppSettings::MAX_BUILDINGS_IN_MOD;
@@ -57,7 +50,7 @@ fn main() {
                             let log_file = fs::OpenOptions::new().write(true).create_new(true).open(log_path).expect("Cannot create log file");
                             let mut log_file = std::io::BufWriter::new(log_file);
 
-                            modpack::install(buildings, destination, &mut log_file, &mut stock_defs);
+                            modpack::install(buildings, destination, &mut log_file);
 
                             log_file.flush().unwrap();
                             println!("Modpack installed");
@@ -72,7 +65,7 @@ fn main() {
                     assert!(source.exists(), "Modpack source directory does not exist!");
                     println!("Reading modpack sources...");
 
-                    match modpack::read_validate_sources(source.as_path(), &mut stock_defs) {
+                    match modpack::read_validate_sources(source.as_path()) {
                         Ok((buildings, skins_count)) => {
                             println!("OK: found {} buildings, {} skins", buildings.len(), skins_count);
                         },
@@ -84,26 +77,6 @@ fn main() {
             }
         },
 
-/*        cfg::AppCommand::Install(cfg::InstallCommand{ source, destination, is_check }) => {
-
-            match input::read_validate_sources(pathbuf.as_path(), &mut stock_buildings) {
-                Ok(data) => {
-                    output::generate_mods(pathbuf.as_path(), data);
-                },
-                Err(errs) => {
-                    eprintln!("\nThe following {} errors were encountered when processing modpack sources:\n", errs.len());
-                    for (i, e) in errs.iter().enumerate() {
-                        eprintln!("{}) {}", i + 1, e);
-                    }
-
-                    eprintln!();
-
-                    std::process::exit(1);
-                }
-            }
-
-        },
-*/
 
         cfg::AppCommand::Nmf(cmd) => {
             match cmd {
@@ -196,11 +169,11 @@ fn main() {
                     let check_path_opt = |opt: &Option<PathBuf>| if let Some(p) = opt.as_ref() { check_path(p) };
 
                     check_path(&bld_def.render);
-                    check_path(&bld_def.data.building_ini);
-                    check_path(&bld_def.data.model);
-                    check_path_opt(&bld_def.data.model_lod);
-                    check_path_opt(&bld_def.data.model_lod2);
-                    check_path_opt(&bld_def.data.model_e);
+                    check_path(&bld_def.building_ini);
+                    check_path(&bld_def.model);
+                    check_path_opt(&bld_def.model_lod);
+                    check_path_opt(&bld_def.model_lod2);
+                    check_path_opt(&bld_def.model_e);
                 }
 
                 println!("Building parsed successfully. Copying files...");
@@ -234,10 +207,10 @@ fn main() {
                     }
                 };
 
-                modify_nmf(Some(&bld_def.data.model));
-                modify_nmf(bld_def.data.model_lod.as_ref());
-                modify_nmf(bld_def.data.model_lod2.as_ref());
-                modify_nmf(bld_def.data.model_e.as_ref());
+                modify_nmf(Some(&bld_def.model));
+                modify_nmf(bld_def.model_lod.as_ref());
+                modify_nmf(bld_def.model_lod2.as_ref());
+                modify_nmf(bld_def.model_e.as_ref());
             }
 
 
@@ -262,8 +235,8 @@ fn main() {
                     println!("Updating...");
 
                     let mut buf = String::with_capacity(16 * 1024);
-                    modify_ini!(buf, &bld_def.data.building_ini, BUILDING_INI,     ini::parse_building_ini,     ini::transform::scale_building, *factor);
-                    modify_ini!(buf, &bld_def.render,            RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::scale_render,   *factor);
+                    modify_ini!(buf, &bld_def.building_ini, BUILDING_INI,     ini::parse_building_ini,     ini::transform::scale_building, *factor);
+                    modify_ini!(buf, &bld_def.render,       RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::scale_render,   *factor);
                     modify_models(&bld_def, dir_output, |o| o.scale(*factor));
                 },
                 cfg::ModCommand::Mirror(cfg::MirrorCommand { input: dir_input, output: dir_output }) => {
@@ -271,8 +244,8 @@ fn main() {
                     println!("Updating...");
 
                     let mut buf = String::with_capacity(16 * 1024);
-                    modify_ini!(buf, &bld_def.data.building_ini, BUILDING_INI,     ini::parse_building_ini,     ini::transform::mirror_z_building);
-                    modify_ini!(buf, &bld_def.render,            RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::mirror_z_render);
+                    modify_ini!(buf, &bld_def.building_ini, BUILDING_INI,     ini::parse_building_ini,     ini::transform::mirror_z_building);
+                    modify_ini!(buf, &bld_def.render,       RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::mirror_z_render);
                     modify_models(&bld_def, dir_output, |o| o.mirror_z());
                 },
             }

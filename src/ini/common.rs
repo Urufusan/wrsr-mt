@@ -32,11 +32,12 @@ pub enum StrValue<'a> {
 pub struct QuotedStringParam<'a>(pub StrValue<'a>);
 
 pub struct IdStringParam<'a>(pub StrValue<'a>);
+
 impl<'a> IdStringParam<'a> {
     pub fn as_str(&'a self) -> &'a str {
-        match self.0 {
+        match &self.0 {
             StrValue::Borrowed(x) => x,
-            StrValue::Owned(ref x) => x,
+            StrValue::Owned(x) => x.as_str(),
         }
     }
 
@@ -50,6 +51,12 @@ impl<'a> IdStringParam<'a> {
 
     pub fn new_owned(s: String) -> Self {
         IdStringParam(StrValue::Owned(s))
+    }
+}
+
+impl AsRef<str> for IdStringParam<'_> {
+    fn as_ref(&self) -> &str {
+        self.as_str()
     }
 }
 

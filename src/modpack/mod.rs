@@ -13,7 +13,7 @@ mod actions;
 
 use crate::{read_to_buf, read_to_string_buf};
 use crate::cfg::{AppSettings, APP_SETTINGS, RENDERCONFIG_INI, BUILDING_INI};
-use crate::building_def::{ModBuildingDef, StockBuildingDef, DefData, BuildingError as DefError, StockBuildingsMap, fetch_stock_with_ini, fetch_stock_building};
+use crate::building_def::{ModBuildingDef, BuildingError as DefError};
 use crate::nmf;
 use crate::ini::{self, resolve_source_path, resolve_stock_path};
 use crate::ini::common::IdStringParam;
@@ -22,23 +22,10 @@ use skins::{Skins, Error as SkinsError};
 use actions::{ModActions, Error as ActionsError};
 
 
-pub enum SourceType {
-    Mod(ModBuildingDef),
-    Stock(StockBuildingDef),
-}
-
-impl SourceType {
-    fn data(&self) -> &DefData {
-        match self {
-            SourceType::Mod(ModBuildingDef { data, .. }) => data,
-            SourceType::Stock(StockBuildingDef { data, .. }) => data,
-        }
-    }
-}
 
 pub struct BuildingSource {
     source_dir: PathBuf,
-    def: SourceType,
+    def: ModBuildingDef,
     skins: Skins,
     actions: Option<ModActions>,
 }
@@ -67,7 +54,7 @@ const MATERIAL_E_MTL:      &str = "material_e.mtl";
 const WORKSHOPCONFIG:      &str = "workshopconfig.ini";
 
 
-pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -> Result<(Vec::<BuildingSource>, usize), usize> {
+pub fn read_validate_sources(source_dir: &Path) -> Result<(Vec::<BuildingSource>, usize), usize> {
     let mut result = Vec::<BuildingSource>::with_capacity(10000);
 
     let mut errors: usize = 0;
@@ -99,16 +86,15 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
 
             path.pop();
 
-            let building_source_type = match (render_src, render_ref) {
-                (None, Some(render_ref)) => get_source_type_from_ref(bld_ini, render_ref, stock, &mut str_buf),
-                (Some(render_src), None) => ModBuildingDef::from_render_path(&bld_ini, &render_src, resolve_source_path, true)
-                                                .map_err(SourceError::Def)
-                                                .map(SourceType::Mod),
+            let building_source_clean = match (render_src, render_ref) {
+                (Some(render_src), None) => ModBuildingDef::from_render_path(&bld_ini, &render_src, resolve_source_path, false)
+                                            .map_err(SourceError::Def),
+                (None, Some(render_ref)) => get_source_type_from_ref(bld_ini, render_ref, &mut str_buf),
                 (None, None)       => Err(SourceError::NoRenderconfig), 
                 (Some(_), Some(_)) => Err(SourceError::MultiRenderconfig),
             };
 
-            let building_source = building_source_type.and_then(|def| {
+            let building_source = building_source_clean.and_then(|def| {
                 // NOTE: debug
                 //println!("{}: {}", path.strip_prefix(source_dir).unwrap().display(), def);
 
@@ -141,19 +127,18 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
 
             // VALIDATIONS
             let building_source = building_source.and_then(|bs| {
-                nmf::NmfInfo::from_path(bs.def.data().model.as_path())
-                    .map_err(SourceError::Nmf)
-                    .and_then(|nmf_info| {
-                        let sm_use = nmf_info.get_used_sumbaterials();
+                let mut nmf_info = nmf::NmfInfo::from_path(bs.def.model.as_path()).map_err(SourceError::Nmf)?;
+                if let Some(act) = &bs.actions {
+                    act.validate(&bs.def.building_ini, &nmf_info, &mut str_buf).map_err(SourceError::Actions)?;
+                    act.apply_to(&mut nmf_info);
+                }
 
-                        skins::validate(&bs.skins, &path, &sm_use[..], &mut str_buf).map_err(SourceError::Skins)
-                            .and_then(|_| match &bs.actions {
-                                None => Ok(()),
-                                Some(a) => a.validate(&bs.def.data().building_ini, nmf_info.objects.iter().map(|o| o.name.as_str()), &mut str_buf)
-                                            .map_err(SourceError::Actions)
-                             })
-                            .and_then(|_| Ok(bs))
-                    })
+                bs.def.parse_and_validate(Some(&nmf_info)).map_err(SourceError::Def)?;
+
+                let sm_used = nmf_info.get_used_sumbaterials().collect::<Vec<_>>();
+                skins::validate(&bs.skins, &path, &sm_used[..], &mut str_buf).map_err(SourceError::Skins)?;
+
+                Ok(bs)
             });
 
             match building_source {
@@ -200,7 +185,7 @@ pub fn read_validate_sources(source_dir: &Path, stock: &mut StockBuildingsMap) -
 
 type AssetsMap = ahash::AHashMap::<PathBuf, PathBuf>;
 
-pub fn install(sources: Vec<BuildingSource>, target: &Path, log_file: &mut BufWriter<fs::File>, stock_map: &mut StockBuildingsMap) {
+pub fn install(sources: Vec<BuildingSource>, target: &Path, log_file: &mut BufWriter<fs::File>) {
     
     let dds_root = target.join("dds");
     fs::create_dir_all(&dds_root).unwrap();
@@ -228,7 +213,7 @@ pub fn install(sources: Vec<BuildingSource>, target: &Path, log_file: &mut BufWr
 
                 fs::create_dir_all(&pathbuf).unwrap();
 
-                install_building(&src.def, &src.actions, &pathbuf, &dds_root, &nmf_root, stock_map, &mut assets_map, &mut str_buf, &mut byte_buf).unwrap();
+                install_building(&src.def, &src.actions, &pathbuf, &dds_root, &nmf_root, &mut assets_map, &mut str_buf, &mut byte_buf).unwrap();
                 for (skin, skin_e) in src.skins.iter() {
                     skins_buf.push((mod_id, bld_id, skin, skin_e.as_ref()));
                     if skins_buf.len() == AppSettings::MAX_SKINS_IN_MOD {
@@ -339,12 +324,11 @@ fn write_workshop_ini_buildings(path: &Path, mod_id: usize, count: usize, buf: &
     fs::write(path, buf).unwrap();
 }
 
-fn install_building(src: &SourceType, 
+fn install_building(src_def: &ModBuildingDef,
                     actions: &Option<actions::ModActions>,
                     destination: &Path, 
                     dds_root: &Path,
                     nmf_root: &Path,
-                    stock_map: &mut StockBuildingsMap, 
                     assets_map: &mut AssetsMap, 
                     str_buf: &mut String,
                     byte_buf: &mut Vec<u8>) -> Result<(), IOErr> {
@@ -353,22 +337,9 @@ fn install_building(src: &SourceType,
     byte_buf.clear();
 
     let new_render_path = destination.join(RENDERCONFIG_INI);
+    fs::copy(&src_def.render, &new_render_path)?;
 
-    let src_data = match src {
-        SourceType::Mod(d) => {
-            fs::copy(&d.render, &new_render_path)?;
-            &d.data
-        },
-        SourceType::Stock(StockBuildingDef { render, data }) => {
-            let mut new_render_file = fs::OpenOptions::new().write(true).create_new(true).open(&new_render_path)?;
-            let (chunk, _) = fetch_stock_building(render, stock_map).expect("Invalid stock building source");
-            write!(&mut new_render_file, "{}\r\n", ini::renderconfig::Token::TYPE_WORKSHOP)?;
-            write!(new_render_file, "{}", chunk)?;
-            &data
-        }
-    };
-
-    let mut data = src_data.clone();
+    let mut new_def = src_def.clone();
 
     //------------------- Local helper macros -----------------------
 
@@ -382,7 +353,7 @@ fn install_building(src: &SourceType,
 
     macro_rules! copy_fld_opt {
         ($fld:ident, $dest_name:expr) => {
-            if let (Some(src_fld), Some(dest_fld)) = (src_data.$fld.as_ref(), data.$fld.as_mut()) {
+            if let (Some(src_fld), Some(dest_fld)) = (src_def.$fld.as_ref(), new_def.$fld.as_mut()) {
                 copy_fld!(src_fld, dest_fld, $dest_name);
             }
         }
@@ -416,17 +387,17 @@ fn install_building(src: &SourceType,
 
     //-----------------------------------------------------------------
 
-    copy_fld!(src_data.building_ini, data.building_ini, BUILDING_INI);
-    copy_fld!(src_data.material,     data.material,     MATERIAL_MTL);
+    copy_fld!(src_def.building_ini, new_def.building_ini, BUILDING_INI);
+    copy_fld!(src_def.material,     new_def.material,     MATERIAL_MTL);
     copy_fld_opt!(material_e, MATERIAL_E_MTL); 
     copy_fld_opt!(image_gui, "imagegui.png"); 
     
     // Update config files
     {   
-        let model_token:      String         = copy_nmf_token!(&mut data.model)?;
-        let model_lod_token:  Option<String> = copy_nmf_token_opt!(data.model_lod)?;
-        let model_lod2_token: Option<String> = copy_nmf_token_opt!(data.model_lod2)?;
-        let model_e_token:    Option<String> = copy_nmf_token_opt!(data.model_e)?;
+        let model_token:      String         = copy_nmf_token!(&mut new_def.model)?;
+        let model_lod_token:  Option<String> = copy_nmf_token_opt!(new_def.model_lod)?;
+        let model_lod2_token: Option<String> = copy_nmf_token_opt!(new_def.model_lod2)?;
+        let model_e_token:    Option<String> = copy_nmf_token_opt!(new_def.model_e)?;
 
         // Update renderconfig.ini
 
@@ -442,7 +413,7 @@ fn install_building(src: &SourceType,
                     RT::ModelLod2((_, z))   => model_lod2_token.as_ref().map(|t| RT::ModelLod2((IdStringParam::new_cloned(t), *z))),
                     RT::ModelEmissive(_)    => model_e_token.as_ref().map(|t| RT::ModelEmissive(IdStringParam::new_cloned(t))),
                     RT::Material(_)         => Some(RT::Material(IdStringParam::new_cloned(MATERIAL_MTL))),
-                    RT::MaterialEmissive(_) => data.material_e.as_ref().map(|_| RT::MaterialEmissive(IdStringParam::new_cloned(MATERIAL_E_MTL))),
+                    RT::MaterialEmissive(_) => new_def.material_e.as_ref().map(|_| RT::MaterialEmissive(IdStringParam::new_cloned(MATERIAL_E_MTL))),
                     _ => None
                 }
             });
@@ -462,7 +433,7 @@ fn install_building(src: &SourceType,
         render_ini.write_file(new_render_path)?;
 
         // Apply actions to building.ini
-        read_to_string_buf(&data.building_ini, str_buf)?;
+        read_to_string_buf(&new_def.building_ini, str_buf)?;
         let mut bld_ini = ini::parse_building_ini(str_buf).expect("Invalid building ini");
         if let Some(actions) = actions {
             if let Some(factor) = actions.scale {
@@ -473,12 +444,12 @@ fn install_building(src: &SourceType,
                 ini::transform::mirror_z_building(&mut bld_ini)
             }
         }
-        bld_ini.write_file(&data.building_ini)?;
+        bld_ini.write_file(&new_def.building_ini)?;
     }
 
     // Copy textures and update *.mtl files
-    update_mtl!(&data.material, &src_data.material)?;
-    if let (Some(material_e), Some(src_mtl_e)) = (&data.material_e, &src_data.material_e) {
+    update_mtl!(&new_def.material, &src_def.material)?;
+    if let (Some(material_e), Some(src_mtl_e)) = (&new_def.material_e, &src_def.material_e) {
         update_mtl!(material_e, src_mtl_e)?;
     }
 
@@ -487,35 +458,27 @@ fn install_building(src: &SourceType,
 
 
 lazy_static! {
-    static ref RX_REF: Regex = Regex::new(r"^(#(\d{10}/[^\s]+))|(~([^\s]+))|([^\r\n]+)").unwrap();
+    static ref RX_REF: Regex = Regex::new(r"^(#(\d{10}/[^\s]+))|([^\r\n]+)").unwrap();
 }
 
 
-fn get_source_type_from_ref(bld_ini: PathBuf, mut render_ref: BasePathBuf, stock: &mut StockBuildingsMap, buf: &mut String) -> Result<SourceType, SourceError> {
+fn get_source_type_from_ref(bld_ini: PathBuf, mut render_ref: BasePathBuf, buf: &mut String) -> Result<ModBuildingDef, SourceError> {
     read_to_string_buf(&render_ref, buf).map_err(SourceError::RefRead)?;
     let caps = RX_REF.captures(buf).ok_or(SourceError::RefParse)?;
-    if let Some(c) = caps.get(4) {
-        // stock, get def directly from stock buildings
-        fetch_stock_with_ini(c.as_str(), stock, bld_ini)
-            .map_err(SourceError::Def)
-            .map(SourceType::Stock)
+    let mut root: BasePathBuf = if let Some(c) = caps.get(2) {
+        // workshop
+        Ok(APP_SETTINGS.path_workshop.join(c.as_str()))
+    } else if let Some(c) = caps.get(3) {
+        // relative path
+        render_ref.pop().unwrap();
+        Ok(render_ref.join(c.as_str()))
     } else {
-        let mut root: BasePathBuf = if let Some(c) = caps.get(2) {
-            // workshop
-            Ok(APP_SETTINGS.path_workshop.join(c.as_str()))
-        } else if let Some(c) = caps.get(5) {
-            // relative path
-            render_ref.pop().unwrap();
-            Ok(render_ref.join(c.as_str()))
-        } else {
-            Err(SourceError::RefParse)
-        }?;
+        Err(SourceError::RefParse)
+    }?;
 
-        root.push(RENDERCONFIG_INI);
-        ModBuildingDef::from_render_path(&bld_ini, root.as_path(), resolve_source_path, true)
-            .map_err(SourceError::Def)
-            .map(SourceType::Mod)
-    }
+    root.push(RENDERCONFIG_INI);
+    ModBuildingDef::from_render_path(&bld_ini, root.as_path(), resolve_source_path, true)
+        .map_err(SourceError::Def)
 }
 
 
@@ -550,22 +513,23 @@ fn copy_nmf_with_actions(asset_path: &Path, assets_root: &Path, byte_buf: &mut V
 
     if let Some(obj_act) = &actions.objects {
         let mut tmp_objects = Vec::<nmf::ObjectFull>::with_capacity(model.objects.len());
-        std::mem::swap(&mut tmp_objects, &mut model.objects);
 
         match obj_act {
-            actions::ObjectActions::Keep(kept) =>
-                for o in tmp_objects.drain(..) {
+            (actions::ObjectVerb::Keep, kept) =>
+                for o in model.objects.drain(..) {
                     if kept.iter().any(|k| k == o.name()) {
-                        model.objects.push(o);
+                        tmp_objects.push(o);
                     }
                 },
-            actions::ObjectActions::Remove(remd) =>
-                for o in tmp_objects.drain(..) {
+            (actions::ObjectVerb::Remove, remd) =>
+                for o in model.objects.drain(..) {
                     if remd.iter().all(|r| r != o.name()) {
-                        model.objects.push(o);
+                        tmp_objects.push(o);
                     }
                 },
         }
+
+        model.objects = tmp_objects;
     }
 
     for obj in model.objects.iter_mut() {
@@ -576,6 +540,17 @@ fn copy_nmf_with_actions(asset_path: &Path, assets_root: &Path, byte_buf: &mut V
         if actions.mirror {
             obj.mirror_z();
         }
+    }
+
+    'outer: for (old_name, new_name) in actions.rename_sm.iter() {
+        for sm in model.submaterials.iter_mut() {
+            if sm.as_str() == old_name {
+                sm.push_str(new_name);
+                continue 'outer;
+            }
+        }
+
+        panic!("Invalid submaterial rename action. The building source validation should have caught this.");
     }
 
     byte_buf.clear();
@@ -669,15 +644,6 @@ impl fmt::Display for BuildingSource {
     }
 }
 
-impl fmt::Display for SourceType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            SourceType::Mod(def)   => write!(f, "mod {}", def),
-            SourceType::Stock(def) => write!(f, "stock {}", def),
-        }
-    }
-}
-
 impl fmt::Display for SourceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         use SourceError as E;
@@ -687,9 +653,9 @@ impl fmt::Display for SourceError {
             E::Def(e)            => write!(f, "BuildingDef error: {}", e),
             E::RefRead(e)        => write!(f, "Error reading building reference: {}", e),
             E::RefParse          => write!(f, "Cannot parse building reference"),
-            E::Skins(e)          => write!(f, "Skins error: {:?}", e),
-            E::Actions(e)        => write!(f, "Actions error: {:?}", e),
-            E::Nmf(e)            => write!(f, "Nmf error: {:?}", e),
+            E::Skins(e)          => write!(f, "Skins error: {:#?}", e),
+            E::Actions(e)        => write!(f, "Actions error: {}", e),
+            E::Nmf(e)            => write!(f, "Nmf error: {:#?}", e),
         }
     }
 }

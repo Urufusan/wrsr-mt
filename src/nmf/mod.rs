@@ -46,7 +46,7 @@ pub struct ChopEOF {
 
 pub struct NmfBuf<T> {
     nmf_type: NmfType,
-    submaterials: Vec<NameBuf>,
+    pub submaterials: Vec<NameBuf>,
     pub objects: Vec<T>,
     remainder: u64
 }
@@ -214,11 +214,14 @@ impl NmfInfo {
         usage
     }
 
-    pub fn get_used_sumbaterials(&self) -> Vec<&str> {
+    pub fn get_used_sumbaterials(&self) -> impl Iterator<Item = &str> {
         self.get_submaterials_usage()
             .into_iter()
             .filter_map(|(s, i)| if i > 0 { Some(s) } else { None })
-            .collect()
+    }
+
+    pub fn object_names(&self) -> impl Iterator<Item = &str> + Clone {
+        self.objects.iter().map(|o| o.name.as_str())
     }
 }
 
@@ -298,6 +301,19 @@ impl NameBuf {
         Ok(name)
     }
 
+    pub fn push_str(&mut self, new_name: &str) -> bool {
+        let new_bytes = new_name.as_bytes();
+        let len = new_bytes.len();
+        if len > Self::BUF_LENGTH {
+            false
+        } else {
+            (&mut self.bytes[..]).write_all(new_bytes).unwrap();
+            self.displayed = len;
+            (&mut self.bytes[len..]).fill(0u8);
+            true
+        }
+    }
+
     pub fn as_str<'a>(&'a self) -> &'a str {
         if self.displayed > 0 {
             let s = unsafe { std::str::from_utf8_unchecked(self.bytes.get_unchecked(0 .. self.displayed)) };
@@ -316,6 +332,12 @@ impl NameBuf {
                 len
             } else { 0 }
         } else { 0 }
+    }
+}
+
+impl AsRef<str> for NameBuf {
+    fn as_ref(&self) -> &str {
+        self.as_str()
     }
 }
 

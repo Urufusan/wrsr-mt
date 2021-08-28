@@ -65,7 +65,7 @@ pub fn validate(skins: &Skins, root: &Path, used_submaterials: &[&str], buf: &mu
                 e.into_iter().map(|(_, e)|  e).collect())
                 )?;
 
-            building_def::push_mtl_errors(&mtl, used_submaterials, &mut validation_errors, $mtl_path.display());
+            building_def::push_mtl_errors(&mtl, used_submaterials.iter(), &mut validation_errors, $mtl_path.display());
 
             for tx in mtl.get_texture_paths(|p| resolve_source_path(root, p)) {
                 if !tx.exists() {
