@@ -174,6 +174,7 @@ impl<'a> Token<'a> {
 
             Self::PARTICLE                         => parse!(Particle,                    (ParticleType, Point3f, f32, f32)),
             Self::PARTICLE_REACTOR                 => parse!(ParticleReactor,             Point3f),
+            Self::PARTICLE_SNOW_REMOVE             => parse!(ParticleSnowRemove,          (Point3f, u32, f32)),
 
             Self::TEXT_CAPTION                     => parse!(TextCaption,                 (Point3f, Point3f)),
             Self::WORKER_RENDERING_AREA            => parse!(WorkerRenderingArea,         (Point3f, Point3f)),

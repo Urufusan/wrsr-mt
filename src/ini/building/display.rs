@@ -70,6 +70,8 @@ impl Token<'_> {
             Self::Particle((t, p, a, s))           => write!(wr, "{} {} {:.prec$} {:.prec$} {:.prec$} {:.prec$} {:.prec$}", 
                                                              Self::PARTICLE, t, p.x, p.y, p.z, a, s, prec = PREC),
             Self::ParticleReactor(p)               => write_pts!(Self::PARTICLE_REACTOR, p),
+            Self::ParticleSnowRemove((p, i, r))    => write!(wr, "{} {:.prec$} {:.prec$} {:.prec$} {} {:.prec$}", 
+                                                             Self::PARTICLE_SNOW_REMOVE, p.x, p.y, p.z, i, r, prec = PREC),
             Self::TextCaption((a, b))              => write_pts!(Self::TEXT_CAPTION, a, b),
             Self::WorkerRenderingArea((a, b))      => write_pts!(Self::WORKER_RENDERING_AREA, a, b),
             Self::ResourceVisualization(ResourceVisualization { storage_id, position: p, rotation, scale: s, numstep_x: (x1, x2), numstep_z: (z1, z2) }) => 
@@ -209,6 +211,7 @@ impl Display for Token<'_> {
 
             Self::Particle((t, p, a, s))           => write!(f, "{} {} {} {} {}", Self::PARTICLE, t, p, a, s),
             Self::ParticleReactor(p)               => write!(f, "{} {}",       Self::PARTICLE_REACTOR, p),
+            Self::ParticleSnowRemove((p, i, r))    => write!(f, "{} {} {} {}", Self::PARTICLE_SNOW_REMOVE, p, i, r),
             Self::TextCaption((a, b))              => write!(f, "{} {} {}",    Self::TEXT_CAPTION, a, b),
             Self::WorkerRenderingArea((a, b))      => write!(f, "{} {} {}",    Self::WORKER_RENDERING_AREA, a, b),
             Self::ResourceVisualization(rv)        => write!(f, "{} {}\nposition: {}\nrotation: {}\nscale: {}\nnumstep_x: {:?}\nnumstep_t: {:?}", 

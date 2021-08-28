@@ -7,20 +7,15 @@ pub fn scale_building(file: &mut ini::BuildingIni<'_>, factor: f64) {
     let mul = |x: f32| { ((x as f64) * factor) as f32 };
 
     for (_, t_state) in file.tokens.iter_mut() {
-        t_state.modify(|t_source|
-            transform_point(t_source, |p| p.scaled(factor))
-            .or_else(|| transform_rect(t_source, |r| Rect { x1: mul(r.x1), 
-                                                            x2: mul(r.x2), 
-                                                            z1: mul(r.z1), 
-                                                            z2: mul(r.z2) }))
-            .or_else(|| { 
+        t_state.modify(|t_source| {
                 use crate::ini::BuildingToken as T;
                 use crate::ini::building::ResourceVisualization as RV;
                 match t_source {
-                    T::HeliportArea(x)              => Some(T::HeliportArea(mul(*x))),
-                    T::HarborTerrainFrom(x)         => Some(T::HarborTerrainFrom(mul(*x))),
-                    T::HarborWaterFrom(x)           => Some(T::HarborWaterFrom(mul(*x))),
-                    T::HarborExtendWhenBuilding(x)  => Some(T::HarborExtendWhenBuilding(mul(*x))),
+                    T::HeliportArea(x)               => Some(T::HeliportArea(mul(*x))),
+                    T::HarborTerrainFrom(x)          => Some(T::HarborTerrainFrom(mul(*x))),
+                    T::HarborWaterFrom(x)            => Some(T::HarborWaterFrom(mul(*x))),
+                    T::HarborExtendWhenBuilding(x)   => Some(T::HarborExtendWhenBuilding(mul(*x))),
+                    T::ParticleSnowRemove((p, i, r)) => Some(T::ParticleSnowRemove((p.scaled(factor), *i, mul(*r)))),
 
                     T::ResourceVisualization(rv) => Some(T::ResourceVisualization (RV {
                         storage_id: rv.storage_id,
@@ -30,9 +25,13 @@ pub fn scale_building(file: &mut ini::BuildingIni<'_>, factor: f64) {
                         numstep_x:  (mul(rv.numstep_x.0), rv.numstep_x.1),
                         numstep_z:  (mul(rv.numstep_z.0), rv.numstep_z.1),
                     })),
-                    _ => None 
-                }})
-        )
+                    other => transform_point(other, |p| p.scaled(factor))
+                                 .or_else(|| transform_rect(t_source, |r| Rect { x1: mul(r.x1), 
+                                                                                 x2: mul(r.x2), 
+                                                                                 z1: mul(r.z1), 
+                                                                                 z2: mul(r.z2) }))
+                }
+            })
     }
 }
 
@@ -73,6 +72,7 @@ pub fn mirror_z_building(file: &mut ini::BuildingIni<'_>) {
             })),
             // must flip these points, otherwise the text faces backwards
             T::TextCaption((p1, p2)) => Some(T::TextCaption((mirror_z_point(p2), mirror_z_point(p1)))),
+            T::ParticleSnowRemove((p, i, r)) => Some(T::ParticleSnowRemove((mirror_z_point(p), *i, *r))),
             other => transform_point(other, |p| mirror_z_point(p))
                      .or_else(|| transform_rect(t_source, |r|
                         Rect {  x1: r.x1, 

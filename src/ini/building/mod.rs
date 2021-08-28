@@ -122,6 +122,7 @@ pub enum Token<'a> {
 
     Particle((ParticleType, Point3f, f32, f32)),
     ParticleReactor(Point3f),
+    ParticleSnowRemove((Point3f, u32, f32)),
     TextCaption((Point3f, Point3f)),
     WorkerRenderingArea((Point3f, Point3f)),
     ResourceVisualization(ResourceVisualization),
@@ -261,6 +262,7 @@ impl<'a> Token<'a> {
 
     const PARTICLE:                       &'static str = "PARTICLE";
     const PARTICLE_REACTOR:               &'static str = "PARTICLE_REACTOR";
+    const PARTICLE_SNOW_REMOVE:           &'static str = "PARTICLE_SNOWREMOVE";
     const TEXT_CAPTION:                   &'static str = "TEXT_CAPTION";
     const WORKER_RENDERING_AREA:          &'static str = "WORKER_RENDERING_AREA";
     const RESOURCE_VISUALIZATION:         &'static str = "RESOURCE_VISUALIZATION";
