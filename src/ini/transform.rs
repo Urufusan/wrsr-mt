@@ -52,6 +52,52 @@ pub fn scale_render(f: &mut ini::RenderIni<'_>, factor: f64) {
 
 //-------------------------------------------------------------------
 
+
+pub fn offset_building(file: &mut ini::BuildingIni<'_>, dx: f32, dy: f32, dz: f32) {
+    for (_, t_state) in file.tokens.iter_mut() {
+        t_state.modify(|t_source| {
+                use crate::ini::BuildingToken as T;
+                use crate::ini::building::ResourceVisualization as RV;
+                match t_source {
+                    T::HarborTerrainFrom(x)          => Some(T::HarborTerrainFrom(*x + dx)),
+                    T::HarborWaterFrom(x)            => Some(T::HarborWaterFrom(*x + dx)),
+                    T::HarborExtendWhenBuilding(x)   => Some(T::HarborExtendWhenBuilding(*x - dx)),
+                    T::ParticleSnowRemove((p, i, r)) => Some(T::ParticleSnowRemove((p.offset(dx, dy, dz), *i, *r))),
+
+                    T::ResourceVisualization(rv) => Some(T::ResourceVisualization (RV {
+                        storage_id: rv.storage_id,
+                        position:   rv.position.offset(dx, dy, dz),
+                        rotation:   rv.rotation,
+                        scale:      rv.scale.clone(),
+                        numstep_x:  rv.numstep_x,
+                        numstep_z:  rv.numstep_z,
+                    })),
+                    other => transform_point(other, |p| p.offset(dx, dy, dz))
+                                 .or_else(|| transform_rect(t_source, |r| Rect { x1: r.x1 + dx, 
+                                                                                 x2: r.x2 + dx, 
+                                                                                 z1: r.z1 + dz, 
+                                                                                 z2: r.z2 + dz }))
+                }
+            })
+    }
+}
+
+pub fn offset_render(f: &mut ini::RenderIni<'_>, dx: f32, dy: f32, dz: f32) {
+    use crate::ini::RenderToken as T;
+
+    for (_, t_state) in f.tokens.iter_mut() {
+        t_state.modify(|t| match t {
+           T::Light((pt, x))            => Some(T::Light((pt.offset(dx, dy, dz), *x))),
+           T::LightRgb((pt, x, c))      => Some(T::LightRgb((pt.offset(dx, dy, dz), *x, *c))),
+           T::LightRgbBlink((pt, x, c)) => Some(T::LightRgbBlink((pt.offset(dx, dy, dz), *x, *c))),
+            _ => None 
+        });
+    }
+}
+
+
+//-------------------------------------------------------------------
+
 fn mirror_z_point(pt: &Point3f) -> Point3f {
     Point3f { x: pt.x, y: pt.y, z: 0f32 - pt.z }
 }

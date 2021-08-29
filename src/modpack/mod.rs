@@ -422,11 +422,15 @@ fn install_building(src_def: &ModBuildingDef,
         // Apply actions to renderconfig
         if let Some(actions) = actions {
             if let Some(factor) = actions.scale {
-                ini::transform::scale_render(&mut render_ini, factor)
+                ini::transform::scale_render(&mut render_ini, factor);
+            }
+
+            if let Some((dx, dy, dz)) = actions.offset {
+                ini::transform::offset_render(&mut render_ini, dx, dy, dz);
             }
 
             if actions.mirror {
-                ini::transform::mirror_z_render(&mut render_ini)
+                ini::transform::mirror_z_render(&mut render_ini);
             }
         }
 
@@ -437,11 +441,15 @@ fn install_building(src_def: &ModBuildingDef,
         let mut bld_ini = ini::parse_building_ini(str_buf).expect("Invalid building ini");
         if let Some(actions) = actions {
             if let Some(factor) = actions.scale {
-                ini::transform::scale_building(&mut bld_ini, factor)
+                ini::transform::scale_building(&mut bld_ini, factor);
+            }
+
+            if let Some((dx, dy, dz)) = actions.offset {
+                ini::transform::offset_building(&mut bld_ini, dx, dy, dz);
             }
 
             if actions.mirror {
-                ini::transform::mirror_z_building(&mut bld_ini)
+                ini::transform::mirror_z_building(&mut bld_ini);
             }
         }
         bld_ini.write_file(&new_def.building_ini)?;
@@ -535,6 +543,10 @@ fn copy_nmf_with_actions(asset_path: &Path, assets_root: &Path, byte_buf: &mut V
     for obj in model.objects.iter_mut() {
         if let Some(factor) = actions.scale {
             obj.scale(factor);
+        }
+
+        if let Some((dx, dy, dz)) = actions.offset {
+            obj.offset(dx, dy, dz);
         }
 
         if actions.mirror {

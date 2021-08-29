@@ -288,6 +288,14 @@ impl Point3f {
             z: ((self.z as f64) * factor) as f32,
         }
     }
+
+    pub fn offset(&self, dx: f32, dy: f32, dz: f32) -> Point3f {
+        Point3f {
+            x: self.x + dx,
+            y: self.y + dy,
+            z: self.z + dz
+        }
+    }
 }
 
 //---------------------------------------------------------

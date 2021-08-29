@@ -3,6 +3,7 @@ use std::path::Path;
 use std::str::FromStr;
 
 use lazy_static::lazy_static;
+use const_format::concatcp;
 use regex::Regex;
 
 use crate::read_to_string_buf;
@@ -19,6 +20,7 @@ pub enum Error {
 #[derive(Debug)]
 pub struct ModActions {
     pub scale: Option<f64>,
+    pub offset: Option<(f32, f32, f32)>,
     pub mirror: bool,
     pub objects: Option<(ObjectVerb, Vec<String>)>,
     pub rename_sm: Vec<(String, String)>,
@@ -38,10 +40,13 @@ impl ObjectVerb {
 
 
 pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions, Error> {
+    const RX_FLOAT: &str = r"(-?\d+(?:\.\d+)?)";
+
     lazy_static! {
         static ref RX_TOKENS:  Regex = Regex::new(r"(?s)(^|(\s*\r?\n)+)\$").unwrap();
 
-        static ref RX_SCALE:   Regex = Regex::new(r"(?s)^SCALE\s+(\d+(\.\d+))\s*$").unwrap();
+        static ref RX_SCALE:   Regex = Regex::new(r"(?s)^SCALE\s+(\d+(?:\.\d+)?)\s*$").unwrap();
+        static ref RX_OFFSET:  Regex = Regex::new(concatcp!(r"(?s)^OFFSET\s+", RX_FLOAT, r"\s+", RX_FLOAT, r"\s+", RX_FLOAT, r"\s*$")).unwrap();
         static ref RX_MIRROR:  Regex = Regex::new(r"(?s)^MIRROR\s*$").unwrap();
         static ref RX_OBJECTS: Regex = Regex::new(r"(?s)^OBJECTS\s+([A-Z]+)(.+)").unwrap();
         static ref RX_NAMES:   Regex = Regex::new(r"(?s)\s+([^\s]+)").unwrap();
@@ -53,6 +58,7 @@ pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions,
     read_to_string_buf(actions_path, buf).map_err(Error::FileRead)?;
 
     let mut scale = None;
+    let mut offset = None;
     let mut mirror = false;
     let mut objects = None;
     let mut rename_sm = Vec::with_capacity(0);
@@ -66,6 +72,11 @@ pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions,
             let factor = f64::from_str(cap.get(1).unwrap().as_str())
                 .map_err(|e| Error::FileParse(format!("Could not parse SCALE as float: {:?}", e)))?;
             scale = Some(factor);
+        } else if let Some(cap) = RX_OFFSET.captures(token) {
+            let x = f32::from_str(&cap[1]).map_err(|e| Error::FileParse(format!("Could not parse OFFSET x as float: {:?}", e)))?;
+            let y = f32::from_str(&cap[2]).map_err(|e| Error::FileParse(format!("Could not parse OFFSET y as float: {:?}", e)))?;
+            let z = f32::from_str(&cap[3]).map_err(|e| Error::FileParse(format!("Could not parse OFFSET z as float: {:?}", e)))?;
+            offset = Some((x, y, z));
         } else if RX_MIRROR.is_match(token) {
             mirror = true;
         } else if let Some(cap) = RX_OBJECTS.captures(token) {
@@ -108,7 +119,7 @@ pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions,
 
     }
 
-    Ok(ModActions { scale, mirror, objects, rename_sm })
+    Ok(ModActions { scale, offset, mirror, objects, rename_sm })
 }
 
 

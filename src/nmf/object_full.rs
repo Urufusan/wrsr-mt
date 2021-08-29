@@ -264,6 +264,22 @@ impl ObjectFull {
         }
     }
 
+    pub fn offset(&mut self, dx: f32, dy: f32, dz: f32) {
+        self.bbox_mut().offset(dx, dy, dz);
+
+        for v in self.vertices_mut() {
+            v.offset(dx, dy, dz);
+        }
+
+        for RawFaceExtra { auto_normal: RawVertex { x, y, z },  factor } in self.face_extras_mut() {
+            *factor -= *x * dx + *y * dy + *z * dz;
+        }
+
+        for bbox in self.face_bboxes_mut() {
+            bbox.offset(dx, dy, dz);
+        }
+    }
+
     pub fn mirror_z(&mut self) {
         self.bbox_mut().mirror_z();
 
@@ -305,6 +321,13 @@ impl RawVertex {
     }
 
     #[inline]
+    fn offset(&mut self, dx: f32, dy: f32, dz: f32) {
+        self.x += dx;
+        self.y += dy;
+        self.z += dz;
+    }
+
+    #[inline]
     fn mirror_z(&mut self) {
         self.z = 0f32 - self.z;
     }
@@ -316,6 +339,12 @@ impl RawBBox {
     fn scale(&mut self, factor: f64) {
         self.v_min.scale(factor); 
         self.v_max.scale(factor); 
+    }
+
+    #[inline]
+    fn offset(&mut self, dx: f32, dy: f32, dz: f32) {
+        self.v_min.offset(dx, dy, dz);
+        self.v_max.offset(dx, dy, dz);
     }
 
     #[inline]
