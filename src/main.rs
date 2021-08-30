@@ -108,7 +108,7 @@ fn main() {
 
                         let uvs = obj.uv_map();
                         for uv in uvs {
-                            writeln!(wr, "vt {:.6} {:.6}", uv.x, uv.y).unwrap();
+                            writeln!(wr, "vt {:.6} {:.6}", uv.x, 1f32 - uv.y).unwrap();
                         }
 
                         let ns = obj.normals_1();
