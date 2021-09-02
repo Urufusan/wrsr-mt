@@ -1,4 +1,4 @@
-## wrsr-mt (v0.4)
+## wrsr-mt (v0.5)
 
 Command-line application, providing a variety of modding-related tools for "Workers &amp; Resources: Soviet Republic".
 
@@ -37,7 +37,7 @@ Command-line application, providing a variety of modding-related tools for "Work
      - Geometry mirroring.
      - Exporting into Wavefront's \*.obj format ([example](https://www.youtube.com/watch?v=vJ6aN4iXCas)).
  
- #### (WIP) modpacks 
+ #### Modpacks 
    - Generating customized mods in *workshop_wip* directory, using assets from workshop mods and stock buildings.
 
 
