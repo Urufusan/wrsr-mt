@@ -53,7 +53,7 @@ pub fn read_skins(path: &Path, buf: &mut String) -> Result<Skins, Error> {
 }
 
 
-pub fn validate(skins: &Skins, root: &Path, used_submaterials: &[&str], buf: &mut String) -> Result<(), Error> {
+pub fn validate(skins: &Skins, used_submaterials: &[&str], buf: &mut String) -> Result<(), Error> {
     let mut validation_errors = Vec::with_capacity(0);
 
     macro_rules! check_mtl {
@@ -66,8 +66,9 @@ pub fn validate(skins: &Skins, root: &Path, used_submaterials: &[&str], buf: &mu
                 )?;
 
             building_def::push_mtl_errors(&mtl, used_submaterials.iter(), &mut validation_errors, $mtl_path.display());
+            let mtl_root = $mtl_path.parent().unwrap();
 
-            for tx in mtl.get_texture_paths(|p| resolve_source_path(root, p)) {
+            for tx in mtl.get_texture_paths(|p| resolve_source_path(mtl_root, p)) {
                 if !tx.exists() {
                     return Err(Error::TexturePathInvalid(tx));
                 }

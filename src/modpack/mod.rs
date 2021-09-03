@@ -136,7 +136,7 @@ pub fn read_validate_sources(source_dir: &Path) -> Result<(Vec::<BuildingSource>
                 bs.def.parse_and_validate(Some(&nmf_info)).map_err(SourceError::Def)?;
 
                 let sm_used = nmf_info.get_used_sumbaterials().collect::<Vec<_>>();
-                skins::validate(&bs.skins, &path, &sm_used[..], &mut str_buf).map_err(SourceError::Skins)?;
+                skins::validate(&bs.skins, &sm_used[..], &mut str_buf).map_err(SourceError::Skins)?;
 
                 Ok(bs)
             });
