@@ -1,4 +1,4 @@
-## wrsr-mt (v0.5)
+## wrsr-mt (v0.5.1)
 
 Command-line application, providing a variety of modding-related tools for "Workers &amp; Resources: Soviet Republic".
 
@@ -35,6 +35,7 @@ Command-line application, providing a variety of modding-related tools for "Work
      - Displaying model structure (submaterials, objects, geometry).
      - Geometry scaling (by a given factor).
      - Geometry mirroring.
+     - Optimizing faces' indices (reducing vertex data duplication)
      - Exporting into Wavefront's \*.obj format ([example](https://www.youtube.com/watch?v=vJ6aN4iXCas)).
  
  #### Modpacks 
@@ -47,7 +48,7 @@ Most subcommands support --help parameter:
 ```bash
 $ wrsr-mt --help
 $ wrsr-mt nmf --help
-$ wrsr-mt nmf scale --help
+$ wrsr-mt nmf mirror --help
 ```
 
 

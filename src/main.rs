@@ -85,7 +85,7 @@ fn main() {
                     println!("{}", nmf);
                 },
 
-                cfg::NmfCommand::ToObj(cfg::NmfToObjCommand { input, output }) => {
+                cfg::NmfCommand::ToObj(cfg::FromToCommand { input, output }) => {
                     let nmf = nmf::NmfBufFull::from_path(input).expect("Failed to read the nmf file");
 
                     let f_out = fs::OpenOptions::new()
@@ -96,33 +96,93 @@ fn main() {
 
                     let mut wr = std::io::BufWriter::new(f_out);
 
-                    let mut d_v = 1_usize;
+                    use nmf::object_full::{RawVertex, RawPoint};
+                    let mut vx_map = ahash::AHashMap::<&RawVertex, usize>::with_capacity(0);
+                    let mut n1_map = ahash::AHashMap::<&RawVertex, usize>::with_capacity(0);
+                    let mut uv_map = ahash::AHashMap::<&RawPoint, usize>::with_capacity(0);
+                    let mut vx_vec = Vec::<usize>::with_capacity(0);
+                    let mut n1_vec = Vec::<usize>::with_capacity(0);
+                    let mut uv_vec = Vec::<usize>::with_capacity(0);
+
+                    let mut d_vx = 0_usize;
+                    let mut d_n1 = 0_usize;
+                    let mut d_uv = 0_usize;
 
                     for obj in nmf.objects.iter() {
+                        let verts = obj.vertices();
+
+                        vx_map.clear();
+                        n1_map.clear();
+                        uv_map.clear();
+
+                        vx_vec.clear();
+                        n1_vec.clear();
+                        uv_vec.clear();
+
+                        vx_map.reserve(verts.len());
+                        n1_map.reserve(verts.len());
+                        uv_map.reserve(verts.len());
+
+                        vx_vec.reserve(verts.len());
+                        n1_vec.reserve(verts.len());
+                        uv_vec.reserve(verts.len());
+
                         writeln!(wr, "o {}", obj.name()).unwrap();
 
-                        let verts = obj.vertices();
                         for v in verts {
-                            writeln!(wr, "v {:.6} {:.6} {:.6}", v.x, v.y, v.z).unwrap();
+                            if !vx_map.contains_key(v) {
+                                d_vx += 1;
+                                vx_map.insert(v, d_vx);
+                                vx_vec.push(d_vx);
+                                writeln!(wr, "v {:.6} {:.6} {:.6}", v.x, v.y, v.z).unwrap();
+                            } else {
+                                vx_vec.push(vx_map[v]);
+                            }
                         }
 
                         let uvs = obj.uv_map();
                         for uv in uvs {
-                            writeln!(wr, "vt {:.6} {:.6}", uv.x, 1f32 - uv.y).unwrap();
+                            if !uv_map.contains_key(uv) {
+                                d_uv += 1;
+                                uv_map.insert(uv, d_uv);
+                                uv_vec.push(d_uv);
+                                writeln!(wr, "vt {:.6} {:.6}", uv.x, 1f32 - uv.y).unwrap();
+                            } else {
+                                uv_vec.push(uv_map[uv]);
+                            }
                         }
 
                         let ns = obj.normals_1();
                         for n in ns {
-                            writeln!(wr, "vn {:.6} {:.6} {:.6}", n.x, n.y, n.z).unwrap();
+                            if !n1_map.contains_key(n) {
+                                d_n1 += 1;
+                                n1_map.insert(n, d_n1);
+                                n1_vec.push(d_n1);
+                                writeln!(wr, "vn {:.6} {:.6} {:.6}", n.x, n.y, n.z).unwrap();
+                            } else {
+                                n1_vec.push(n1_map[n]);
+                            }
                         }
 
                         writeln!(wr, "s off").unwrap();
 
                         for f in obj.faces() {
-                            writeln!(wr, "f {0:}/{0:}/{0:} {1:}/{1:}/{1:} {2:}/{2:}/{2:}", f.v1 as usize + d_v, f.v2 as usize + d_v, f.v3 as usize + d_v).unwrap();
-                        }
+                            let v1  = vx_vec[f.v1 as usize];
+                            let n1  = n1_vec[f.v1 as usize];
+                            let uv1 = uv_vec[f.v1 as usize];
 
-                        d_v += verts.len();
+                            let v2  = vx_vec[f.v2 as usize];
+                            let n2  = n1_vec[f.v2 as usize];
+                            let uv2 = uv_vec[f.v2 as usize];
+
+                            let v3  = vx_vec[f.v3 as usize];
+                            let n3  = n1_vec[f.v3 as usize];
+                            let uv3 = uv_vec[f.v3 as usize];
+
+                            write!(wr, "f {}/{}/{}",   v1, uv1, n1).unwrap();
+                            write!(wr, "  {}/{}/{}",   v2, uv2, n2).unwrap();
+                            write!(wr, "  {}/{}/{}\n", v3, uv3, n3).unwrap();
+                        }
                     }
 
                     wr.flush().expect("Failed flushing the output");
@@ -138,10 +198,19 @@ fn main() {
                     println!("Done");
                 },
 
-                cfg::NmfCommand::Mirror(cfg::MirrorCommand { input, output }) => {
+                cfg::NmfCommand::Mirror(cfg::FromToCommand { input, output }) => {
                     let mut nmf = nmf::NmfBufFull::from_path(input).expect("Failed to read the nmf file");
                     for o in nmf.objects.iter_mut() {
                         o.mirror_z();
+                    }
+                    nmf.write_to_file(output).unwrap();
+                    println!("Done");
+                },
+
+                cfg::NmfCommand::Optimize(cfg::FromToCommand { input, output }) => {
+                    let mut nmf = nmf::NmfBufFull::from_path(input).expect("Failed to read the nmf file");
+                    for o in nmf.objects.iter_mut() {
+                        o.optimize_indices();
                     }
                     nmf.write_to_file(output).unwrap();
                     println!("Done");
@@ -239,7 +308,7 @@ fn main() {
                     modify_ini!(buf, &bld_def.render,       RENDERCONFIG_INI, ini::parse_renderconfig_ini, ini::transform::scale_render,   *factor);
                     modify_models(&bld_def, dir_output, |o| o.scale(*factor));
                 },
-                cfg::ModCommand::Mirror(cfg::MirrorCommand { input: dir_input, output: dir_output }) => {
+                cfg::ModCommand::Mirror(cfg::FromToCommand { input: dir_input, output: dir_output }) => {
                     let bld_def = check_and_copy_building(dir_input, dir_output);
                     println!("Updating...");
 
@@ -304,13 +373,13 @@ fn main() {
                     ini::transform::scale_render(&mut ini, *factor);
                     save_ini_as(output, ini);
                 },
-                cfg::IniCommand::MirrorBuilding(cfg::MirrorCommand { input, output }) => {
+                cfg::IniCommand::MirrorBuilding(cfg::FromToCommand { input, output }) => {
                     let file = fs::read_to_string(input).expect("Cannot read the specified file");
                     let mut ini = ini::parse_building_ini(&file).expect("Cannot parse building.ini");
                     ini::transform::mirror_z_building(&mut ini);
                     save_ini_as(output, ini);
                 },
-                cfg::IniCommand::MirrorRender(cfg::MirrorCommand { input, output }) => {
+                cfg::IniCommand::MirrorRender(cfg::FromToCommand { input, output }) => {
                     let file = fs::read_to_string(input).expect("Cannot read the specified file");
                     let mut ini = ini::parse_renderconfig_ini(&file).expect("Cannot parse renderconfig");
                     ini::transform::mirror_z_render(&mut ini);

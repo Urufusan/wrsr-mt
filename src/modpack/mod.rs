@@ -69,7 +69,7 @@ pub fn read_validate_sources(source_dir: &Path) -> Result<(Vec::<BuildingSource>
         macro_rules! log_err {
             ($err:expr $(, $v:expr)*) => {{
                 errors += 1;
-                eprintln!("{}: {}", path.strip_prefix(source_dir).expect("Impossible: could not strip root prefix").display(), $err);
+                eprintln!("ERROR: {}: {}", path.strip_prefix(source_dir).expect("Impossible: could not strip root prefix").display(), $err);
                 $($v)*
             }};
         }
@@ -143,7 +143,7 @@ pub fn read_validate_sources(source_dir: &Path) -> Result<(Vec::<BuildingSource>
 
             match building_source {
                 Ok(bs) => {
-                    println!("{}: OK", path.strip_prefix(source_dir).expect("Impossible: could not strip root prefix").display());
+                    println!("OK: {}", path.strip_prefix(source_dir).expect("Impossible: could not strip root prefix").display());
                     result.push(bs)
                 },
                 Err(e) => log_err!(e)
@@ -540,7 +540,12 @@ fn copy_nmf_with_actions(asset_path: &Path, assets_root: &Path, byte_buf: &mut V
         model.objects = tmp_objects;
     }
 
+
     for obj in model.objects.iter_mut() {
+        if actions.optimize {
+            obj.optimize_indices();
+        }
+
         if let Some(factor) = actions.scale {
             obj.scale(factor);
         }

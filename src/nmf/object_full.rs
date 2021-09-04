@@ -23,7 +23,9 @@ pub struct ObjectFull {
     submat_count:   usize,
 
     vertices_start:    usize,
-    normals_start:     usize,
+    normals1_start:    usize,
+    normals2_start:    usize,
+    normals3_start:    usize,
     uv_map_start:      usize,
     face_ext_start:    usize,
     face_bboxes_start: usize,
@@ -40,6 +42,7 @@ pub struct RawFace {
 
 
 #[repr(C)]
+#[derive(Clone, PartialEq)]
 pub struct RawVertex {
     pub x: f32,
     pub y: f32,
@@ -48,6 +51,7 @@ pub struct RawVertex {
 
 
 #[repr(C)]
+#[derive(Clone, PartialEq)]
 pub struct RawPoint {
     pub x: f32,
     pub y: f32,
@@ -114,13 +118,16 @@ impl<R: Read + Seek> ObjectReader<R> for ObjectFull {
 
         let indices_bytes = indices_count * size_of::<u16>();
 
+        // possible round-up to 4 byte alignment for the following elements
         let vertices_start    = indices_bytes     + indices_bytes % size_of::<u32>();
-        let normals_start     = vertices_start    + vertices_count * 12;
-        let uv_map_start      = normals_start     + vertices_count * 36;
+        let normals1_start    = vertices_start    + vertices_count * 12;
+        let normals2_start    = normals1_start    + vertices_count * 12;
+        let normals3_start    = normals2_start    + vertices_count * 12;
+        let uv_map_start      = normals3_start    + vertices_count * 12;
         let face_ext_start    = uv_map_start      + vertices_count * 8;
-        let face_bboxes_start = face_ext_start    + faces_count * 16;
-        let submat_start      = face_bboxes_start + faces_count * 24;
-        let obj_end           = submat_start      + submat_count * 12;
+        let face_bboxes_start = face_ext_start    + faces_count    * 16;
+        let submat_start      = face_bboxes_start + faces_count    * 24;
+        let obj_end           = submat_start      + submat_count   * 12;
 
         unsafe {
             let buf_layout = alloc::Layout::from_size_align(obj_end, 4_usize).map_err(|e| ObjectError::Allocation(format!("{:?}", e)))?;
@@ -150,7 +157,9 @@ impl<R: Read + Seek> ObjectReader<R> for ObjectFull {
                             submat_count,
 
                             vertices_start,
-                            normals_start,
+                            normals1_start,
+                            normals2_start,
+                            normals3_start,
                             uv_map_start,
                             face_ext_start,
                             face_bboxes_start,
@@ -180,7 +189,18 @@ impl ObjectFull {
         let slice = self.get_slice::<u8>(0, self.indices_count * size_of::<u16>());
         wr.write_all(slice)?;
 
-        let slice = self.get_slice::<u8>(self.vertices_start, self.buf_layout.size() - self.vertices_start);
+        let slice = self.get_slice::<u8>(self.vertices_start,  self.vertices_count * size_of::<RawVertex>());
+        wr.write_all(slice)?;
+        let slice = self.get_slice::<u8>(self.normals1_start,  self.vertices_count * size_of::<RawVertex>());
+        wr.write_all(slice)?;
+        let slice = self.get_slice::<u8>(self.normals2_start,  self.vertices_count * size_of::<RawVertex>());
+        wr.write_all(slice)?;
+        let slice = self.get_slice::<u8>(self.normals3_start,  self.vertices_count * size_of::<RawVertex>());
+        wr.write_all(slice)?;
+        let slice = self.get_slice::<u8>(self.uv_map_start,    self.vertices_count * size_of::<RawPoint>());
+        wr.write_all(slice)?;
+
+        let slice = self.get_slice::<u8>(self.face_ext_start, self.buf_layout.size() - self.face_ext_start);
         wr.write_all(slice)
     }
 
@@ -229,11 +249,27 @@ impl ObjectFull {
     }
 
     pub fn normals_1<'a>(&'a self) -> &'a [RawVertex] {
-        self.get_slice::<RawVertex>(self.normals_start, self.vertices_count)
+        self.get_slice::<RawVertex>(self.normals1_start, self.vertices_count)
     }
 
-    pub fn normals_all_mut<'a>(&'a mut self) -> &'a mut [RawVertex] {
-        self.get_slice_mut::<RawVertex>(self.normals_start, self.vertices_count * 3)
+    pub fn normals_1_mut<'a>(&'a mut self) -> &'a mut [RawVertex] {
+        self.get_slice_mut::<RawVertex>(self.normals1_start, self.vertices_count)
+    }
+
+    //pub fn normals_2<'a>(&'a self) -> &'a [RawVertex] {
+        //self.get_slice::<RawVertex>(self.normals2_start, self.vertices_count)
+    //}
+  
+    pub fn normals_2_mut<'a>(&'a mut self) -> &'a mut [RawVertex] {
+        self.get_slice_mut::<RawVertex>(self.normals2_start, self.vertices_count)
+    }
+
+    //pub fn normals_3<'a>(&'a self) -> &'a [RawVertex] {
+        //self.get_slice::<RawVertex>(self.normals3_start, self.vertices_count)
+    //}
+
+    pub fn normals_3_mut<'a>(&'a mut self) -> &'a mut [RawVertex] {
+        self.get_slice_mut::<RawVertex>(self.normals3_start, self.vertices_count)
     }
 
     pub fn uv_map<'a>(&'a self) -> &'a [RawPoint] {
@@ -291,7 +327,15 @@ impl ObjectFull {
             v.mirror_z();
         }
 
-        for n in self.normals_all_mut() {
+        for n in self.normals_1_mut() {
+            n.mirror_z();
+        }
+
+        for n in self.normals_2_mut() {
+            n.mirror_z();
+        }
+
+        for n in self.normals_3_mut() {
             n.mirror_z();
         }
 
@@ -301,6 +345,90 @@ impl ObjectFull {
 
         for bbox in self.face_bboxes_mut() {
             bbox.mirror_z();
+        }
+    }
+
+
+    pub fn optimize_indices(&mut self) {
+
+        assert!(self.vertices_count < u16::MAX.into());
+
+        let vx_count = self.vertices_count as u16;
+
+        let mut new_verts = ahash::AHashMap::<(RawVertex, RawVertex, RawVertex, RawVertex, RawPoint), u16>::with_capacity(self.vertices_count);
+        let mut remap = Vec::<u16>::with_capacity(self.vertices_count);
+        let mut kept = 0u16;
+
+        unsafe {
+
+            macro_rules! advance { ($p:ident) => { $p = $p.add(1)} }
+
+            macro_rules! mk_ptr {
+                ($t:ty, $ofs:expr) => {{
+                    let walker = (self.buf_ptr as *const u8).add($ofs).cast::<$t>();
+                    let last   = self.buf_ptr.add($ofs).cast::<$t>();
+                    (walker, last)
+                }};
+            }
+
+            let (mut vx_walk, mut vx_last) = mk_ptr!(RawVertex, self.vertices_start);
+            let (mut n1_walk, mut n1_last) = mk_ptr!(RawVertex, self.normals1_start);
+            let (mut n2_walk, mut n2_last) = mk_ptr!(RawVertex, self.normals2_start);
+            let (mut n3_walk, mut n3_last) = mk_ptr!(RawVertex, self.normals3_start);
+            let (mut uv_walk, mut uv_last) = mk_ptr!(RawPoint,  self.uv_map_start);
+
+            for i in 0 .. vx_count {
+                let key = (vx_walk.read(), n1_walk.read(), n2_walk.read(), n3_walk.read(), uv_walk.read());
+                advance!(vx_walk);
+                advance!(n1_walk);
+                advance!(n2_walk);
+                advance!(n3_walk);
+                advance!(uv_walk);
+
+                if !new_verts.contains_key(&key) {
+                    if i != kept {
+                        vx_last.write(key.0.clone());
+                        n1_last.write(key.1.clone());
+                        n2_last.write(key.2.clone());
+                        n3_last.write(key.3.clone());
+                        uv_last.write(key.4.clone());
+                    }
+
+                    new_verts.insert(key, kept);
+
+                    advance!(vx_last);
+                    advance!(n1_last);
+                    advance!(n2_last);
+                    advance!(n3_last);
+                    advance!(uv_last);
+
+                    remap.push(kept);
+                    kept += 1;
+                } else {
+                    remap.push(new_verts[&key]);
+                }
+            }
+
+            let removed_verts = self.vertices_count - kept as usize;
+            if removed_verts > 0 {
+                self.vertices_count = kept as usize;
+                (&mut self.head_buf[236..240]).write_all(&kept.to_le_bytes()[..]).unwrap();
+
+                for idx in self.get_slice_mut::<u16>(0, self.indices_count) {
+                    *idx = remap[*idx as usize];
+                }
+
+                let removed_bytes = (removed_verts * (4 * size_of::<RawVertex>() + size_of::<RawPoint>())) as u32;
+
+                let mut sz = read_u32(&self.head_buf[4..]).unwrap();
+                sz -= removed_bytes;
+                (&mut self.head_buf[4..]).write_all(&sz.to_le_bytes()[..]).unwrap();
+
+                sz = read_u32(&self.head_buf[232..]).unwrap();
+                sz -= removed_bytes;
+                (&mut self.head_buf[232..236]).write_all(&sz.to_le_bytes()[..]).unwrap();
+
+            }
         }
     }
 }
@@ -367,4 +495,25 @@ fn get_faces_count(indices: usize) -> Result<usize, ObjectError> {
     }
 
     Ok(c)
+}
+
+impl Eq for RawVertex {}
+
+impl Eq for RawPoint {}
+
+use std::hash::{Hash, Hasher};
+
+impl Hash for RawVertex {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        h.write(&self.x.to_le_bytes()[..]);
+        h.write(&self.y.to_le_bytes()[..]);
+        h.write(&self.z.to_le_bytes()[..]);
+    }
+}
+
+impl Hash for RawPoint {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        h.write(&self.x.to_le_bytes()[..]);
+        h.write(&self.y.to_le_bytes()[..]);
+    }
 }

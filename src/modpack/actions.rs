@@ -21,6 +21,7 @@ pub enum Error {
 pub struct ModActions {
     pub scale: Option<f64>,
     pub offset: Option<(f32, f32, f32)>,
+    pub optimize: bool,
     pub mirror: bool,
     pub objects: Option<(ObjectVerb, Vec<String>)>,
     pub rename_sm: Vec<(String, String)>,
@@ -45,13 +46,14 @@ pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions,
     lazy_static! {
         static ref RX_TOKENS:  Regex = Regex::new(r"(?s)(^|(\s*\r?\n)+)\$").unwrap();
 
-        static ref RX_SCALE:   Regex = Regex::new(r"(?s)^SCALE\s+(\d+(?:\.\d+)?)\s*$").unwrap();
-        static ref RX_OFFSET:  Regex = Regex::new(concatcp!(r"(?s)^OFFSET\s+", RX_FLOAT, r"\s+", RX_FLOAT, r"\s+", RX_FLOAT, r"\s*$")).unwrap();
-        static ref RX_MIRROR:  Regex = Regex::new(r"(?s)^MIRROR\s*$").unwrap();
-        static ref RX_OBJECTS: Regex = Regex::new(r"(?s)^OBJECTS\s+([A-Z]+)(.+)").unwrap();
-        static ref RX_NAMES:   Regex = Regex::new(r"(?s)\s+([^\s]+)").unwrap();
+        static ref RX_SCALE:    Regex = Regex::new(r"(?s)^SCALE\s+(\d+(?:\.\d+)?)\s*$").unwrap();
+        static ref RX_OFFSET:   Regex = Regex::new(concatcp!(r"(?s)^OFFSET\s+", RX_FLOAT, r"\s+", RX_FLOAT, r"\s+", RX_FLOAT, r"\s*$")).unwrap();
+        static ref RX_MIRROR:   Regex = Regex::new(r"(?s)^MIRROR\s*$").unwrap();
+        static ref RX_OPTIMIZE: Regex = Regex::new(r"(?s)^OPTIMIZE\s*$").unwrap();
+        static ref RX_OBJECTS:  Regex = Regex::new(r"(?s)^OBJECTS\s+([A-Z]+)(.+)").unwrap();
+        static ref RX_NAMES:    Regex = Regex::new(r"(?s)\s+([^\s]+)").unwrap();
 
-        static ref RX_SUBMAT:  Regex = Regex::new(r"(?s)^SUBMATERIAL_RENAME\s+([^\s]+)\s+([^\s]+)").unwrap();
+        static ref RX_SUBMAT:   Regex = Regex::new(r"(?s)^SUBMATERIAL_RENAME\s+([^\s]+)\s+([^\s]+)").unwrap();
     }
 
     buf.clear();
@@ -60,6 +62,7 @@ pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions,
     let mut scale = None;
     let mut offset = None;
     let mut mirror = false;
+    let mut optimize = false;
     let mut objects = None;
     let mut rename_sm = Vec::with_capacity(0);
 
@@ -79,6 +82,8 @@ pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions,
             offset = Some((x, y, z));
         } else if RX_MIRROR.is_match(token) {
             mirror = true;
+        } else if RX_OPTIMIZE.is_match(token) {
+            optimize = true;
         } else if let Some(cap) = RX_OBJECTS.captures(token) {
             let verb = cap.get(1).unwrap().as_str();
             let rest = cap.get(2).unwrap().as_str();
@@ -119,7 +124,7 @@ pub fn read_actions(actions_path: &Path, buf: &mut String) -> Result<ModActions,
 
     }
 
-    Ok(ModActions { scale, offset, mirror, objects, rename_sm })
+    Ok(ModActions { scale, offset, optimize, mirror, objects, rename_sm })
 }
 
 

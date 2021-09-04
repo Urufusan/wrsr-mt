@@ -2,7 +2,7 @@
 
 [package]
 name = "wrsr-mt"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Kromgart <kromgart@gmail.com>"]
 edition = "2018"
 license = "GPL-3.0-only"

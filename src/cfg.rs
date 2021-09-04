@@ -6,7 +6,7 @@ use normpath::BasePathBuf;
 
 
 pub const RENDERCONFIG_INI: &str = "renderconfig.ini";
-pub const BUILDING_INI: &str = "building.ini";
+pub const BUILDING_INI:     &str = "building.ini";
 
 
 pub enum AppCommand {
@@ -20,14 +20,10 @@ pub enum AppCommand {
 
 pub enum NmfCommand {
     Show(PathBuf),
-    ToObj(NmfToObjCommand),
+    ToObj(FromToCommand),
     Scale(ScaleCommand),
-    Mirror(MirrorCommand),
-}
-
-pub struct NmfToObjCommand {
-    pub input: PathBuf,
-    pub output: PathBuf
+    Mirror(FromToCommand),
+    Optimize(FromToCommand),
 }
 
 //-------------------------------
@@ -35,7 +31,7 @@ pub struct NmfToObjCommand {
 pub enum ModCommand {
     Validate(PathBuf),
     Scale(ScaleCommand),
-    Mirror(MirrorCommand),
+    Mirror(FromToCommand),
 }
 
 //-------------------------------
@@ -46,8 +42,8 @@ pub enum IniCommand {
     ParseMtl(PathBuf),
     ScaleBuilding(ScaleCommand),
     ScaleRender(ScaleCommand),
-    MirrorBuilding(MirrorCommand),
-    MirrorRender(MirrorCommand),
+    MirrorBuilding(FromToCommand),
+    MirrorRender(FromToCommand),
 }
 
 //-------------------------------
@@ -64,7 +60,7 @@ pub struct ModpackInstallCommand {
 
 //-------------------------------
 
-pub struct MirrorCommand {
+pub struct FromToCommand {
     pub input: PathBuf,
     pub output: PathBuf
 }
@@ -131,12 +127,18 @@ lazy_static! {
                 .arg(Arg::with_name("nmf-input").required(true))
                 .arg(Arg::with_name("nmf-output").required(true));
 
+            let cmd_nmf_optimize = SubCommand::with_name("optimize")
+                .about("Optimize the specified *.nmf. Currently removes duplicated vertices data and updates face indices")
+                .arg(Arg::with_name("nmf-input").required(true))
+                .arg(Arg::with_name("nmf-output").required(true));
+
             SubCommand::with_name("nmf")
                 .about("Operations for *.nmf files")
                 .subcommand(cmd_nmf_show)
                 .subcommand(cmd_nmf_toobj)
                 .subcommand(cmd_nmf_scale)
                 .subcommand(cmd_nmf_mirror)
+                .subcommand(cmd_nmf_optimize)
         };
 
         let cmd_modbuilding = {
@@ -246,7 +248,7 @@ lazy_static! {
 
         let m = App::new("wrsr-mt")
             .author("kromgart@gmail.com")
-            .version("0.5")
+            .version("0.5.1")
             .about("Modding tools for \"Workers & Resources: Soviet Rebuplic\"")
             .long_about("Modding tools for \"Workers & Resources: Soviet Rebuplic\"\n\
                          Homepage: https://github.com/Kromgart/wrsr-mt")
@@ -282,11 +284,11 @@ lazy_static! {
                 ScaleCommand { input, factor, output }
             };
             
-            let mk_mirror = |m, p_in, p_out| -> MirrorCommand {
+            let mk_from_to = |m, p_in, p_out| -> FromToCommand {
                 let input = mk_path(m, p_in);
                 let output = mk_path(m, p_out);
                 assert!(input != output, "{} and {} cannot be the same", p_in, p_out);
-                MirrorCommand { input, output }
+                FromToCommand { input, output }
             };
 
             match m.subcommand() {
@@ -313,8 +315,8 @@ lazy_static! {
                         (cname, _)                => panic!("Unknown ini scale subcommand '{}'" , cname)
                     },
                     ("mirror", Some(m)) => match m.subcommand() {
-                        ("building", Some(m))     => IniCommand::MirrorBuilding(mk_mirror(m, "ini-input", "ini-output")),
-                        ("renderconfig", Some(m)) => IniCommand::MirrorRender(mk_mirror(m, "ini-input", "ini-output")),
+                        ("building", Some(m))     => IniCommand::MirrorBuilding(mk_from_to(m, "ini-input", "ini-output")),
+                        ("renderconfig", Some(m)) => IniCommand::MirrorRender(mk_from_to(m, "ini-input", "ini-output")),
                         (cname, _)                => panic!("Unknown ini mirror subcommand '{}'" , cname)
                     },
                     (cname, _) => panic!("Unknown ini subcommand '{}'" , cname)
@@ -323,21 +325,18 @@ lazy_static! {
                 ("mod-building", Some(m)) => AppCommand::ModBuilding(match m.subcommand() {
                     ("validate", Some(m)) => ModCommand::Validate(mk_path(m, "dir-input")),
                     ("scale", Some(m))    => ModCommand::Scale(mk_scale(m, "dir-input", "dir-output")),
-                    ("mirror", Some(m))   => ModCommand::Mirror(mk_mirror(m, "dir-input", "dir-output")),
+                    ("mirror", Some(m))   => ModCommand::Mirror(mk_from_to(m, "dir-input", "dir-output")),
                     (cname, _)            => panic!("Unknown mod subcommand '{}'" , cname)
                 }),
 
                 ("nmf", Some(m)) => AppCommand::Nmf(match m.subcommand() {
-                    ("show", Some(m)) => NmfCommand::Show(mk_path(m, "nmf-path")),
-                    ("to-obj", Some(m)) => {
-                        let input = mk_path(m, "nmf-input");
-                        let output = mk_path(m, "obj-output");
-                        assert!(input != output, "input and output cannot be the same");
-                        NmfCommand::ToObj(NmfToObjCommand { input, output })
-                    },
-                    ("scale", Some(m))  => NmfCommand::Scale(mk_scale(m, "nmf-input", "nmf-output")),
-                    ("mirror", Some(m)) => NmfCommand::Mirror(mk_mirror(m, "nmf-input", "nmf-output")),
-                    (cname, _)          => panic!("Unknown nmf subcommand '{}'" , cname)
+                    ("show",     Some(m)) => NmfCommand::Show(mk_path(m, "nmf-path")),
+                    ("to-obj",   Some(m)) => NmfCommand::ToObj(   mk_from_to(m, "nmf-input", "obj-output")),
+                    ("scale",    Some(m)) => NmfCommand::Scale(   mk_scale(  m, "nmf-input", "nmf-output")),
+                    ("mirror",   Some(m)) => NmfCommand::Mirror(  mk_from_to(m, "nmf-input", "nmf-output")),
+                    ("optimize", Some(m)) => NmfCommand::Optimize(mk_from_to(m, "nmf-input", "nmf-output")),
+
+                    (cname, _) => panic!("Unknown nmf subcommand '{}'" , cname)
                 }),
 
                 _ => {
