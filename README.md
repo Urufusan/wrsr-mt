@@ -51,6 +51,20 @@ $ wrsr-mt nmf --help
 $ wrsr-mt nmf mirror --help
 ```
 
+## Known issues
+
+The following tokens in building.ini are not implemented (they will be reported as 'unknown token'). They might be added if I get a good working example of their usage.
+
+ - $STORAGE_DEMAND_MEDIUM
+ - $ROADVEHICLE_FORKLIFT_PASS
+ - $CONNECTIONS_PEDESTRIAN_DEAD_SQUARE
+ - $CONNECTION_AIRPLANE
+ - $CONNECTION_RAIL_DEAD
+ - $CONNECTION_ROAD_HEIGHT
+ - $MONUMENT_ELETRIC_CONSUMPTION_ADD
+ - $WORKING_SFX_DISTANCE
+ - $ANIMATION_MESH_WORKSHOP
+
 
 ## Examples
 
