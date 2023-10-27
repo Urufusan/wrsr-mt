@@ -205,7 +205,7 @@ impl MaterialMtl<'_> {
 #[inline]
 pub fn normalize_join(root: &Path, tail: &IdStringParam) -> PathBuf {
     use normpath::PathExt;
-    let mut root = root.normalize_virtually().unwrap();
+    let mut root = root.normalize().unwrap();
     root.push(tail.as_str());
     root.into_path_buf()
 }

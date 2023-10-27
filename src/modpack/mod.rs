@@ -82,7 +82,7 @@ pub fn read_validate_sources(source_dir: &Path) -> Result<(Vec::<BuildingSource>
             path.set_file_name(RENDERCONFIG_SOURCE);
             let render_src = if path.exists() { Some(path.to_path_buf()) } else { None }; 
             path.set_file_name(RENDERCONFIG_REF);
-            let render_ref = if path.exists() { Some(path.normalize_virtually().unwrap()) } else { None };
+            let render_ref = if path.exists() { Some(path.normalize().unwrap()) } else { None };
 
             path.pop();
 
